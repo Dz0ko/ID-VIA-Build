@@ -3,7 +3,7 @@ import { Logo } from "@/components/Logo";
 import { LandingFx } from "@/components/LandingFx";
 import { HeroBlob } from "@/components/HeroBlob";
 import { getCurrentUser } from "@/lib/auth";
-import { PLANS, PLAN_ORDER } from "@/lib/plans";
+import { CREDIT_GUIDE, PLANS, PLAN_ORDER, TIER_LABELS } from "@/lib/plans";
 import { AGENTS } from "@/lib/agents";
 import { TEMPLATES } from "@/lib/templates";
 
@@ -85,11 +85,6 @@ export default async function Home() {
               </Link>
               <a href="#how" className="btn btn-outline px-7 py-4 text-base bg-void/50 backdrop-blur" data-magnetic>See how it works</a>
             </div>
-            <ul className="reveal in mt-6 flex flex-wrap items-center justify-center gap-x-6 gap-y-2 text-xs text-ash" style={{ transitionDelay: "800ms" }}>
-              <li className="flex items-center gap-1.5"><span className="text-success">✓</span>100 free credits every month</li>
-              <li className="flex items-center gap-1.5"><span className="text-success">✓</span>No credit card required</li>
-              <li className="flex items-center gap-1.5"><span className="text-success">✓</span>Export the code any time</li>
-            </ul>
 
             {/* Floating glass cards */}
             <div className="mt-24 grid md:grid-cols-3 gap-5 max-w-5xl mx-auto text-left items-start">
@@ -200,34 +195,68 @@ export default async function Home() {
         {/* PRICING */}
         <section id="pricing" className="py-28 border-t border-graphite" data-spotlight>
           <div className="max-w-7xl mx-auto px-6">
-            <p className="label reveal">Plans</p>
-            <h2 className="heading mt-3 reveal">Capability, models, agents and credits per plan.</h2>
-            <div className="mt-12 grid md:grid-cols-2 xl:grid-cols-5 gap-5 items-stretch">
-              {PLAN_ORDER.map((id, i) => {
+            <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-6">
+              <div>
+                <p className="label reveal">Plans</p>
+                <h2 className="heading mt-3 max-w-2xl reveal">Simple plans. Credits for everything the agents do.</h2>
+              </div>
+              <Link href="/pricing" className="btn btn-ghost btn-sm reveal self-start md:self-auto">Compare every feature →</Link>
+            </div>
+
+            <div className="mt-12 grid md:grid-cols-2 xl:grid-cols-4 gap-6 items-stretch">
+              {PLAN_ORDER.filter((id) => id !== "FREE").map((id, i) => {
                 const p = PLANS[id];
                 const featured = id === "PRO";
+                const pages = Math.round(p.credits / CREDIT_GUIDE.page);
                 return (
-                  <div key={id} className={`glass-card rounded-2xl p-6 flex flex-col reveal-up ${featured ? "ring-1 ring-signal" : ""}`} style={{ transitionDelay: `${i * 70}ms` }} data-tilt="4">
-                    <div className="flex items-center justify-between gap-2 min-h-6">
-                      <div className="text-base font-medium">{p.name}</div>
+                  <div key={id} className={`glass-card rounded-3xl p-8 flex flex-col reveal-up ${featured ? "ring-1 ring-signal" : ""}`} style={{ transitionDelay: `${i * 80}ms` }} data-tilt="3">
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="text-lg font-medium">{p.name}</div>
                       {featured && <span className="pill border-signal text-signal-soft text-[10px]">Most popular</span>}
                       {p.discountPct && <span className="pill border-success/40 text-success text-[10px]">Save {p.discountPct}%</span>}
                     </div>
-                    <div className="mt-3 flex items-baseline gap-2">
-                      <span className="text-4xl font-semibold tracking-tight">${p.price}</span>
-                      <span className="text-sm text-ash">/mo</span>
+                    <p className="mt-1 text-sm text-ash">{p.tagline}</p>
+
+                    <div className="mt-6 flex items-baseline gap-2">
+                      <span className="text-5xl font-semibold tracking-tight">${p.price}</span>
+                      <span className="text-sm text-ash">/month</span>
                       {p.listPrice && <span className="text-sm text-ash line-through">${p.listPrice}</span>}
                     </div>
-                    <div className="mt-1 text-sm text-ash min-h-10">{p.tagline}</div>
-                    <ul className="mt-6 space-y-2.5 text-sm text-fog flex-1">
-                      {p.features.map((f) => <li key={f} className="flex gap-2.5"><span className="text-signal-soft shrink-0">✓</span><span>{f}</span></li>)}
+
+                    <dl className="mt-6 grid grid-cols-2 gap-x-4 gap-y-3 rounded-2xl border border-graphite bg-void/40 p-4 text-sm">
+                      <div><dt className="text-[10px] font-mono uppercase tracking-[0.14em] text-ash">Credits</dt><dd className="mt-1 font-medium">{p.credits.toLocaleString()} <span className="text-ash font-normal">/mo</span></dd></div>
+                      <div><dt className="text-[10px] font-mono uppercase tracking-[0.14em] text-ash">≈ Full pages</dt><dd className="mt-1 font-medium">{pages}</dd></div>
+                      <div><dt className="text-[10px] font-mono uppercase tracking-[0.14em] text-ash">Agents</dt><dd className="mt-1 font-medium">{p.agentLimit === "all" ? `All ${AGENTS.length} + custom` : p.agentLimit}</dd></div>
+                      <div><dt className="text-[10px] font-mono uppercase tracking-[0.14em] text-ash">Projects</dt><dd className="mt-1 font-medium capitalize">{p.projectLimit}</dd></div>
+                      <div className="col-span-2"><dt className="text-[10px] font-mono uppercase tracking-[0.14em] text-ash">Top model</dt><dd className="mt-1 font-medium">{TIER_LABELS[p.maxTier]}</dd></div>
+                    </dl>
+
+                    <ul className="mt-6 space-y-3 text-sm text-fog flex-1">
+                      {p.highlights.map((f) => <li key={f} className="flex gap-3"><span className="mt-0.5 w-4 h-4 rounded-full bg-signal/15 text-signal-soft grid place-items-center text-[10px] shrink-0">✓</span><span>{f}</span></li>)}
                     </ul>
-                    <Link href={id === "FREE" ? (user ? "/app" : "/signup") : `/api/billing/checkout?plan=${id}`} className={`btn mt-7 ${featured ? "btn-signal" : "btn-outline"}`}>{id === "FREE" ? "Start free" : `Choose ${p.name}`}</Link>
+
+                    <Link href={`/api/billing/checkout?plan=${id}`} className={`btn mt-8 ${featured ? "btn-signal btn-glow" : "btn-outline"}`}>Choose {p.name}</Link>
                   </div>
                 );
               })}
             </div>
-            <p className="mt-6 text-xs text-ash reveal">Credits measure AI usage: a small edit costs 2 to 5 credits, a full page 30 to 60, a full-stack feature 240 or more. Extra credit packs are available on every paid plan.</p>
+
+            {/* Free banner */}
+            <div className="mt-6 glass-card rounded-3xl px-8 py-6 flex flex-col md:flex-row md:items-center gap-6 reveal-up" data-tilt="2">
+              <div className="md:w-56 shrink-0">
+                <div className="text-lg font-medium">Free</div>
+                <div className="text-sm text-ash">{PLANS.FREE.tagline}</div>
+              </div>
+              <ul className="flex-1 flex flex-wrap gap-x-8 gap-y-2 text-sm text-fog">
+                <li className="flex items-center gap-2"><span className="text-signal-soft">✓</span>{PLANS.FREE.credits} credits every month</li>
+                {PLANS.FREE.highlights.map((f) => <li key={f} className="flex items-center gap-2"><span className="text-signal-soft">✓</span>{f}</li>)}
+              </ul>
+              <Link href={user ? "/app" : "/signup"} className="btn btn-outline shrink-0">Start free</Link>
+            </div>
+
+            <p className="mt-8 text-xs text-ash reveal max-w-3xl">
+              Credits measure what the agents do, never tokens: a small edit costs about {CREDIT_GUIDE.smallEdit} credits, a full page about {CREDIT_GUIDE.page}, a full-stack feature about {CREDIT_GUIDE.fullstack}. Paid plans can top up with credit packs at any time.
+            </p>
           </div>
         </section>
 

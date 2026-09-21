@@ -21,8 +21,19 @@ export interface Plan {
   projectLimit: number | "unlimited";
   maxTier: ModelTier;
   rolloverPct: number;
+  /** Short selling points for compact cards (landing). Full list lives in `features`. */
+  highlights: string[];
   features: string[];
 }
+
+/** Human-readable model behind each tier, for plan cards. */
+export const TIER_LABELS: Record<ModelTier, string> = {
+  fast: "Claude Haiku 4.5",
+  standard: "Claude Sonnet 5",
+  advanced: "Claude Sonnet 5 · high effort",
+  premium: "Claude Opus 5",
+  frontier: "Claude Fable 5.1 · GPT-6 Astra",
+};
 
 export const PLANS: Record<PlanId, Plan> = {
   FREE: {
@@ -35,6 +46,7 @@ export const PLANS: Record<PlanId, Plan> = {
     projectLimit: 2,
     maxTier: "standard",
     rolloverPct: 0,
+    highlights: ["6 core agents", "2 projects", "20 templates and the prompt library", "Preview link with IDÆVIA badge"],
     features: [
       "100 AI credits per month",
       "6 core agents: Builder, Planner, Copywriter, Designer, Debugger, SEO",
@@ -56,6 +68,7 @@ export const PLANS: Record<PlanId, Plan> = {
     projectLimit: 15,
     maxTier: "standard",
     rolloverPct: 0,
+    highlights: ["Screenshot and reference image to website", "Import from URL, GitHub or ZIP", "Production audit and code export", "Preview links without badge"],
     features: [
       "750 AI credits per month",
       "12 agents: adds UI, UX, Performance, Accessibility, Asset, Localization",
@@ -78,6 +91,7 @@ export const PLANS: Record<PlanId, Plan> = {
     projectLimit: "unlimited",
     maxTier: "advanced",
     rolloverPct: 25,
+    highlights: ["React apps with a live sandbox", "Client feedback links and approvals", "Publish to the marketplace", "25% credit rollover"],
     features: [
       "2,500 AI credits per month",
       "20 agents: adds Database, API, Auth, Payments, Animation, 3D, Git, Deploy",
@@ -100,6 +114,7 @@ export const PLANS: Record<PlanId, Plan> = {
     projectLimit: "unlimited",
     maxTier: "frontier",
     rolloverPct: 25,
+    highlights: ["Claude Opus 5 for architecture and complex features", "Frontier tier: Claude Fable 5.1 and GPT-6 Astra", "Agent teams and one-click workflows", "Project memory and background agents"],
     features: [
       "7,500 AI credits per month",
       "All 30 standard agents: adds Reference, Rebuild, Analytics, Conversion, Documentation, Refactoring, Dependency, Project Manager, Security, QA",
@@ -124,6 +139,7 @@ export const PLANS: Record<PlanId, Plan> = {
     projectLimit: "unlimited",
     maxTier: "frontier",
     rolloverPct: 25,
+    highlights: ["Teams, roles and the client portal", "White-label branding", "Custom and private agents", "Priority queue and dedicated support"],
     features: [
       "15,000 AI credits per month, plus optional credit packs",
       "Every agent, plus custom and private agents",
@@ -155,14 +171,23 @@ export function isPlanId(v: string): v is PlanId {
   return (PLAN_ORDER as string[]).includes(v);
 }
 
+/** Rough credit cost of common tasks, used to explain what credits buy. */
+export const CREDIT_GUIDE = { smallEdit: 5, page: 30, fullstack: 240 };
+
 /**
- * Credit top-ups. Priced at or above $0.015 per credit so a pack never sells
- * below the blended model cost (see the "Credit economics" doc): the plans
- * themselves carry the discount, refills do not.
+ * Credit top-ups. Each step is roughly 3× the previous one and the price per
+ * credit drops 10% per step (2.4¢ → 2.2¢ → 2.0¢ → 1.8¢). Never below $0.015 per
+ * credit so a pack never sells under the blended model cost (see the "Credit
+ * economics" doc): the plans carry the discount, refills do not.
  */
 export const CREDIT_PACKS = [
   { credits: 500, price: 12 },
-  { credits: 2000, price: 40 },
-  { credits: 5000, price: 85 },
-  { credits: 10000, price: 150 },
+  { credits: 1500, price: 33 },
+  { credits: 4000, price: 80 },
+  { credits: 10000, price: 180 },
 ];
+
+export function packSavingsPct(pack: { credits: number; price: number }) {
+  const base = CREDIT_PACKS[0].price / CREDIT_PACKS[0].credits;
+  return Math.round((1 - pack.price / pack.credits / base) * 100);
+}
