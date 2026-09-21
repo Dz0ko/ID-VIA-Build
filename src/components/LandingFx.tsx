@@ -12,8 +12,8 @@ export function LandingFx() {
 
     const io = new IntersectionObserver((entries) => {
       for (const e of entries) if (e.isIntersecting) { e.target.classList.add("in"); io.unobserve(e.target); }
-    }, { threshold: 0.12 });
-    document.querySelectorAll<HTMLElement>(".reveal").forEach((el, i) => { el.style.transitionDelay = `${(i % 6) * 60}ms`; io.observe(el); });
+    }, { threshold: 0.15, rootMargin: "0px 0px -8% 0px" });
+    document.querySelectorAll<HTMLElement>(".reveal, .reveal-up, .reveal-left, .reveal-right").forEach((el) => io.observe(el));
 
     const cleanups: (() => void)[] = [];
     if (!reduced) {

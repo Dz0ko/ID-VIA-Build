@@ -27,6 +27,7 @@ export interface RunOptions {
 
 export type RunEvent =
   | { type: "meta"; agent: string; tier: ModelTier; model: string; provider: string; credits: number; taskClass: TaskClass; fallback: boolean }
+  | { type: "picked"; agent: string }
   | { type: "delta"; text: string }
   | { type: "done"; mode: "rewrite" | "report"; versionNumber?: number; html?: string; files?: { path: string; content: string }[]; report?: string; creditsUsed: number }
   | { type: "error"; message: string };

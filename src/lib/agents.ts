@@ -462,3 +462,28 @@ export const AGENT_TEAMS: { id: string; name: string; description: string; agent
     agents: ["designer", "animation", "asset", "copywriter"],
   },
 ];
+
+/**
+ * Automatic agent selection: reads the request and picks the specialist that fits.
+ * Falls back to the Builder. The caller clamps the result to the user's plan.
+ */
+export function pickAgent(request: string, hasContent: boolean): string {
+  const p = request.toLowerCase();
+  if (!hasContent) return "builder";
+  const rules: [RegExp, string][] = [
+    [/\b(translate|translation|превед|македонски|macedonian|albanian|german|language|jazik|јазик)\b/, "localization"],
+    [/\b(fix|bug|error|broken|not working|crash|console|не работи|грешка)\b/, "debugger"],
+    [/\b(seo|meta|keywords?|google|search ranking|sitemap|structured data)\b/, "seo"],
+    [/\b(copy|headline|text|wording|slogan|tagline|rewrite the text|cta text|описи|текст)\b/, "copywriter"],
+    [/\b(animat|hover|parallax|scroll effect|transition|micro-?interaction|анимац)\b/, "animation"],
+    [/\b(3d|three\.?js|sphere|particles|webgl)\b/, "3d"],
+    [/\b(accessib|a11y|wcag|contrast|screen reader|keyboard)\b/, "accessibility"],
+    [/\b(faster|performance|speed|lazy|bundle|core web vitals|lighthouse)\b/, "performance"],
+    [/\b(convert|conversion|cta placement|trust|social proof)\b/, "conversion"],
+    [/\b(icon|illustration|images?|photos?|background|mockup)\b/, "asset"],
+    [/\b(design|colou?r|palette|font|typograph|spacing|layout|look|style|premium|modern|redesign|дизајн|боја)\b/, "designer"],
+    [/\b(refactor|clean ?up|code quality|duplicat)\b/, "refactoring"],
+  ];
+  for (const [re, id] of rules) if (re.test(p)) return id;
+  return "builder";
+}

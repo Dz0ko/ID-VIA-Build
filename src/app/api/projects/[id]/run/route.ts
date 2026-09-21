@@ -4,6 +4,8 @@ import { checkAgentAccess, resolveAgent } from "@/lib/agents-runtime";
 import { runAgent, type RunEvent } from "@/lib/ai/generate";
 import { InsufficientCredits } from "@/lib/credits";
 import { PLANS } from "@/lib/plans";
+import { db } from "@/lib/db";
+import { agentAllowed, pickAgent } from "@/lib/agents";
 
 const schema = z.object({
   request: z.string().min(1).max(8000),
@@ -23,7 +25,15 @@ export async function POST(req: Request, ctx: RouteContext<"/api/projects/[id]/r
   const body = schema.safeParse(await req.json().catch(() => null));
   if (!body.success) return Response.json({ error: "Invalid input." }, { status: 400 });
 
-  const agentId = body.data.agentId ?? "builder";
+  let agentId = body.data.agentId ?? "builder";
+  let autoPicked = false;
+  if (agentId === "auto") {
+    const proj = await db.project.findFirst({ where: { id, userId: user.id }, select: { html: true, kind: true, _count: { select: { files: true } } } });
+    const hasContent = proj ? (proj.kind === "app" ? proj._count.files > 0 : Boolean(proj.html.trim())) : false;
+    const picked = pickAgent(body.data.request, hasContent);
+    agentId = agentAllowed(user.plan, picked) ? picked : "builder";
+    autoPicked = true;
+  }
   const resolved = await resolveAgent(agentId, user.id);
   if (!resolved) return Response.json({ error: "Unknown agent" }, { status: 400 });
   const denied = checkAgentAccess(user.plan, agentId, resolved.custom);
@@ -37,6 +47,7 @@ export async function POST(req: Request, ctx: RouteContext<"/api/projects/[id]/r
     async start(controller) {
       const send = (e: RunEvent) => controller.enqueue(encoder.encode(`data: ${JSON.stringify(e)}\n\n`));
       try {
+        if (autoPicked) send({ type: "picked", agent: agentId });
         await runAgent({
           userId: user.id,
           plan: user.plan,

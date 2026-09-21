@@ -66,7 +66,7 @@ export function Workspace(p: WorkspaceProps) {
   const [view, setView] = useState<"preview" | "code">("preview");
   const [device, setDevice] = useState<"desktop" | "tablet" | "mobile">("desktop");
   const [bottom, setBottom] = useState<"chat" | "changes" | "logs" | "problems" | "terminal" | "share">("chat");
-  const [agentId, setAgentId] = useState("builder");
+  const [agentId, setAgentId] = useState("auto");
   const [tier, setTier] = useState<ModelTier | "auto">("auto");
   const [input, setInput] = useState(params.get("prompt") ?? "");
   const [images, setImages] = useState<RefImage[]>([]);
@@ -95,7 +95,8 @@ export function Workspace(p: WorkspaceProps) {
     ...p.customAgents.map((c): AgentDef => ({ id: `custom:${c.id}`, name: c.name, short: c.description.slice(0, 60) || "Custom agent", description: c.description, order: 999, tier: c.tier as ModelTier, multiplier: 2, mode: c.mode === "report" ? "report" : "rewrite", systemPrompt: "", tags: ["custom"] })),
   ], [p.agents, p.customAgents]);
   const agent = allAgents.find((a) => a.id === agentId) ?? allAgents[0];
-  const isAllowed = useCallback((id: string) => (id.startsWith("custom:") ? p.customAgentsAllowed : p.allowedAgentIds.includes(id)), [p.allowedAgentIds, p.customAgentsAllowed]);
+  const isAuto = agentId === "auto";
+  const isAllowed = useCallback((id: string) => (id === "auto" ? true : id.startsWith("custom:") ? p.customAgentsAllowed : p.allowedAgentIds.includes(id)), [p.allowedAgentIds, p.customAgentsAllowed]);
   const previewSrc = useMemo(() => html || `<!DOCTYPE html><html><body style="margin:0;height:100vh;display:grid;place-items:center;font-family:system-ui;background:#0a0a0b;color:#8a8a93">Describe what to build in the chat below.</body></html>`, [html]);
   const log = useCallback((text: string, kind: LogLine["kind"] = "info") => setLogs((l) => [...l, { t: now(), text, kind }]), []);
 
@@ -146,7 +147,8 @@ export function Workspace(p: WorkspaceProps) {
           const line = part.split("\n").find((l) => l.startsWith("data: "));
           if (!line) continue;
           const ev = JSON.parse(line.slice(6));
-          if (ev.type === "meta") {
+          if (ev.type === "picked") { log(`Auto-selected agent: ${ev.agent}`); setBusy(ev.agent); busyRef.current = ev.agent; }
+          else if (ev.type === "meta") {
             usedCredits = ev.credits; setCredits((c) => c - ev.credits);
             log(`Routed → ${ev.tier} tier · ${ev.provider}/${ev.model} · task=${ev.taskClass} · ${ev.credits} credits${ev.fallback ? " · OFFLINE MOCK" : ""}`);
           } else if (ev.type === "delta") { acc += ev.text; setStream(acc); }
@@ -433,6 +435,7 @@ export function Workspace(p: WorkspaceProps) {
                 <form onSubmit={(e) => { e.preventDefault(); const r = input; setInput(""); run(r); }} className="p-2 border-t border-graphite flex gap-2 items-end">
                   <div className="flex flex-col gap-1">
                     <select value={agentId} onChange={(e) => setAgentId(e.target.value)} className="input py-1.5 text-xs w-40">
+                      <option value="auto">Auto: IDÆVIA picks the agent</option>
                       <optgroup label="Agents">{p.agents.map((a) => <option key={a.id} value={a.id} disabled={!isAllowed(a.id)}>{a.name}{isAllowed(a.id) ? "" : ` (${p.minPlanByAgent[a.id]})`}</option>)}</optgroup>
                       {p.customAgents.length > 0 && <optgroup label="Custom agents">{p.customAgents.map((c) => <option key={c.id} value={`custom:${c.id}`} disabled={!p.customAgentsAllowed}>{c.name}</option>)}</optgroup>}
                     </select>
@@ -441,7 +444,7 @@ export function Workspace(p: WorkspaceProps) {
                       {TIERS.map((t) => <option key={t} value={t} disabled={TIERS.indexOf(t) > TIERS.indexOf(p.maxTier)}>{t} tier{TIERS.indexOf(t) > TIERS.indexOf(p.maxTier) ? " (upgrade)" : ""}</option>)}
                     </select>
                   </div>
-                  <textarea value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); const r = input; setInput(""); run(r); } }} rows={2} className="input flex-1 resize-none" placeholder={agent.mode === "rewrite" ? "What should the AI build or change?" : `Ask ${agent.name} for a report…`} />
+                  <textarea value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); const r = input; setInput(""); run(r); } }} rows={2} className="input flex-1 resize-none" placeholder={isAuto ? "Describe what to build or change. IDÆVIA picks the right agent." : agent.mode === "rewrite" ? "What should the AI build or change?" : `Ask ${agent.name} for a report…`} />
                   <input ref={fileInput} type="file" accept="image/png,image/jpeg,image/webp,image/gif" multiple hidden onChange={(e) => { attachImages(e.target.files); e.target.value = ""; }} />
                   <button type="button" onClick={() => (p.visionAllowed ? fileInput.current?.click() : setError("Screenshot → website (vision) is available from the Starter plan."))} title="Attach reference images (screenshot → website)" className={`btn btn-outline ${p.visionAllowed ? "" : "opacity-60"}`}><ImageIcon size={14} />{!p.visionAllowed && <Lock size={10} />}</button>
                   <button disabled={!!busy || !input.trim()} className="btn btn-primary"><Play size={14} />Run</button>

@@ -6,31 +6,37 @@ import { getCurrentUser } from "@/lib/auth";
 import { PLANS, PLAN_ORDER } from "@/lib/plans";
 import { AGENTS } from "@/lib/agents";
 import { TEMPLATES } from "@/lib/templates";
-import { EFFECTS, COMPONENTS } from "@/lib/library";
 
 const STEPS = [
   { n: "01", title: "Describe it", text: "Name the project and write a prompt. A landing page, a SaaS site, a dashboard, an app. Or start from one of the templates." },
   { n: "02", title: "Build with your AI team", text: "The Builder streams the first version in seconds. Keep chatting: add sections, remove things, change copy, colours and layout. Every change is a saved version." },
-  { n: "03", title: "Refine with agents", text: "Designer, Copywriter, Animation, SEO and 25 more specialists. One-click workflows like Make it Premium and Production Ready." },
+  { n: "03", title: "The right agent, automatically", text: "You just describe what you want. IDÆVIA reads the request and switches on the specialist that fits: Designer for looks, Copywriter for text, SEO, Animation, Debugger and 25 more. One-click workflows like Make it Premium and Production Ready run whole teams." },
   { n: "04", title: "Test and audit", text: "Run the production audit for performance, SEO, accessibility, security and mobile. Fix everything with the Debugger in one click." },
   { n: "05", title: "Share and approve", text: "Send a client portal link. Clients preview, comment and approve without an account. Feedback flows back into the Builder." },
   { n: "06", title: "Launch with a guide", text: "Export the code or publish a preview link. The Deploy agent writes a personalised launch guide for your project: which database and hosting to use, how to set up your domain and go live, step by step." },
 ];
 
-const FEATURES = [
-  ["Multi-model AI router", "Small edits go to fast models, architecture goes to premium reasoning. You spend credits, never tokens."],
-  ["30 agents, one team", "Planner, Builder, Designer, Copywriter, SEO, Debugger, QA, 3D, Animation and more, orchestrated per task."],
-  ["Templates, prompts, effects", "Production-ready templates, a prompt library, a component library and hover, scroll, cursor and 3D effects."],
-  ["Screenshot and URL to site", "Attach reference images or point at a live page. IDÆVIA recreates the structure as original, editable code."],
-  ["Live preview and real code", "Watch the site stream in, then edit in a real code editor. React apps run in a live in-browser sandbox."],
-  ["Versions, portal, marketplace", "Rollback to any version, collect client approvals, and publish your own templates, prompts and agents."],
+const FEATURES: [string, string, string][] = [
+  ["Multi-model AI router", "Small edits go to fast models, architecture goes to premium reasoning. You spend credits, never tokens.", "M4 12h16M12 4v16"],
+  ["30 agents, one team", "Planner, Builder, Designer, Copywriter, SEO, Debugger, QA, 3D, Animation and more, orchestrated per task.", "M12 3l8 4.5v9L12 21l-8-4.5v-9L12 3z"],
+  ["Templates, prompts, effects", "Production-ready templates, a prompt library, a component library and hover, scroll, cursor and 3D effects.", "M4 5h16v14H4zM4 10h16"],
+  ["Screenshot and URL to site", "Attach reference images or point at a live page. IDÆVIA recreates the structure as original, editable code.", "M4 7h3l2-3h6l2 3h3v12H4zM12 17a4 4 0 100-8 4 4 0 000 8z"],
+  ["Live preview and real code", "Watch the site stream in, then edit in a real code editor. React apps run in a live in-browser sandbox.", "M8 9l-4 3 4 3M16 9l4 3-4 3M14 5l-4 14"],
+  ["Versions, portal, marketplace", "Rollback to any version, collect client approvals, and publish your own templates, prompts and agents.", "M12 8v4l3 3M21 12a9 9 0 11-18 0 9 9 0 0118 0z"],
+];
+
+const AGENT_GROUPS: [string, string[]][] = [
+  ["Core", ["builder", "planner", "designer", "copywriter", "debugger", "seo"]],
+  ["Design and content", ["ui", "ux", "animation", "3d", "asset", "localization", "asset-ref", "clone"]],
+  ["Quality", ["performance", "accessibility", "security", "qa", "refactoring", "dependency"]],
+  ["Full-stack and launch", ["database", "api", "auth", "payments", "git", "deploy", "analytics", "conversion", "documentation", "pm"]],
 ];
 
 const words = "Build anything. Ship everything.".split(" ");
 
 export default async function Home() {
   const user = await getCurrentUser();
-  const marqueeItems = [...TEMPLATES.slice(0, 10).map((t) => t.name), ...EFFECTS.slice(0, 8).map((e) => e.name), ...COMPONENTS.slice(0, 6).map((c) => c.name)];
+  const agentById = new Map(AGENTS.map((a) => [a.id, a]));
   return (
     <div className="min-h-screen bg-void text-paper overflow-x-hidden">
       <LandingFx />
@@ -59,12 +65,11 @@ export default async function Home() {
 
       <main>
         {/* HERO */}
-        <section className="relative min-h-[92vh] flex items-center overflow-hidden" data-spotlight>
+        <section className="relative overflow-hidden" data-spotlight>
           <HeroBlob className="absolute inset-0 -z-0 [&>canvas]:w-full [&>canvas]:h-full" />
           <div className="absolute inset-0 bg-[radial-gradient(70%_60%_at_50%_100%,rgba(245,185,66,0.10),transparent_60%),radial-gradient(60%_50%_at_50%_0%,rgba(91,92,255,0.14),transparent_70%)] pointer-events-none" />
-          <div className="relative max-w-6xl mx-auto px-6 pt-24 pb-28 text-center w-full">
-            <span className="pill font-mono text-[11px] tracking-[0.18em] uppercase bg-void/60 backdrop-blur">AI Software Creation Platform</span>
-            <h1 className="display mt-8 max-w-4xl mx-auto" aria-label="Build anything. Ship everything.">
+          <div className="relative max-w-6xl mx-auto px-6 pt-32 pb-24 text-center w-full">
+            <h1 className="display max-w-4xl mx-auto" aria-label="Build anything. Ship everything.">
               {words.map((w, i) => (
                 <span key={i} className="word mr-[0.22em]" style={{ animationDelay: `${120 + i * 110}ms` }}>
                   {i === 3 ? <span className="text-shimmer">{w}</span> : w}
@@ -80,43 +85,36 @@ export default async function Home() {
             </div>
 
             {/* Floating glass cards */}
-            <div className="relative mt-24 h-56 max-w-5xl mx-auto hidden md:block pointer-events-none">
-              <div className="glass rounded-2xl p-4 text-left w-64 absolute left-0 top-0 float pointer-events-auto card-shine" data-tilt="10">
-                <div className="flex items-center justify-between text-[10px] font-mono uppercase tracking-[0.14em] text-ash"><span>Agent team</span><span className="w-5 h-5 rounded-full bg-paper text-void grid place-items-center">↗</span></div>
+            <div className="mt-24 grid md:grid-cols-3 gap-5 max-w-5xl mx-auto text-left items-start">
+              <div className="glass rounded-2xl p-5 float card-shine" data-tilt="10">
+                <div className="flex items-center justify-between text-[10px] font-mono uppercase tracking-[0.14em] text-ash"><span>Agent team</span><span className="w-6 h-6 rounded-full bg-paper text-void grid place-items-center">↗</span></div>
                 <div className="mt-3 text-sm font-medium">Planner → Builder → Designer → SEO</div>
-                <div className="mt-2 flex gap-1.5">{["Builder", "Designer", "SEO"].map((a, i) => <span key={a} className="pill text-[10px]"><span className={`w-1.5 h-1.5 rounded-full mr-1.5 ${i < 2 ? "bg-success pulse-dot" : "bg-ash"}`} />{a}</span>)}</div>
+                <div className="mt-3 flex flex-wrap gap-1.5">{["Builder", "Designer", "SEO"].map((a, i) => <span key={a} className="pill text-[10px]"><span className={`w-1.5 h-1.5 rounded-full mr-1.5 ${i < 2 ? "bg-success pulse-dot" : "bg-ash"}`} />{a}</span>)}</div>
               </div>
-              <div className="glass rounded-2xl p-4 text-left w-56 absolute right-0 top-10 float-delay pointer-events-auto card-shine" data-tilt="10">
-                <div className="flex items-center justify-between text-[10px] font-mono uppercase tracking-[0.14em] text-ash"><span>Project health</span><span className="w-5 h-5 rounded-full bg-paper text-void grid place-items-center">↗</span></div>
-                <div className="mt-2 text-4xl font-semibold tracking-tight">96<span className="text-lg text-ash">/100</span></div>
-                <div className="mt-2 h-1 rounded-full bg-graphite overflow-hidden"><div className="h-full w-[96%] bg-gradient-to-r from-signal to-[#f5c04a]" /></div>
-              </div>
-              <div className="glass rounded-2xl p-4 text-left w-72 absolute left-1/2 -translate-x-1/2 bottom-0 float pointer-events-auto card-shine" data-tilt="10" style={{ animationDelay: "0.7s" }}>
+              <div className="glass rounded-2xl p-5 float card-shine md:mt-10" data-tilt="10" style={{ animationDelay: "0.7s" }}>
                 <div className="text-[10px] font-mono uppercase tracking-[0.14em] text-ash">Prompt</div>
                 <div className="mt-2 text-sm text-fog">“Build a premium SaaS landing page for an AI CRM. Dark, gold accents, pricing and FAQ.”</div>
                 <div className="mt-3 text-[11px] text-success">✓ v03 built · 7 sections · 24 credits</div>
+              </div>
+              <div className="glass rounded-2xl p-5 float-delay card-shine md:mt-4" data-tilt="10">
+                <div className="flex items-center justify-between text-[10px] font-mono uppercase tracking-[0.14em] text-ash"><span>Project health</span><span className="w-6 h-6 rounded-full bg-paper text-void grid place-items-center">↗</span></div>
+                <div className="mt-2 text-4xl font-semibold tracking-tight">96<span className="text-lg text-ash">/100</span></div>
+                <div className="mt-3 h-1 rounded-full bg-graphite overflow-hidden"><div className="h-full w-[96%] bg-gradient-to-r from-signal to-[#f5c04a]" /></div>
               </div>
             </div>
           </div>
         </section>
 
-        {/* Marquee */}
-        <div className="border-y border-graphite bg-ink/40 py-4 overflow-hidden">
-          <div className="marquee gap-10 text-sm text-ash">
-            {[...marqueeItems, ...marqueeItems].map((m, i) => <span key={i} className="whitespace-nowrap flex items-center gap-3"><span className="w-1 h-1 rounded-full bg-signal" />{m}</span>)}
-          </div>
-        </div>
-
         {/* HOW IT WORKS */}
-        <section id="how" className="py-28">
+        <section id="how" className="py-28 border-t border-graphite">
           <div className="max-w-6xl mx-auto px-6">
             <p className="label reveal">How it works</p>
             <h2 className="heading mt-3 max-w-2xl reveal">From an idea to a live product, step by step.</h2>
-            <div className="mt-14 grid md:grid-cols-2 gap-x-10 gap-y-8">
-              {STEPS.map((s) => (
-                <div key={s.n} className="reveal flex gap-5">
-                  <div className="flex flex-col items-center"><span className="font-mono text-signal-soft text-sm">{s.n}</span><span className="w-px flex-1 mt-2 step-line opacity-60" /></div>
-                  <div className="pb-4"><h3 className="text-lg font-medium">{s.title}</h3><p className="mt-2 text-sm text-ash leading-relaxed">{s.text}</p></div>
+            <div className="mt-14 grid md:grid-cols-2 gap-5">
+              {STEPS.map((s, i) => (
+                <div key={s.n} className={`glass-card rounded-2xl p-6 flex gap-5 ${i % 2 ? "reveal-right" : "reveal-left"}`} data-tilt="6">
+                  <div className="shrink-0 w-11 h-11 rounded-xl bg-signal/15 text-signal-soft grid place-items-center font-mono text-sm">{s.n}</div>
+                  <div><h3 className="text-lg font-medium">{s.title}</h3><p className="mt-2 text-sm text-ash leading-relaxed">{s.text}</p></div>
                 </div>
               ))}
             </div>
@@ -128,11 +126,11 @@ export default async function Home() {
           <div className="max-w-6xl mx-auto px-6">
             <p className="label reveal">The whole workflow</p>
             <h2 className="heading mt-3 max-w-2xl reveal">Not just prompt to code. Idea to production.</h2>
-            <div className="mt-14 grid md:grid-cols-3 gap-5">
-              {FEATURES.map(([t, d]) => (
-                <div key={t} className="card card-shine p-6 reveal" data-tilt="7">
-                  <div className="w-9 h-9 rounded-xl bg-signal/15 text-signal-soft grid place-items-center mb-4"><span className="w-2 h-2 rounded-full bg-signal" /></div>
-                  <h3 className="font-medium">{t}</h3>
+            <div className="mt-14 grid md:grid-cols-2 lg:grid-cols-3 gap-5" style={{ perspective: "1200px" }}>
+              {FEATURES.map(([t, d, path], i) => (
+                <div key={t} className="glass-card flip-card rounded-2xl p-6 reveal-up" style={{ transitionDelay: `${i * 80}ms` }} data-tilt="14">
+                  <div className="icon-orb"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><path d={path} /></svg></div>
+                  <h3 className="mt-5 font-medium text-lg">{t}</h3>
                   <p className="mt-2 text-sm text-ash leading-relaxed">{d}</p>
                 </div>
               ))}
@@ -141,15 +139,26 @@ export default async function Home() {
         </section>
 
         {/* AGENTS */}
-        <section id="agents" className="py-28 border-t border-graphite bg-ink/40">
+        <section id="agents" className="py-28 border-t border-graphite">
           <div className="max-w-6xl mx-auto px-6">
             <p className="label reveal">AI agent catalog</p>
             <h2 className="heading mt-3 reveal">{AGENTS.length} specialised agents. One team.</h2>
-            <div className="mt-12 grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
-              {[...AGENTS].sort((a, b) => a.order - b.order).map((a) => (
-                <div key={a.id} className="card card-shine px-4 py-3 flex items-center gap-3 reveal" data-tilt="5">
-                  <span className="font-mono text-[11px] text-ash w-6">{String(a.order).padStart(2, "0")}</span>
-                  <div className="min-w-0"><div className="text-sm font-medium">{a.name}</div><div className="text-xs text-ash truncate">{a.short}</div></div>
+            <p className="mt-4 text-fog max-w-2xl reveal">You never have to pick. Describe the change and IDÆVIA routes it to the right specialist, or pick one yourself.</p>
+            <div className="mt-12 space-y-10">
+              {AGENT_GROUPS.map(([group, ids]) => (
+                <div key={group}>
+                  <div className="label mb-4 reveal">{group}</div>
+                  <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                    {ids.map((id, i) => { const a = agentById.get(id); if (!a) return null; return (
+                      <div key={id} className="agent-card glass-card rounded-2xl p-4 reveal-up" style={{ transitionDelay: `${i * 50}ms` }} data-tilt="8">
+                        <div className="flex items-center gap-3">
+                          <span className="w-9 h-9 rounded-xl grid place-items-center font-mono text-[11px] bg-gradient-to-br from-signal/30 to-[#f5c04a]/20 text-paper border border-paper/10">{String(a.order).padStart(2, "0")}</span>
+                          <div className="min-w-0"><div className="text-sm font-medium">{a.name}</div><div className="text-[11px] text-ash truncate">{a.short}</div></div>
+                        </div>
+                        <div className="mt-3 flex gap-1.5"><span className="pill text-[10px]">{a.tier} tier</span><span className="pill text-[10px]">{a.mode === "rewrite" ? "edits" : "report"}</span></div>
+                      </div>
+                    ); })}
+                  </div>
                 </div>
               ))}
             </div>
@@ -162,8 +171,8 @@ export default async function Home() {
             <p className="label reveal">Templates</p>
             <h2 className="heading mt-3 reveal">{TEMPLATES.length} production-ready templates, remixable with one sentence.</h2>
             <div className="mt-12 grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
-              {TEMPLATES.slice(0, 8).map((t) => (
-                <div key={t.id} className="card card-shine overflow-hidden reveal group" data-tilt="8">
+              {TEMPLATES.slice(0, 8).map((t, i) => (
+                <div key={t.id} className="glass-card rounded-2xl overflow-hidden reveal-up group" style={{ transitionDelay: `${i * 60}ms` }} data-tilt="8">
                   <div className="h-32 grid place-items-center relative overflow-hidden" style={{ background: t.palette.bg, color: t.palette.text }}>
                     <div className="absolute inset-0 opacity-60 transition-transform duration-700 group-hover:scale-125" style={{ background: `radial-gradient(60% 60% at 50% 0%, ${t.palette.accent}55, transparent 70%)` }} />
                     <span className="relative rounded-full px-3 py-1 text-xs font-medium" style={{ background: t.palette.accent, color: t.palette.accentText }}>{t.brand}</span>
@@ -177,23 +186,26 @@ export default async function Home() {
 
         {/* PRICING */}
         <section id="pricing" className="py-28 border-t border-graphite" data-spotlight>
-          <div className="max-w-6xl mx-auto px-6">
+          <div className="max-w-7xl mx-auto px-6">
             <p className="label reveal">Plans</p>
             <h2 className="heading mt-3 reveal">Capability, models, agents and credits per plan.</h2>
-            <div className="mt-12 grid md:grid-cols-2 xl:grid-cols-5 gap-4">
-              {PLAN_ORDER.map((id) => {
+            <div className="mt-12 grid md:grid-cols-2 xl:grid-cols-6 gap-5">
+              {PLAN_ORDER.map((id, i) => {
                 const p = PLANS[id];
                 const featured = id === "PRO";
+                const span = i < 3 ? "xl:col-span-2" : "xl:col-span-3";
                 return (
-                  <div key={id} className={`card card-shine p-5 flex flex-col reveal ${featured ? "border-signal" : ""}`} data-tilt="4">
-                    {featured && <span className="pill self-start border-signal text-signal-soft mb-3 text-[10px]">Most popular</span>}
-                    <div className="text-sm font-medium">{p.name}</div>
-                    <div className="mt-2 text-3xl font-semibold tracking-tight">${p.price}<span className="text-sm text-ash font-normal">/mo</span></div>
-                    <div className="mt-1 text-xs text-ash">{p.tagline}</div>
-                    <ul className="mt-4 space-y-1.5 text-xs text-fog flex-1">
-                      {p.features.map((f) => <li key={f} className="flex gap-2"><span className="text-signal-soft shrink-0">✓</span><span>{f}</span></li>)}
+                  <div key={id} className={`glass-card rounded-2xl p-7 flex flex-col reveal-up ${span} ${featured ? "ring-1 ring-signal" : ""}`} style={{ transitionDelay: `${i * 70}ms` }} data-tilt="4">
+                    <div className="flex items-center justify-between">
+                      <div className="text-base font-medium">{p.name}</div>
+                      {featured && <span className="pill border-signal text-signal-soft text-[10px]">Most popular</span>}
+                    </div>
+                    <div className="mt-3 text-4xl font-semibold tracking-tight">${p.price}<span className="text-sm text-ash font-normal">/mo</span></div>
+                    <div className="mt-1 text-sm text-ash">{p.tagline}</div>
+                    <ul className={`mt-6 gap-x-6 gap-y-2.5 text-sm text-fog flex-1 ${i >= 3 ? "grid sm:grid-cols-2" : "space-y-2.5"}`}>
+                      {p.features.map((f) => <li key={f} className="flex gap-2.5"><span className="text-signal-soft shrink-0">✓</span><span>{f}</span></li>)}
                     </ul>
-                    <Link href={id === "FREE" ? (user ? "/app" : "/signup") : `/api/billing/checkout?plan=${id}`} className={`btn btn-sm mt-5 ${featured ? "btn-signal" : "btn-outline"}`}>{id === "FREE" ? "Start free" : `Choose ${p.name}`}</Link>
+                    <Link href={id === "FREE" ? (user ? "/app" : "/signup") : `/api/billing/checkout?plan=${id}`} className={`btn mt-7 ${featured ? "btn-signal" : "btn-outline"}`}>{id === "FREE" ? "Start free" : `Choose ${p.name}`}</Link>
                   </div>
                 );
               })}
@@ -205,7 +217,7 @@ export default async function Home() {
         {/* CTA */}
         <section className="py-28 border-t border-graphite relative overflow-hidden" data-spotlight>
           <div className="absolute inset-0 bg-[radial-gradient(50%_60%_at_50%_100%,rgba(91,92,255,0.18),transparent_70%)] pointer-events-none" />
-          <div className="relative max-w-3xl mx-auto px-6 text-center reveal">
+          <div className="relative max-w-3xl mx-auto px-6 text-center reveal-up">
             <h2 className="display text-[44px] md:text-[64px]">Describe what you want to build.</h2>
             <p className="mt-6 text-lg text-fog">IDÆVIA builds it with you.</p>
             <div className="mt-10"><Link href={user ? "/app" : "/signup"} className="btn btn-signal btn-glow px-8 py-4 text-base" data-magnetic>Start building free</Link></div>
