@@ -50,10 +50,10 @@ export default async function Settings({ searchParams }: PageProps<"/app/setting
             <p className="text-[11px] text-ash mt-3">Model tiers: {plan.maxTier} and below on {plan.name}. Admins map tiers to concrete models in the admin panel.</p>
           </div>
           <div className="card p-5">
-            <div className="label">Whop</div>
-            <div className="mt-2 text-sm">{user.whopUserId ? <span className="text-success">Linked ({user.whopUserId})</span> : <span className="text-ash">Not linked</span>}</div>
-            {whop && !user.whopUserId && <a href="/api/auth/whop" className="btn btn-outline btn-sm mt-3">Link Whop account</a>}
-            <div className="mt-3 text-xs text-ash">{memberships.length ? memberships.map((m) => <div key={m.id}>{m.plan} · {m.status} · {m.whopMembershipId}</div>) : "No memberships yet."}</div>
+            <div className="label">Billing</div>
+            <div className="mt-2 text-sm">{user.whopUserId ? <span className="text-success">Payments linked via Whop</span> : <span className="text-ash">No purchases yet</span>}</div>
+            <p className="text-[11px] text-ash mt-2">Payments are processed by Whop using the email on this account. Subscriptions and credit packs appear here automatically after checkout.</p>
+            <div className="mt-3 text-xs text-ash">{memberships.length ? memberships.map((m) => <div key={m.id}>{PLANS[m.plan as keyof typeof PLANS]?.name ?? m.plan} · {m.status}</div>) : "No memberships yet."}</div>
           </div>
         </section>
 

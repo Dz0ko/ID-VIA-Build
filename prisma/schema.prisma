@@ -17,7 +17,9 @@ model User {
   name           String?
   passwordHash   String?
   avatarUrl      String?
-  whopUserId     String?  @unique
+  whopUserId     String?  @unique // Whop customer id (payments only)
+  googleId       String?  @unique
+  githubId       String?  @unique
   role           String   @default("USER") // USER | ADMIN
   plan           String   @default("FREE") // FREE | STARTER | PRO | MAX | AGENCY
   credits        Int      @default(100)

@@ -2,12 +2,12 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 import type { PlanId } from "./plans";
 import { isPlanId } from "./plans";
 
-export const WHOP_AUTHORIZE_URL = "https://api.whop.com/oauth/authorize";
-export const WHOP_TOKEN_URL = "https://api.whop.com/oauth/token";
-export const WHOP_USERINFO_URL = "https://api.whop.com/oauth/userinfo";
-
+/**
+ * Whop is the payment processor only (checkout links + membership webhooks).
+ * Sign-in is handled by ./oauth.ts (Google, GitHub) and email + password.
+ */
 export function whopConfigured() {
-  return Boolean(process.env.WHOP_APP_ID);
+  return Boolean(process.env.WHOP_APP_ID || process.env.WHOP_WEBHOOK_SECRET);
 }
 
 export function whopPlanMap(): Record<string, PlanId> {

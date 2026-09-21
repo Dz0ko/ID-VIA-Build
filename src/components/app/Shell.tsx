@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
-  LayoutDashboard, FolderKanban, LayoutTemplate, Sparkles, Bot, Blocks, Wand2, Rocket, Settings, ShieldCheck, LogOut, CreditCard, Import, Store, Users, Sparkle,
+  LayoutDashboard, FolderKanban, LayoutTemplate, Sparkles, Bot, Blocks, Wand2, Rocket, Settings, ShieldCheck, LogOut, CreditCard, Import, Store, Users, Sparkle, UserRound,
 } from "lucide-react";
 import { Logo } from "@/components/Logo";
 import type { SessionUser } from "@/lib/auth";
@@ -22,7 +22,8 @@ const NAV = [
   { href: "/app/marketplace", label: "Marketplace", icon: Store },
   { href: "/app/deployments", label: "Deployments", icon: Rocket },
   { href: "/app/teams", label: "Teams & clients", icon: Users },
-  { href: "/app/settings", label: "Settings", icon: Settings },
+  { href: "/app/profile", label: "Profile", icon: UserRound },
+  { href: "/app/settings", label: "Settings & billing", icon: Settings },
 ];
 
 export function Shell({ user, children }: { user: SessionUser; children: React.ReactNode }) {
@@ -68,8 +69,15 @@ export function Shell({ user, children }: { user: SessionUser; children: React.R
             {user.plan !== "AGENCY" && <Link href="/pricing" className="mt-2 block text-[11px] text-signal-soft hover:underline">Upgrade plan →</Link>}
           </div>
           <div className="flex items-center gap-2">
-            <div className="w-7 h-7 rounded-full bg-graphite grid place-items-center text-xs font-medium">{(user.name ?? user.email).slice(0, 1).toUpperCase()}</div>
-            <div className="min-w-0 flex-1"><div className="text-xs truncate">{user.name ?? user.email}</div><div className="text-[10px] text-ash truncate">{user.email}</div></div>
+            <Link href="/app/profile" className="flex items-center gap-2 min-w-0 flex-1 rounded-lg -m-1 p-1 hover:bg-ink" title="Your profile">
+              {user.avatarUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={user.avatarUrl} alt="" className="w-7 h-7 rounded-full object-cover" />
+              ) : (
+                <div className="w-7 h-7 rounded-full bg-graphite grid place-items-center text-xs font-medium">{(user.name ?? user.email).slice(0, 1).toUpperCase()}</div>
+              )}
+              <div className="min-w-0 flex-1"><div className="text-xs truncate">{user.name ?? user.email}</div><div className="text-[10px] text-ash truncate">{user.email}</div></div>
+            </Link>
             <button onClick={logout} title="Log out" className="text-ash hover:text-paper"><LogOut size={14} /></button>
           </div>
         </div>

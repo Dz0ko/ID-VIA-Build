@@ -52,7 +52,10 @@ export type SessionUser = {
   plan: PlanId;
   credits: number;
   creditsResetAt: Date;
+  createdAt: Date;
   whopUserId: string | null;
+  /** Linked sign-in methods. */
+  providers: { google: boolean; github: boolean; password: boolean };
 };
 
 /** Returns the current user, refreshing the monthly credit allowance if due. */
@@ -90,7 +93,9 @@ export async function getCurrentUser(): Promise<SessionUser | null> {
     plan: isPlanId(user.plan) ? user.plan : "FREE",
     credits: user.credits,
     creditsResetAt: user.creditsResetAt,
+    createdAt: user.createdAt,
     whopUserId: user.whopUserId,
+    providers: { google: Boolean(user.googleId), github: Boolean(user.githubId), password: Boolean(user.passwordHash) },
   };
 }
 

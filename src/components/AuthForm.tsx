@@ -4,14 +4,50 @@ import { useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 
-export function AuthForm({ mode, whopEnabled }: { mode: "login" | "signup"; whopEnabled: boolean }) {
+type Providers = { google: boolean; github: boolean };
+
+const ERRORS: Record<string, string> = {
+  google_failed: "Google sign-in failed. Please try again.",
+  github_failed: "GitHub sign-in failed. Please try again.",
+  google_state: "Google sign-in expired. Please try again.",
+  github_state: "GitHub sign-in expired. Please try again.",
+  google_not_configured: "Google sign-in is not configured yet.",
+  github_not_configured: "GitHub sign-in is not configured yet.",
+};
+
+function GoogleIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 48 48" aria-hidden="true">
+      <path fill="#EA4335" d="M24 9.5c3.5 0 6.6 1.2 9.1 3.5l6.8-6.8C35.8 2.4 30.3 0 24 0 14.6 0 6.5 5.4 2.6 13.3l7.9 6.1C12.4 13.6 17.7 9.5 24 9.5z" />
+      <path fill="#4285F4" d="M46.5 24.5c0-1.6-.1-3.1-.4-4.5H24v9h12.7c-.6 3-2.3 5.5-4.8 7.2l7.5 5.8c4.4-4.1 7.1-10.1 7.1-17.5z" />
+      <path fill="#FBBC05" d="M10.5 28.6A14.5 14.5 0 0 1 9.7 24c0-1.6.3-3.2.8-4.6l-7.9-6.1A24 24 0 0 0 0 24c0 3.9.9 7.5 2.6 10.7l7.9-6.1z" />
+      <path fill="#34A853" d="M24 48c6.5 0 11.9-2.1 15.9-5.8l-7.5-5.8c-2.1 1.4-4.9 2.3-8.4 2.3-6.3 0-11.6-4.1-13.5-9.9l-7.9 6.1C6.5 42.6 14.6 48 24 48z" />
+    </svg>
+  );
+}
+
+function GitHubIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+      <path d="M12 .5C5.7.5.5 5.7.5 12c0 5.1 3.3 9.4 7.9 10.9.6.1.8-.3.8-.6v-2c-3.2.7-3.9-1.4-3.9-1.4-.5-1.3-1.3-1.7-1.3-1.7-1-.7.1-.7.1-.7 1.2.1 1.8 1.2 1.8 1.2 1 1.8 2.8 1.3 3.4 1 .1-.8.4-1.3.7-1.6-2.6-.3-5.3-1.3-5.3-5.7 0-1.3.5-2.3 1.2-3.1-.1-.3-.5-1.5.1-3.1 0 0 1-.3 3.2 1.2a11 11 0 0 1 5.8 0c2.2-1.5 3.2-1.2 3.2-1.2.6 1.6.2 2.8.1 3.1.8.8 1.2 1.9 1.2 3.1 0 4.4-2.7 5.4-5.3 5.7.4.4.8 1.1.8 2.2v3.2c0 .3.2.7.8.6 4.6-1.5 7.9-5.8 7.9-10.9C23.5 5.7 18.3.5 12 .5z" />
+    </svg>
+  );
+}
+
+export function AuthForm({ mode, providers }: { mode: "login" | "signup"; providers: Providers }) {
   const router = useRouter();
   const params = useSearchParams();
+  const next = params.get("next") ?? "/app";
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [name, setName] = useState("");
-  const [error, setError] = useState<string | null>(params.get("error") ? `Whop sign-in failed (${params.get("error")}).` : null);
+  const [error, setError] = useState<string | null>(() => {
+    const e = params.get("error");
+    return e ? ERRORS[e] ?? "Sign-in failed. Please try again." : null;
+  });
   const [loading, setLoading] = useState(false);
+  const social = providers.google || providers.github;
+  const verb = mode === "login" ? "Continue" : "Sign up";
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -25,7 +61,7 @@ export function AuthForm({ mode, whopEnabled }: { mode: "login" | "signup"; whop
     const data = await res.json().catch(() => ({}));
     setLoading(false);
     if (!res.ok) return setError(data.error ?? "Something went wrong.");
-    router.push(params.get("next") ?? "/app");
+    router.push(next);
     router.refresh();
   }
 
@@ -35,19 +71,30 @@ export function AuthForm({ mode, whopEnabled }: { mode: "login" | "signup"; whop
         <h1 className="text-2xl font-semibold tracking-tight">{mode === "login" ? "Welcome back" : "Create your account"}</h1>
         <p className="text-sm text-ash mt-1">{mode === "login" ? "Log in to your workspace." : "Free plan. No card required."}</p>
       </div>
-      {whopEnabled ? (
-        <a href="/api/auth/whop" className="btn btn-primary w-full">Continue with Whop</a>
-      ) : (
-        <div className="text-xs text-ash border border-dashed border-graphite rounded-lg p-3">
-          Whop login appears here once <code className="font-mono">WHOP_APP_ID</code> is set. Use email below.
-        </div>
+
+      {social && (
+        <>
+          <div className="grid gap-2">
+            {providers.google && (
+              <a href={`/api/auth/google?next=${encodeURIComponent(next)}`} className="btn btn-outline w-full gap-2.5">
+                <GoogleIcon />{verb} with Google
+              </a>
+            )}
+            {providers.github && (
+              <a href={`/api/auth/github?next=${encodeURIComponent(next)}`} className="btn btn-outline w-full gap-2.5">
+                <GitHubIcon />{verb} with GitHub
+              </a>
+            )}
+          </div>
+          <div className="flex items-center gap-3 text-xs text-ash"><span className="h-px flex-1 bg-graphite" />or with email<span className="h-px flex-1 bg-graphite" /></div>
+        </>
       )}
-      <div className="flex items-center gap-3 text-xs text-ash"><span className="h-px flex-1 bg-graphite" />or<span className="h-px flex-1 bg-graphite" /></div>
+
       {mode === "signup" && (
         <label className="block text-sm"><span className="label">Name</span><input className="input mt-1" value={name} onChange={(e) => setName(e.target.value)} placeholder="Your name" /></label>
       )}
-      <label className="block text-sm"><span className="label">Email</span><input required type="email" className="input mt-1" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@company.com" /></label>
-      <label className="block text-sm"><span className="label">Password</span><input required type="password" minLength={8} className="input mt-1" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="8+ characters" /></label>
+      <label className="block text-sm"><span className="label">Email</span><input required type="email" className="input mt-1" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@company.com" autoComplete="email" /></label>
+      <label className="block text-sm"><span className="label">Password</span><input required type="password" minLength={8} className="input mt-1" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="8+ characters" autoComplete={mode === "login" ? "current-password" : "new-password"} /></label>
       {error && <div className="text-sm text-error">{error}</div>}
       <button disabled={loading} className="btn btn-primary w-full">{loading ? "…" : mode === "login" ? "Log in" : "Create account"}</button>
       <p className="text-xs text-ash text-center">

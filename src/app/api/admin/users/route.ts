@@ -9,12 +9,10 @@ export async function GET() {
     if (user.role !== "ADMIN") return error("Forbidden", 403);
     const users = await db.user.findMany({
       orderBy: { createdAt: "desc" },
-      take: 200,
-      select: { id: true, email: true, name: true, plan: true, credits: true, role: true, createdAt: true, whopUserId: true, _count: { select: { projects: true } } },
+      take: 500,
+      select: { id: true, email: true, name: true, plan: true, credits: true, role: true, createdAt: true, whopUserId: true, googleId: true, githubId: true, _count: { select: { projects: true } } },
     });
-    const runs = await db.agentRun.groupBy({ by: ["agentId"], _sum: { creditsUsed: true }, _count: true });
-    const totalCredits = await db.creditLedger.aggregate({ _sum: { delta: true }, where: { delta: { lt: 0 } } });
-    return json({ users, runs, creditsSpent: -(totalCredits._sum.delta ?? 0) });
+    return json({ users });
   });
 }
 
