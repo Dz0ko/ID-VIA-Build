@@ -57,7 +57,7 @@ export default async function Home() {
             ) : (
               <>
                 <Link href="/login" className="btn btn-ghost btn-sm hidden md:inline-flex">Log in</Link>
-                <Link href="/signup" className="btn btn-primary btn-sm" data-magnetic>Start building</Link>
+                <Link href="/signup" className="btn btn-primary btn-sm hidden md:inline-flex" data-magnetic>Start building</Link>
               </>
             )}
             <MobileNav loggedIn={Boolean(user)} />
@@ -68,9 +68,9 @@ export default async function Home() {
       <main>
         {/* HERO */}
         <section className="relative overflow-hidden" data-spotlight>
-          <HeroBlob className="absolute inset-0 -z-0 [&>canvas]:w-full [&>canvas]:h-full" />
+          <div className="hidden md:block absolute inset-0 -z-0"><HeroBlob className="absolute inset-0 [&>canvas]:w-full [&>canvas]:h-full" /></div>
           <div className="absolute inset-0 bg-[radial-gradient(70%_60%_at_50%_100%,rgba(245,185,66,0.10),transparent_60%),radial-gradient(60%_50%_at_50%_0%,rgba(91,92,255,0.14),transparent_70%)] pointer-events-none" />
-          <div className="relative max-w-6xl mx-auto px-5 sm:px-6 pt-20 sm:pt-28 md:pt-32 pb-16 md:pb-24 text-center w-full">
+          <div className="relative max-w-6xl mx-auto px-5 sm:px-6 pt-16 sm:pt-24 md:pt-32 pb-14 md:pb-24 text-center w-full">
             <h1 className="display max-w-4xl mx-auto" aria-label="Build anything. Ship everything.">
               {words.map((w, i) => (
                 <span key={i} className="word mr-[0.22em]" style={{ animationDelay: `${120 + i * 110}ms` }}>
@@ -79,17 +79,19 @@ export default async function Home() {
               ))}
             </h1>
             <p className="reveal in mt-6 md:mt-8 text-base sm:text-lg md:text-xl text-fog max-w-2xl mx-auto" style={{ transitionDelay: "500ms" }}>
-              Type one sentence. A team of 30 AI agents plans, designs and builds your website, SaaS or app, then tests it, optimises it and walks you to launch. Your first version is live in under a minute.
+              <span className="md:hidden">Describe it in one sentence. 30 AI agents design, build and launch your website or app.</span>
+              <span className="hidden md:inline">Type one sentence. A team of 30 AI agents plans, designs and builds your website, SaaS or app, then tests it, optimises it and walks you to launch. Your first version is live in under a minute.</span>
             </p>
             <div className="reveal in mt-8 md:mt-10 flex flex-col sm:flex-row items-stretch sm:items-center justify-center gap-3 max-w-sm sm:max-w-none mx-auto" style={{ transitionDelay: "650ms" }}>
               <Link href={user ? "/app" : "/signup"} className="btn btn-signal btn-glow px-8 py-4 text-base" data-magnetic>
                 {user ? "Open your workspace" : "Build your first project free"}
               </Link>
-              <a href="#how" className="btn btn-outline px-7 py-4 text-base bg-void/50 backdrop-blur" data-magnetic>See how it works</a>
+              <a href="#how" className="hidden sm:inline-flex btn btn-outline px-7 py-4 text-base bg-void/50 backdrop-blur" data-magnetic>See how it works</a>
+              <a href="#how" className="sm:hidden text-sm text-fog underline underline-offset-4 py-2">See how it works ↓</a>
             </div>
 
             {/* Floating glass cards */}
-            <div className="mt-14 md:mt-24 grid sm:grid-cols-2 md:grid-cols-3 gap-4 md:gap-5 max-w-5xl mx-auto text-left items-start">
+            <div className="hidden md:grid mt-24 md:grid-cols-3 gap-5 max-w-5xl mx-auto text-left items-start">
               <div className="glass rounded-2xl p-5 float card-shine" data-tilt="10">
                 <div className="flex items-center justify-between text-[10px] font-mono uppercase tracking-[0.14em] text-ash"><span>Agent team</span><span className="w-6 h-6 rounded-full bg-paper text-void grid place-items-center">↗</span></div>
                 <div className="mt-3 text-sm font-medium">Planner → Builder → Designer → SEO</div>
@@ -100,7 +102,7 @@ export default async function Home() {
                 <div className="mt-2 text-sm text-fog">“Build a premium SaaS landing page for an AI CRM. Dark, gold accents, pricing and FAQ.”</div>
                 <div className="mt-3 text-[11px] text-success">✓ v03 built · 7 sections · 30 credits</div>
               </div>
-              <div className="glass rounded-2xl p-5 float-delay card-shine md:mt-4 hidden md:block" data-tilt="10">
+              <div className="glass rounded-2xl p-5 float-delay card-shine md:mt-4" data-tilt="10">
                 <div className="flex items-center justify-between text-[10px] font-mono uppercase tracking-[0.14em] text-ash"><span>Client portal</span><span className="w-6 h-6 rounded-full bg-paper text-void grid place-items-center">↗</span></div>
                 <div className="mt-3 flex items-center gap-2">
                   <span className="w-7 h-7 rounded-full bg-gradient-to-br from-signal to-[#f5c04a] grid place-items-center text-[10px] font-medium text-void">MK</span>

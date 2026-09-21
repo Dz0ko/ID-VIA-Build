@@ -23,7 +23,7 @@ export function Logo({ href = "/", size = 28, tag = true }: { href?: string; siz
       <span className="wordmark text-paper" style={{ fontSize: size * 0.5 }}>
         IDÆVIA
       </span>
-      {tag && <span className="build-tag bg-paper text-void">Build</span>}
+      {tag && <span className="build-tag bg-paper text-void hidden sm:inline-block">Build</span>}
     </Link>
   );
 }
