@@ -40,7 +40,7 @@ See `.env.example`. Key values:
 - `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` — "Continue with Google" on /login. Authorized redirect URI: `${APP_URL}/api/auth/google/callback`.
 - `GITHUB_CLIENT_ID` / `GITHUB_CLIENT_SECRET` — "Continue with GitHub". Callback URL: `${APP_URL}/api/auth/github/callback`.
 - Whop is the payment processor only (no Whop login). `WHOP_APP_ID` identifies the Whop app for checkout.
-- `WHOP_API_KEY` + `WHOP_COMPANY_ID` — marketplace sales. Each purchase creates a one-time Whop checkout (`POST /api/v1/checkout_configurations`) with the order id in `metadata.purchase_id`; the `payment.succeeded` webhook unlocks the item for the buyer and credits 95% to the seller's balance (5% platform fee). Without these keys, local dev simulates payments.
+- `WHOP_API_KEY` + `WHOP_COMPANY_ID` — marketplace sales. Each purchase creates a one-time Whop checkout (`POST /api/v1/checkout_configurations`) with the order id in `metadata.purchase_id`; the `payment.succeeded` webhook unlocks the item for the buyer and credits 90% to the seller's balance (10% platform fee). Without these keys, local dev simulates payments.
 - `WHOP_WEBHOOK_SECRET` — webhook endpoint: `${APP_URL}/api/webhooks/whop` (events: `membership.activated`, `membership.deactivated`, `payment.succeeded`).
 - `WHOP_PLAN_MAP` — JSON map of Whop plan ids → `STARTER | PRO | MAX | AGENCY`.
 - `WHOP_CHECKOUT_*` — checkout links per plan (used by `/pricing` and Settings).

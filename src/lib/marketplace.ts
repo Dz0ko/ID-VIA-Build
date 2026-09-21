@@ -1,7 +1,7 @@
 import { db } from "./db";
 
 /** Platform commission on every marketplace sale, in percent. */
-export const MARKETPLACE_FEE_PCT = 5;
+export const MARKETPLACE_FEE_PCT = 10;
 /** Sellers must price paid items at least this much (USD cents) so fees stay meaningful. */
 export const MARKETPLACE_MIN_PRICE_CENTS = 500;
 export const MARKETPLACE_MAX_PRICE_CENTS = 500_000;

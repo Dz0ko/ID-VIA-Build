@@ -1,6 +1,7 @@
 import Link from "next/link";
 import type { AdminStats } from "@/lib/admin-stats";
 import { PLANS } from "@/lib/plans";
+import { MARKETPLACE_FEE_PCT } from "@/lib/marketplace";
 
 const usd = (n: number) => `$${n.toLocaleString(undefined, { maximumFractionDigits: n < 100 ? 2 : 0 })}`;
 const num = (n: number) => n.toLocaleString();
@@ -62,7 +63,7 @@ export function AdminOverview({ s }: { s: AdminStats }) {
 
       <section className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <Stat label="Marketplace GMV" value={usd(s.marketplace.gmvCents / 100)} sub={`${s.marketplace.orders} paid orders · ${s.marketplace.paidListings} paid of ${s.marketplace.listings} listings`} />
-        <Stat label="Marketplace fees earned" value={usd(s.marketplace.feeCents / 100)} sub="5% of every sale" tone={s.marketplace.feeCents > 0 ? "good" : undefined} />
+        <Stat label="Marketplace fees earned" value={usd(s.marketplace.feeCents / 100)} sub={`${MARKETPLACE_FEE_PCT}% of every sale`} tone={s.marketplace.feeCents > 0 ? "good" : undefined} />
         <Stat label="Seller payouts owed" value={usd(s.marketplace.payoutsOwedCents / 100)} sub={`${usd(s.marketplace.paidOutCents / 100)} paid out so far`} tone={s.marketplace.payoutsOwedCents > 0 ? "bad" : undefined} />
         <Stat label="Whop payments" value={process.env.WHOP_API_KEY && process.env.WHOP_COMPANY_ID ? "connected" : "not configured"} sub="WHOP_API_KEY + WHOP_COMPANY_ID for marketplace checkout" />
       </section>
