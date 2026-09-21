@@ -1,5 +1,5 @@
 import { db } from "./db";
-import type { ModelTier } from "./plans";
+import { PLANS, isPlanId, type ModelTier } from "./plans";
 import { getSettings } from "./settings";
 
 export class InsufficientCredits extends Error {
@@ -26,10 +26,24 @@ export async function estimateCredits(opts: {
 export async function reserveCredits(userId: string, amount: number, reason: string, projectId?: string) {
   const user = await db.user.findUniqueOrThrow({ where: { id: userId } });
   if (user.credits < amount) throw new InsufficientCredits(amount, user.credits);
+  // Plan credits are spent first; purchased credits only once the plan allowance is gone.
+  const remaining = user.credits - amount;
   await db.$transaction([
-    db.user.update({ where: { id: userId }, data: { credits: { decrement: amount } } }),
+    db.user.update({ where: { id: userId }, data: { credits: remaining, purchasedCredits: Math.min(user.purchasedCredits, remaining) } }),
     db.creditLedger.create({ data: { userId, delta: -amount, reason, projectId } }),
   ]);
+}
+
+/**
+ * Balance after a monthly renewal: plan allowance + rollover of unused plan credits
+ * (rolloverPct, capped at one allowance) + all purchased credits, which never expire.
+ */
+export function renewalBalance(user: { plan: string; credits: number; purchasedCredits: number }) {
+  const plan = PLANS[isPlanId(user.plan) ? user.plan : "FREE"];
+  const purchased = Math.max(0, Math.min(user.purchasedCredits, user.credits));
+  const unusedPlan = Math.max(0, user.credits - purchased);
+  const rollover = Math.min(plan.credits, Math.floor((unusedPlan * plan.rolloverPct) / 100));
+  return { plan, rollover, purchased, next: plan.credits + rollover + purchased };
 }
 
 export async function refundCredits(userId: string, amount: number, reason: string, projectId?: string) {
@@ -40,9 +54,12 @@ export async function refundCredits(userId: string, amount: number, reason: stri
   ]);
 }
 
-export async function grantCredits(userId: string, amount: number, reason: string) {
+export async function grantCredits(userId: string, amount: number, reason: string, opts: { purchased?: boolean } = {}) {
   await db.$transaction([
-    db.user.update({ where: { id: userId }, data: { credits: { increment: amount } } }),
+    db.user.update({
+      where: { id: userId },
+      data: { credits: { increment: amount }, ...(opts.purchased ? { purchasedCredits: { increment: amount } } : {}) },
+    }),
     db.creditLedger.create({ data: { userId, delta: amount, reason } }),
   ]);
 }

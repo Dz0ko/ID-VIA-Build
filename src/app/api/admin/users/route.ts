@@ -25,7 +25,7 @@ export async function PATCH(req: Request) {
     if (body.data.plan && isPlanId(body.data.plan)) data.plan = body.data.plan;
     if (body.data.role) data.role = body.data.role;
     if (Object.keys(data).length) await db.user.update({ where: { id: body.data.id }, data });
-    if (body.data.addCredits) await grantCredits(body.data.id, body.data.addCredits, "admin_grant");
+    if (body.data.addCredits) await grantCredits(body.data.id, body.data.addCredits, "admin_grant", { purchased: true });
     return json({ ok: true });
   });
 }

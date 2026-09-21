@@ -107,7 +107,7 @@ export async function POST(req: Request) {
     await db.user.update({ where: { id: user.id }, data: { plan: stillActive?.plan ?? "FREE" } });
   } else if (type === "payment.succeeded") {
     const credits = Number(checkout?.credits ?? meta.credits ?? 0);
-    if (credits > 0) await grantCredits(user.id, credits, "credit_pack");
+    if (credits > 0) await grantCredits(user.id, credits, "credit_pack", { purchased: true });
     // Plan payments (subscriptions, renewals) earn affiliate commission and the referral paid bonus.
     const paid = Number(d.total ?? d.subtotal ?? d.final_amount ?? d.amount_after_fees ?? d.amount ?? 0);
     if (credits === 0 && paid > 0) await onPaidConversion(user.id, { amountCents: Math.round(paid * 100), reason: `payment:${d.id ?? eventId}` });

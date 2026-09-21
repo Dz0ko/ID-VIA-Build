@@ -4,7 +4,8 @@ import { SignJWT, jwtVerify } from "jose";
 import bcrypt from "bcryptjs";
 import { db } from "./db";
 import type { PlanId } from "./plans";
-import { PLANS, isPlanId } from "./plans";
+import { isPlanId } from "./plans";
+import { renewalBalance } from "./credits";
 
 const COOKIE = "idaevia_session";
 const secret = () => {
@@ -56,6 +57,8 @@ export type SessionUser = {
   role: string;
   plan: PlanId;
   credits: number;
+  /** Bought as packs (or earned as bonuses); never expires at renewal. */
+  purchasedCredits: number;
   creditsResetAt: Date;
   createdAt: Date;
   whopUserId: string | null;
@@ -74,18 +77,14 @@ export async function getCurrentUser(): Promise<SessionUser | null> {
   const next = new Date(user.creditsResetAt);
   next.setMonth(next.getMonth() + 1);
   if (new Date() >= next) {
-    const plan = isPlanId(user.plan) ? user.plan : "FREE";
-    const p = PLANS[plan];
-    const rollover = Math.min(
-      Math.max(user.credits, 0),
-      Math.floor((p.credits * p.rolloverPct) / 100),
-    );
+    const r = renewalBalance(user);
+    const before = user.credits;
     user = await db.user.update({
       where: { id },
-      data: { credits: p.credits + rollover, creditsResetAt: new Date() },
+      data: { credits: r.next, purchasedCredits: r.purchased, creditsResetAt: new Date() },
     });
     await db.creditLedger.create({
-      data: { userId: id, delta: p.credits + rollover, reason: "monthly_reset" },
+      data: { userId: id, delta: r.next - before, reason: `renewal:${r.plan.id}${r.rollover ? `+rollover:${r.rollover}` : ""}` },
     });
   }
 
@@ -97,6 +96,7 @@ export async function getCurrentUser(): Promise<SessionUser | null> {
     role: user.role,
     plan: isPlanId(user.plan) ? user.plan : "FREE",
     credits: user.credits,
+    purchasedCredits: Math.min(user.purchasedCredits, user.credits),
     creditsResetAt: user.creditsResetAt,
     createdAt: user.createdAt,
     whopUserId: user.whopUserId,

@@ -1,5 +1,5 @@
 import { db } from "@/lib/db";
-import { PLANS, isPlanId } from "@/lib/plans";
+import { renewalBalance } from "@/lib/credits";
 
 /**
  * Monthly credit renewal. Runs daily (Vercel Cron, see vercel.json) and renews
@@ -18,18 +18,16 @@ export async function GET(req: Request) {
 
   const due = await db.user.findMany({
     where: { creditsResetAt: { lte: cutoff } },
-    select: { id: true, plan: true, credits: true },
+    select: { id: true, plan: true, credits: true, purchasedCredits: true },
     take: 500,
   });
 
   let renewed = 0;
   for (const u of due) {
-    const plan = PLANS[isPlanId(u.plan) ? u.plan : "FREE"];
-    const rollover = Math.min(plan.credits, Math.floor((Math.max(0, u.credits) * plan.rolloverPct) / 100));
-    const next = plan.credits + rollover;
+    const r = renewalBalance(u);
     await db.$transaction([
-      db.user.update({ where: { id: u.id }, data: { credits: next, creditsResetAt: now } }),
-      db.creditLedger.create({ data: { userId: u.id, delta: next - u.credits, reason: `renewal:${plan.id}${rollover ? `+rollover:${rollover}` : ""}` } }),
+      db.user.update({ where: { id: u.id }, data: { credits: r.next, purchasedCredits: r.purchased, creditsResetAt: now } }),
+      db.creditLedger.create({ data: { userId: u.id, delta: r.next - u.credits, reason: `renewal:${r.plan.id}${r.rollover ? `+rollover:${r.rollover}` : ""}` } }),
     ]);
     renewed++;
   }

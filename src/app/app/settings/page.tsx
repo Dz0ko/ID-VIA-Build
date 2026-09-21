@@ -47,7 +47,11 @@ export default async function Settings({ searchParams }: PageProps<"/app/setting
           <div className="card p-5">
             <div className="label">Credits</div>
             <div className="text-3xl font-semibold mt-1">{user.credits.toLocaleString()}</div>
-            <div className="text-xs text-ash">of {plan.credits.toLocaleString()} monthly · resets {new Date(new Date(user.creditsResetAt).setMonth(new Date(user.creditsResetAt).getMonth() + 1)).toLocaleDateString()}</div>
+            <div className="text-xs text-ash">
+              {Math.max(0, user.credits - user.purchasedCredits).toLocaleString()} of {plan.credits.toLocaleString()} monthly
+              {user.purchasedCredits > 0 && <> + {user.purchasedCredits.toLocaleString()} purchased (never expire)</>}
+              {" · "}renews {new Date(new Date(user.creditsResetAt).setMonth(new Date(user.creditsResetAt).getMonth() + 1)).toLocaleDateString()}
+            </div>
             <div className="mt-4 grid grid-cols-2 gap-2">
               {CREDIT_PACKS.map((c) =>
                 whopApiConfigured() && user.plan !== "FREE" ? (

@@ -25,6 +25,8 @@ model User {
   role           String   @default("USER") // USER | ADMIN
   plan           String   @default("FREE") // FREE | STARTER | PRO | MAX | AGENCY
   credits        Int      @default(100)
+  /// Part of `credits` that was bought as packs; never expires at the monthly renewal. Always <= credits.
+  purchasedCredits Int    @default(0)
   creditsResetAt DateTime @default(now())
   /// Marketplace earnings (USD cents) not yet paid out, and total paid out.
   sellerBalanceCents Int  @default(0)

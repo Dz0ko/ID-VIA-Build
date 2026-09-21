@@ -81,8 +81,8 @@ export async function applyReferralOnSignup(newUserId: string) {
   const referrer = await db.user.findUnique({ where: { id: ref.id }, select: { id: true } });
   if (!referrer) return;
   await db.user.update({ where: { id: newUserId }, data: { referredById: referrer.id } });
-  if (s.referredSignupCredits > 0) await grantCredits(newUserId, s.referredSignupCredits, "referral_welcome");
-  if (s.referrerSignupCredits > 0) await grantCredits(referrer.id, s.referrerSignupCredits, "referral_signup");
+  if (s.referredSignupCredits > 0) await grantCredits(newUserId, s.referredSignupCredits, "referral_welcome", { purchased: true });
+  if (s.referrerSignupCredits > 0) await grantCredits(referrer.id, s.referrerSignupCredits, "referral_signup", { purchased: true });
 }
 
 /**
@@ -126,7 +126,7 @@ export async function onPaidConversion(userId: string, opts: { plan?: PlanId; am
   if (user.referredById && !user.referralPaidRewarded) {
     const s = (await getSettings()).referral;
     await db.user.update({ where: { id: userId }, data: { referralPaidRewarded: true } });
-    if (s.referrerPaidCredits > 0) await grantCredits(user.referredById, s.referrerPaidCredits, "referral_paid");
+    if (s.referrerPaidCredits > 0) await grantCredits(user.referredById, s.referrerPaidCredits, "referral_paid", { purchased: true });
   }
 }
 
