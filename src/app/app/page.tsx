@@ -50,7 +50,7 @@ export default async function Dashboard() {
           <ProjectGrid projects={projects} />
         </section>
 
-        <section className="grid lg:grid-cols-2 gap-4">
+        <section className="grid lg:grid-cols-2 gap-4 min-w-0">
           <div className="card p-5">
             <div className="flex items-center justify-between"><h2 className="text-sm font-medium">Your AI team</h2><span className="text-xs text-ash">{agentsForPlan(user.plan).length} agents on {plan.name}</span></div>
             <div className="mt-3 flex flex-wrap gap-1.5">
@@ -58,15 +58,15 @@ export default async function Dashboard() {
             </div>
             <Link href="/app/agents" className="mt-4 inline-block text-xs text-signal-soft hover:underline">Browse the catalog →</Link>
           </div>
-          <div className="card p-5">
-            <div className="flex items-center justify-between"><h2 className="text-sm font-medium">Quick starts</h2><Link href="/app/assistant" className="text-xs text-signal-soft hover:underline">Ask the IDÆVIA Agent for ideas →</Link></div>
-            <div className="mt-3 grid gap-2">
+          <div className="card p-5 min-w-0 overflow-hidden">
+            <div className="flex items-center justify-between gap-3"><h2 className="text-sm font-medium">Quick starts</h2><Link href="/app/assistant" className="text-xs text-signal-soft hover:underline whitespace-nowrap">Ask the Agent for ideas →</Link></div>
+            <div className="mt-3 grid gap-2 min-w-0">
               {[
                 ["SaaS landing page", "Build a modern dark SaaS landing page for an AI CRM targeting agencies with pricing, testimonials and FAQ."],
                 ["Local business", "Направи модерен веб-сајт на македонски за ресторан во Скопје со мени, галерија и резервации."],
                 ["Portfolio", "Create a minimal portfolio for a product designer with a projects grid and contact form."],
               ].map(([t, p]) => (
-                <Link key={t} href={`/app?prompt=${encodeURIComponent(p)}`} className="rounded-lg border border-graphite px-3 py-2 text-sm hover:border-ash"><span className="font-medium">{t}</span><span className="block text-xs text-ash truncate">{p}</span></Link>
+                <Link key={t} href={`/app?prompt=${encodeURIComponent(p)}`} className="group min-w-0 rounded-xl border border-graphite px-3.5 py-2.5 text-sm hover:border-signal/60 hover:bg-ink transition flex items-center gap-3"><span className="min-w-0 flex-1"><span className="block font-medium">{t}</span><span className="block text-xs text-ash truncate">{p}</span></span><span className="shrink-0 text-ash group-hover:text-signal-soft transition">→</span></Link>
               ))}
             </div>
           </div>
