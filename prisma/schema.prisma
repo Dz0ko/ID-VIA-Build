@@ -7,8 +7,11 @@ generator client {
 }
 
 datasource db {
+  // Local dev: SQLite. Production (Supabase): change provider to "postgresql" and
+  // uncomment directUrl; DATABASE_URL = pooler (6543), DIRECT_URL = direct (5432).
   provider = "sqlite"
   url      = env("DATABASE_URL")
+  // directUrl = env("DIRECT_URL")
 }
 
 model User {
