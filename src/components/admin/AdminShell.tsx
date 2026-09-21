@@ -2,8 +2,8 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { LayoutDashboard, Users, CreditCard, Banknote, Link2, Store, SlidersHorizontal, ArrowLeft, LogOut, ShieldCheck } from "lucide-react";
-import { Logo } from "@/components/Logo";
+import { useEffect, useState } from "react";
+import { LayoutDashboard, Users, CreditCard, Banknote, Link2, Store, SlidersHorizontal, LogOut, Bell, Home, Plus, Search, UserRound } from "lucide-react";
 import type { SessionUser } from "@/lib/auth";
 
 const NAV = [
@@ -15,11 +15,28 @@ const NAV = [
   { href: "/admin/marketplace", label: "Marketplace", icon: Store, hint: "Listings and orders" },
   { href: "/admin/settings", label: "Settings", icon: SlidersHorizontal, hint: "Models, credits, referrals" },
 ];
+const ITEM_H = 56;
+const RAIL_TOP = 96; // logo block height above the nav list
+
+function useClock() {
+  const [now, setNow] = useState<Date | null>(null);
+  useEffect(() => {
+    const first = setTimeout(() => setNow(new Date()), 0);
+    const t = setInterval(() => setNow(new Date()), 30_000);
+    return () => { clearTimeout(first); clearInterval(t); };
+  }, []);
+  return now;
+}
 
 export function AdminShell({ user, children }: { user: SessionUser; children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
-  const current = NAV.find((n) => (n.exact ? pathname === n.href : pathname.startsWith(n.href))) ?? NAV[0];
+  const now = useClock();
+  const idx = Math.max(0, NAV.findIndex((n) => (n.exact ? pathname === n.href : pathname.startsWith(n.href))));
+  const current = NAV[idx];
+  const hour = now?.getHours() ?? 12;
+  const greeting = hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
+  const firstName = (user.name ?? user.email).split(/[\s@]/)[0];
 
   async function logout() {
     await fetch("/api/auth/logout", { method: "POST" });
@@ -28,42 +45,73 @@ export function AdminShell({ user, children }: { user: SessionUser; children: Re
   }
 
   return (
-    <div className="h-screen flex bg-void text-paper">
-      <aside className="w-64 shrink-0 border-r border-graphite flex flex-col bg-ink/40">
-        <div className="h-14 flex items-center gap-2 px-4 border-b border-graphite">
-          <Logo href="/admin" size={22} />
-          <span className="pill text-[10px] border-signal text-signal-soft"><ShieldCheck size={10} className="mr-1" />Admin</span>
+    <div className="admin-theme h-screen flex">
+      {/* Icon rail */}
+      <aside className="admin-rail w-[68px] shrink-0 relative flex flex-col">
+        <div className="h-24 grid place-items-center">
+          <Link href="/admin" className="w-10 h-10 rounded-full bg-white text-black grid place-items-center font-semibold text-sm shadow-[0_0_0_4px_rgba(255,255,255,0.08)]" title="IDÆVIA admin">Æ</Link>
         </div>
-        <nav className="flex-1 p-2 space-y-0.5 overflow-y-auto">
-          {NAV.map((n) => {
-            const active = n.exact ? pathname === n.href : pathname.startsWith(n.href);
+        <div className="admin-notch" style={{ top: RAIL_TOP + idx * ITEM_H }} />
+        <nav className="relative flex flex-col">
+          {NAV.map((n, i) => {
             const Icon = n.icon;
             return (
-              <Link key={n.href} href={n.href} className={`flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm transition ${active ? "bg-graphite text-paper" : "text-fog hover:bg-ink hover:text-paper"}`}>
-                <Icon size={16} className={active ? "text-signal-soft" : "text-ash"} />
-                <span className="flex-1">
-                  <span className="block leading-tight">{n.label}</span>
-                  <span className="block text-[10px] text-ash leading-tight">{n.hint}</span>
-                </span>
+              <Link key={n.href} href={n.href} className={`admin-rail-item ${i === idx ? "active" : ""}`} aria-label={n.label} aria-current={i === idx ? "page" : undefined}>
+                <Icon size={19} strokeWidth={1.9} />
+                <span className="admin-rail-tip">{n.label}</span>
               </Link>
             );
           })}
         </nav>
-        <div className="p-3 border-t border-graphite space-y-2">
-          <Link href="/app" className="btn btn-outline btn-sm w-full"><ArrowLeft size={13} />Back to the app</Link>
-          <div className="flex items-center gap-2 px-1">
-            <div className="w-7 h-7 rounded-full bg-graphite grid place-items-center text-xs font-medium">{(user.name ?? user.email).slice(0, 1).toUpperCase()}</div>
-            <div className="min-w-0 flex-1"><div className="text-xs truncate">{user.name ?? user.email}</div><div className="text-[10px] text-ash truncate">{user.email}</div></div>
-            <button onClick={logout} title="Log out" className="text-ash hover:text-paper"><LogOut size={14} /></button>
-          </div>
+        <div className="mt-auto pb-4 flex flex-col items-center gap-2">
+          <Link href="/app/profile" className="admin-rail-item !h-12" aria-label="Your profile">
+            <span className="w-9 h-9 rounded-full bg-white text-black grid place-items-center"><UserRound size={16} /></span>
+            <span className="admin-rail-tip">Profile · back to the app</span>
+          </Link>
+          <button onClick={logout} className="admin-rail-item !h-10" aria-label="Log out"><LogOut size={17} strokeWidth={1.9} /><span className="admin-rail-tip">Log out</span></button>
         </div>
       </aside>
+
+      {/* Content surface */}
       <div className="flex-1 min-w-0 flex flex-col overflow-hidden">
-        <div className="h-14 shrink-0 border-b border-graphite px-6 flex items-center justify-between">
-          <div><h1 className="text-sm font-medium">{current.label}</h1><p className="text-xs text-ash">{current.hint}</p></div>
-          <span className="text-[11px] text-ash">IDÆVIA Build · admin console</span>
+        <header className="shrink-0 px-8 pt-6 pb-4 flex flex-wrap items-start justify-between gap-4">
+          <div>
+            <h1 className="text-2xl font-semibold tracking-tight flex items-center gap-2">Hi {firstName} <span aria-hidden>👋</span></h1>
+            <p className="text-sm text-fog mt-0.5">{greeting}. Here is what is happening on IDÆVIA today.</p>
+          </div>
+          <div className="flex items-center gap-2">
+            <div className="flex items-center rounded-full bg-white shadow-[0_1px_2px_rgba(20,20,26,.05),0_8px_24px_-16px_rgba(20,20,26,.2)] p-1">
+              <Link href="/app" className="btn btn-ghost btn-sm rounded-full"><Home size={14} />App</Link>
+              <Link href="/admin/affiliates" className="btn btn-ghost btn-sm rounded-full"><Plus size={14} />Affiliate</Link>
+              <Link href="/admin/users" className="btn btn-ghost btn-sm rounded-full"><Search size={14} />Find user</Link>
+            </div>
+            <Link href="/admin/payouts" className="w-10 h-10 rounded-full bg-white grid place-items-center text-fog hover:text-paper shadow-[0_1px_2px_rgba(20,20,26,.05),0_8px_24px_-16px_rgba(20,20,26,.2)] relative" title="Payouts waiting">
+              <Bell size={16} />
+            </Link>
+            <div className="rounded-full bg-white px-4 py-2 text-sm font-semibold shadow-[0_1px_2px_rgba(20,20,26,.05),0_8px_24px_-16px_rgba(20,20,26,.2)] tabular-nums">{now ? now.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "--:--"}</div>
+            <div className="text-right leading-tight">
+              <div className="text-[11px] text-ash">{now ? now.toLocaleDateString(undefined, { day: "numeric", month: "short", weekday: "long" }) : ""}</div>
+              <div className="text-sm font-semibold">Admin console</div>
+            </div>
+          </div>
+        </header>
+
+        <div className="px-8 pb-3 flex items-end justify-between">
+          <div>
+            <h2 className="text-lg font-semibold tracking-tight">{current.label}</h2>
+            <p className="text-xs text-ash">{current.hint}</p>
+          </div>
         </div>
-        <div className="flex-1 overflow-y-auto p-6">{children}</div>
+
+        <main key={pathname} className="admin-enter flex-1 overflow-y-auto px-8 pb-24">{children}</main>
+
+        {/* Floating section switcher */}
+        <div className="admin-fab fixed bottom-4 left-1/2 -translate-x-1/2 z-30 flex items-center gap-1 rounded-full bg-[#15151a] text-white pl-4 pr-1.5 py-1.5 text-xs shadow-[0_20px_40px_-16px_rgba(0,0,0,.5)]">
+          <span className="text-white/60 mr-1">Section:</span>
+          {NAV.map((n, i) => (
+            <Link key={n.href} href={n.href} className={`rounded-full px-3 py-1.5 transition ${i === idx ? "bg-white text-black font-semibold" : "text-white/70 hover:text-white hover:bg-white/10"}`}>{n.label}</Link>
+          ))}
+        </div>
       </div>
     </div>
   );

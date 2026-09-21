@@ -363,3 +363,102 @@ body {
 .icon-orb svg { width: 20px; height: 20px; }
 .flip-card:hover .icon-orb { transform: rotateY(360deg) scale(1.08); }
 .agent-card:hover { transform: translateY(-6px) rotate(-0.6deg); }
+
+/* ---------- Admin console: light "bento" theme scoped to .admin-theme ---------- */
+.admin-theme {
+  --void: #f2f2f5;
+  --ink: #ffffff;
+  --graphite: #e7e7ec;
+  --ash: #8a8a93;
+  --fog: #4a4a55;
+  --paper: #15151a;
+  --success: #16a34a;
+  --warning: #d97706;
+  --error: #dc2626;
+  --background: var(--void);
+  --foreground: var(--paper);
+  background: var(--void);
+  color: var(--paper);
+}
+.admin-theme ::selection { background: var(--signal); color: #fff; }
+.admin-theme .card {
+  box-shadow: 0 1px 2px rgba(20, 20, 26, 0.04), 0 8px 24px -16px rgba(20, 20, 26, 0.12);
+  transition: transform 0.25s cubic-bezier(0.2, 0.8, 0.2, 1), box-shadow 0.25s;
+}
+.admin-theme .card:hover { box-shadow: 0 1px 2px rgba(20, 20, 26, 0.05), 0 18px 40px -20px rgba(20, 20, 26, 0.22); }
+.admin-theme .btn-primary { background: var(--paper); color: #fff; }
+.admin-theme .btn-primary:hover:not(:disabled) { background: #000; }
+.admin-theme .btn-outline { border-color: var(--graphite); background: var(--ink); }
+.admin-theme .btn-outline:hover:not(:disabled) { border-color: #cfcfd6; box-shadow: 0 6px 16px -10px rgba(20,20,26,.25); }
+.admin-theme .btn-ghost:hover:not(:disabled) { background: #ececf1; }
+.admin-theme .input { background: var(--ink); }
+.admin-theme .pill { background: var(--ink); }
+.admin-theme table thead { background: #fafafc; }
+.admin-theme .bg-graphite { background: #ececf1; }
+.admin-theme .bg-void\/40 { background: #f7f7fa; }
+
+/* Icon rail */
+.admin-rail { background: #0d0d10; }
+.admin-rail-item {
+  position: relative;
+  width: 100%;
+  height: 56px;
+  display: grid;
+  place-items: center;
+  color: #8a8a93;
+  transition: color 0.2s, transform 0.2s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.admin-rail-item:hover { color: #fff; transform: translateX(2px); }
+.admin-rail-item:hover svg { transform: scale(1.12); }
+.admin-rail-item svg { transition: transform 0.25s cubic-bezier(0.2, 0.8, 0.2, 1); }
+.admin-rail-item.active { color: var(--paper, #15151a); }
+.admin-rail-item.active:hover { transform: none; }
+.admin-rail-tip {
+  position: absolute;
+  left: calc(100% + 10px);
+  top: 50%;
+  transform: translate(-6px, -50%);
+  background: #15151a;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 500;
+  padding: 6px 10px;
+  border-radius: 8px;
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.18s, transform 0.18s;
+  z-index: 40;
+  box-shadow: 0 8px 24px -10px rgba(0,0,0,.5);
+}
+.admin-rail-tip::before { content: ""; position: absolute; left: -4px; top: 50%; width: 8px; height: 8px; background: #15151a; transform: translateY(-50%) rotate(45deg); border-radius: 2px; }
+.admin-rail-item:hover .admin-rail-tip { opacity: 1; transform: translate(0, -50%); }
+
+/* The white "notch" that follows the active item and merges into the content surface */
+.admin-notch {
+  position: absolute;
+  left: 12px;
+  right: 0;
+  height: 56px;
+  background: var(--void);
+  border-radius: 18px 0 0 18px;
+  transition: top 0.4s cubic-bezier(0.34, 1.3, 0.4, 1);
+  pointer-events: none;
+}
+.admin-notch::before, .admin-notch::after {
+  content: "";
+  position: absolute;
+  right: 0;
+  width: 18px;
+  height: 18px;
+  background: transparent;
+}
+.admin-notch::before { top: -18px; border-bottom-right-radius: 18px; box-shadow: 6px 6px 0 6px var(--void); }
+.admin-notch::after { bottom: -18px; border-top-right-radius: 18px; box-shadow: 6px -6px 0 6px var(--void); }
+
+.admin-fab {
+  animation: admin-fab-in 0.6s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+@keyframes admin-fab-in { from { opacity: 0; transform: translate(-50%, 16px); } to { opacity: 1; transform: translate(-50%, 0); } }
+.admin-enter { animation: admin-enter 0.45s cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+@keyframes admin-enter { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
