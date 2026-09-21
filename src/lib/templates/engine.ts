@@ -145,9 +145,9 @@ export function renderSite(c: SiteConfig): string {
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>${esc(c.brand)} — ${esc(c.tagline)}</title>
+<title>${esc(c.brand)} | ${esc(c.tagline)}</title>
 <meta name="description" content="${esc(c.subline)}">
-<meta property="og:title" content="${esc(c.brand)} — ${esc(c.tagline)}">
+<meta property="og:title" content="${esc(c.brand)} | ${esc(c.tagline)}">
 <meta property="og:description" content="${esc(c.subline)}">
 <meta property="og:type" content="website">
 <link rel="preconnect" href="https://fonts.googleapis.com">

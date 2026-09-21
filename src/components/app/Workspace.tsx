@@ -105,9 +105,9 @@ export function Workspace(p: WorkspaceProps) {
     const t = setTimeout(async () => {
       setIsDesktop(desktop);
       if (desktop) {
-        try { const home = (await window.__TAURI__!.core.invoke("home_dir")) as string; setTermCwd(home); setTermLines([`IDÆVIA desktop terminal — real shell. cwd: ${home}`, "Type `help` for IDÆVIA commands or any shell command (dir, git, npm…)."]); }
-        catch { setTermLines(["IDÆVIA terminal — type `help`"]); }
-      } else setTermLines(["IDÆVIA terminal (virtual) — type `help`. Open the desktop app for a real shell."]);
+        try { const home = (await window.__TAURI__!.core.invoke("home_dir")) as string; setTermCwd(home); setTermLines([`IDÆVIA desktop terminal: real shell. cwd: ${home}`, "Type `help` for IDÆVIA commands or any shell command (dir, git, npm…)."]); }
+        catch { setTermLines(["IDÆVIA terminal: type `help`"]); }
+      } else setTermLines(["IDÆVIA terminal (virtual): type `help`. Open the desktop app for a real shell."]);
     }, 0);
     return () => clearTimeout(t);
   }, []);
@@ -231,7 +231,7 @@ export function Workspace(p: WorkspaceProps) {
     const d = await res.json();
     if (!res.ok) return;
     if (d.version.files) setFiles(d.version.files); else setHtml(d.version.html);
-    setView("preview"); log(`Previewing v${n} (unsaved — Save or Restore to keep)`);
+    setView("preview"); log(`Previewing v${n} (unsaved: Save or Restore to keep)`);
   }
   async function publish() {
     setPublishing(true);
@@ -343,7 +343,7 @@ export function Workspace(p: WorkspaceProps) {
               {fileTree.map((f) => (
                 <button key={f.path} onClick={() => { setActiveFile(f.path); setView("code"); }} className={`w-full text-left px-2 py-1 pl-6 flex items-center gap-1.5 rounded ${view === "code" && activeFile === f.path ? "bg-graphite text-paper" : "text-fog hover:bg-ink"}`} title={f.path}><FileCode2 size={12} className="text-signal-soft shrink-0" /><span className="truncate">{f.path.slice(1)}</span></button>
               ))}
-              {fileTree.length === 0 && <div className="px-2 pl-6 text-ash">No files yet — describe the app below.</div>}
+              {fileTree.length === 0 && <div className="px-2 pl-6 text-ash">No files yet: describe the app below.</div>}
               <button onClick={() => { const path = prompt("New file path (e.g. /components/Card.tsx)"); if (path && /^\/[\w\-./]+$/.test(path) && !files.some((f) => f.path === path)) { setFiles((f) => [...f, { path, content: "" }]); setActiveFile(path); setView("code"); } }} className="w-full text-left px-2 py-1 pl-6 text-ash hover:text-paper">+ new file</button>
             </>
           ) : (
@@ -368,7 +368,7 @@ export function Workspace(p: WorkspaceProps) {
             {view === "preview" ? (
               isApp ? (
                 <div className="h-full rounded-lg overflow-hidden border border-graphite bg-white">
-                  {files.length ? <AppSandbox files={files} /> : <div className="h-full grid place-items-center text-sm text-ash bg-void">Describe the app you want in the chat below — e.g. “Build an admin dashboard for a SaaS with sidebar, KPI cards, a revenue chart and a customers table.”</div>}
+                  {files.length ? <AppSandbox files={files} /> : <div className="h-full grid place-items-center text-sm text-ash bg-void">Describe the app you want in the chat below: e.g. “Build an admin dashboard for a SaaS with sidebar, KPI cards, a revenue chart and a customers table.”</div>}
                 </div>
               ) : (
                 <div className="h-full mx-auto bg-white rounded-lg overflow-hidden border border-graphite transition-all" style={{ width, maxWidth: "100%" }}>
@@ -485,7 +485,7 @@ export function Workspace(p: WorkspaceProps) {
               <div className="flex-1 overflow-y-auto p-3 text-xs grid md:grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <div className="font-medium text-sm flex items-center gap-2"><Link2 size={13} />Client portal links <span className={`pill text-[10px] ${clientStatus === "APPROVED" ? "text-success border-success/40" : clientStatus === "CHANGES_REQUESTED" ? "text-warning border-warning/40" : ""}`}>{clientStatus === "NONE" ? "no portal yet" : clientStatus.toLowerCase().replace("_", " ")}</span></div>
-                  <p className="text-ash">Clients preview the site, comment, request changes and approve — no account needed. Attach the project to a team for white-label branding.</p>
+                  <p className="text-ash">Clients preview the site, comment, request changes and approve: no account needed. Attach the project to a team for white-label branding.</p>
                   <div className="flex gap-2"><input className="input py-1.5" placeholder="Label (e.g. Round 1)" value={linkForm.label} onChange={(e) => setLinkForm({ ...linkForm, label: e.target.value })} /><input className="input py-1.5 w-32" placeholder="Password" value={linkForm.password} onChange={(e) => setLinkForm({ ...linkForm, password: e.target.value })} /><button onClick={createLink} className="btn btn-primary btn-sm whitespace-nowrap">Create link</button></div>
                   {links.map((l) => (
                     <div key={l.id} className="flex items-center gap-2 border border-graphite rounded-lg px-2 py-1.5">
@@ -515,7 +515,7 @@ export function Workspace(p: WorkspaceProps) {
         {/* AI team */}
         <aside className="border-l border-graphite overflow-y-auto p-2 text-xs">
           <div className="label px-2 py-1 flex items-center gap-1"><Users size={11} />AI team</div>
-          {p.offline && <div className="mx-2 mb-2 rounded border border-warning/40 bg-warning/10 p-2 text-[11px] text-warning">Offline mode — add an API key for real agents.</div>}
+          {p.offline && <div className="mx-2 mb-2 rounded border border-warning/40 bg-warning/10 p-2 text-[11px] text-warning">Offline mode: add an API key for real agents.</div>}
           <div className="label px-2 py-1 mt-1">One-click</div>
           <div className="px-2 grid gap-1 mb-2">
             {[["Make it Premium", "make-premium"], ["Improve Project", "optimize-landing"], ["Production Ready", "production-ready"]].map(([l, id]) => {

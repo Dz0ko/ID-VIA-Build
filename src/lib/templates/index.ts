@@ -5,7 +5,7 @@ const t = (c: SiteConfig) => c;
 export const TEMPLATES: SiteConfig[] = [
   t({
     id: "saas-dark",
-    name: "SaaS — Dark Signal",
+    name: "SaaS · Dark Signal",
     category: "SaaS",
     description: "Premium dark SaaS landing with pricing, testimonials and FAQ.",
     brand: "Nimbus",
@@ -43,14 +43,14 @@ export const TEMPLATES: SiteConfig[] = [
       { quote: "The AI follow-ups alone paid for the plan.", name: "Ana Petrova", role: "RevOps, Klar" },
     ],
     faq: [
-      { q: "Is there a free plan?", a: "Yes — 14 days free on any plan, no card required." },
+      { q: "Is there a free plan?", a: "Yes, 14 days free on any plan, no card required." },
       { q: "Can I import from HubSpot or Pipedrive?", a: "One-click import for contacts, deals and notes." },
       { q: "Do you offer annual billing?", a: "Yes, with two months free." },
     ],
   }),
   t({
     id: "agency",
-    name: "Agency — Studio",
+    name: "Agency · Studio",
     category: "Agency",
     description: "Creative agency site with work gallery and services.",
     brand: "Northform",
@@ -77,7 +77,7 @@ export const TEMPLATES: SiteConfig[] = [
   }),
   t({
     id: "startup",
-    name: "Startup — Launch",
+    name: "Startup · Launch",
     category: "Startup",
     description: "Waitlist-style launch page with product benefits.",
     brand: "Orbit",
@@ -102,7 +102,7 @@ export const TEMPLATES: SiteConfig[] = [
   }),
   t({
     id: "portfolio",
-    name: "Portfolio — Minimal",
+    name: "Portfolio · Minimal",
     category: "Portfolio",
     description: "Clean personal portfolio with gallery and contact.",
     brand: "Elena Ristova",
@@ -124,7 +124,7 @@ export const TEMPLATES: SiteConfig[] = [
   }),
   t({
     id: "restaurant",
-    name: "Restaurant — Bistro",
+    name: "Restaurant · Bistro",
     category: "Restaurant",
     description: "Warm restaurant site with menu highlights and reservations.",
     brand: "Casa Lumen",
@@ -151,7 +151,7 @@ export const TEMPLATES: SiteConfig[] = [
   }),
   t({
     id: "hotel",
-    name: "Hotel — Boutique",
+    name: "Hotel · Boutique",
     category: "Hotel",
     description: "Boutique hotel with rooms, gallery and booking CTA.",
     brand: "Villa Aurea",
@@ -178,7 +178,7 @@ export const TEMPLATES: SiteConfig[] = [
   }),
   t({
     id: "realestate",
-    name: "Real Estate — Listings",
+    name: "Real Estate · Listings",
     category: "Real Estate",
     description: "Property agency with featured listings and contact.",
     brand: "Keystone Realty",
@@ -206,7 +206,7 @@ export const TEMPLATES: SiteConfig[] = [
   }),
   t({
     id: "fitness",
-    name: "Fitness — Studio",
+    name: "Fitness · Studio",
     category: "Fitness",
     description: "Gym / trainer landing with programs and pricing.",
     brand: "FORGE",
@@ -237,7 +237,7 @@ export const TEMPLATES: SiteConfig[] = [
   }),
   t({
     id: "medical",
-    name: "Medical — Clinic",
+    name: "Medical · Clinic",
     category: "Healthcare",
     description: "Clinic site with services, trust stats and appointment form.",
     brand: "Vita Clinic",
@@ -268,7 +268,7 @@ export const TEMPLATES: SiteConfig[] = [
   }),
   t({
     id: "legal",
-    name: "Legal — Law Firm",
+    name: "Legal · Law Firm",
     category: "Legal",
     description: "Law firm with practice areas and consultation CTA.",
     brand: "Harlow & Vance",
@@ -294,7 +294,7 @@ export const TEMPLATES: SiteConfig[] = [
   }),
   t({
     id: "automotive",
-    name: "Automotive — Service",
+    name: "Automotive · Service",
     category: "Automotive",
     description: "Car service / dealership with services and booking.",
     brand: "Apex Motors",
@@ -320,7 +320,7 @@ export const TEMPLATES: SiteConfig[] = [
   }),
   t({
     id: "events",
-    name: "Events — Conference",
+    name: "Events · Conference",
     category: "Events",
     description: "Conference landing with tickets and speakers.",
     brand: "Signal Conf",
@@ -350,7 +350,7 @@ export const TEMPLATES: SiteConfig[] = [
   }),
   t({
     id: "education",
-    name: "Education — Course",
+    name: "Education · Course",
     category: "Education",
     description: "Online course landing with curriculum and pricing.",
     brand: "Frontend Mastery",
@@ -381,7 +381,7 @@ export const TEMPLATES: SiteConfig[] = [
   }),
   t({
     id: "ecommerce",
-    name: "E-commerce — Fashion",
+    name: "E-commerce · Fashion",
     category: "E-commerce",
     description: "Fashion store landing with product grid.",
     brand: "Aster",
@@ -407,7 +407,7 @@ export const TEMPLATES: SiteConfig[] = [
   }),
   t({
     id: "creator",
-    name: "Creator — Link in bio",
+    name: "Creator · Link in bio",
     category: "Creator",
     description: "Creator page with offers and community CTA.",
     brand: "Mila Makes",
@@ -432,7 +432,7 @@ export const TEMPLATES: SiteConfig[] = [
   }),
   t({
     id: "finance",
-    name: "Finance — Fintech",
+    name: "Finance · Fintech",
     category: "Finance",
     description: "Fintech app landing with trust stats.",
     brand: "Ledgerly",
@@ -464,7 +464,7 @@ export const TEMPLATES: SiteConfig[] = [
   }),
   t({
     id: "web3",
-    name: "Web3 — Token",
+    name: "Web3 · Token",
     category: "Web3",
     description: "Token / protocol landing page.",
     brand: "Helios Protocol",
@@ -492,7 +492,7 @@ export const TEMPLATES: SiteConfig[] = [
   }),
   t({
     id: "gaming",
-    name: "Gaming — Studio",
+    name: "Gaming · Studio",
     category: "Gaming",
     description: "Game studio / launch page with gallery.",
     brand: "Ember Forge",
@@ -514,7 +514,7 @@ export const TEMPLATES: SiteConfig[] = [
   }),
   t({
     id: "dashboard",
-    name: "Dashboard — Admin",
+    name: "Dashboard · Admin",
     category: "SaaS",
     description: "Analytics dashboard landing with product screenshots.",
     brand: "Metrix",
@@ -549,7 +549,7 @@ export const TEMPLATES: SiteConfig[] = [
   }),
   t({
     id: "ai-platform",
-    name: "AI — Platform",
+    name: "AI · Platform",
     category: "AI",
     description: "AI product landing with dark premium feel.",
     brand: "Synth",

@@ -6,7 +6,7 @@ export default function Effects() {
   const groups = ["Hover", "Scroll", "Cursor", "Background"] as const;
   return (
     <>
-      <PageHeader title="Effects & animations" subtitle="Hover, scroll, cursor and background effects — no code required" />
+      <PageHeader title="Effects & animations" subtitle="Hover, scroll, cursor and background effects: no code required" />
       <div className="flex-1 overflow-y-auto p-6 space-y-8">
         {groups.map((g) => (
           <section key={g}>

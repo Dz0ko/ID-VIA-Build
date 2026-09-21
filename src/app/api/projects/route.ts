@@ -5,6 +5,7 @@ const nanoid = customAlphabet("abcdefghijklmnopqrstuvwxyz0123456789", 6);
 import { db } from "@/lib/db";
 import { error, json, slugify, withUser } from "@/lib/api";
 import { PLANS } from "@/lib/plans";
+import { planAtLeast } from "@/lib/agents";
 import { renderTemplate, TEMPLATE_MAP } from "@/lib/templates";
 
 const createSchema = z.object({
@@ -29,6 +30,8 @@ export async function POST(req: Request) {
   return withUser(async (user) => {
     const body = createSchema.safeParse(await req.json().catch(() => null));
     if (!body.success) return error("Invalid input.");
+    if (body.data.kind === "app" && !planAtLeast(user.plan, "PRO"))
+      return error("React app projects with a live sandbox are available from the Pro plan.", 403, { code: "PLAN", minPlan: "PRO" });
     const limit = PLANS[user.plan].projectLimit;
     const count = await db.project.count({ where: { userId: user.id } });
     if (limit !== "unlimited" && count >= limit)

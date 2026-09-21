@@ -89,7 +89,7 @@ export async function fetchUrlOutline(input: string): Promise<UrlOutline> {
 
 export function outlineToPrompt(o: UrlOutline, extra?: string) {
   return [
-    `Rebuild an ORIGINAL website with the same structure and visual hierarchy as this reference (do not copy protected text, logos or images — write new copy in the same tone and use placeholders):`,
+    `Rebuild an ORIGINAL website with the same structure and visual hierarchy as this reference (do not copy protected text, logos or images, write new copy in the same tone and use placeholders):`,
     `Reference: ${o.url}`,
     `Title: ${o.title}`,
     o.description && `Description: ${o.description}`,

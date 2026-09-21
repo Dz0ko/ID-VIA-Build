@@ -25,7 +25,7 @@ export default async function Settings({ searchParams }: PageProps<"/app/setting
         <section>
           <div className="flex items-center justify-between mb-3">
             <h2 className="text-sm font-medium">Plan</h2>
-            <span className="text-xs text-ash">{whop ? "Billing by Whop" : "Whop not configured — dev switching enabled"}</span>
+            <span className="text-xs text-ash">{whop ? "Billing by Whop" : "Whop not configured: dev switching enabled"}</span>
           </div>
           <PlanSwitcher current={user.plan} whopEnabled={whop} checkout={{ STARTER: checkoutUrl("STARTER"), PRO: checkoutUrl("PRO"), MAX: checkoutUrl("MAX"), AGENCY: checkoutUrl("AGENCY") }} />
         </section>

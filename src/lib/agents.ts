@@ -290,7 +290,7 @@ You are the 3D agent. Add an interactive Three.js scene (load three from https:/
     multiplier: 1,
     mode: "report",
     tags: ["devops"],
-    systemPrompt: `You are the Deploy agent. Produce a pre-deployment checklist for this website and a DNS/SSL guide for connecting a custom domain to IDÆVIA hosting, Vercel and Cloudflare Pages.`,
+    systemPrompt: `You are the Deploy agent. Write a personalised, step-by-step LAUNCH GUIDE for this specific project in markdown. Cover, in order: 1) pre-launch checklist (content, links, forms, SEO, mobile); 2) what the project needs technically (static site vs. app, forms, database if any); 3) recommended database (if needed) with a concrete option and why; 4) recommended hosting or server with two options (simple and scalable), how to export from IDÆVIA and deploy there, exact steps; 5) domain: how to buy one from a registrar such as Namecheap or GoDaddy, which DNS records to add for the chosen host, SSL; 6) analytics and monitoring; 7) post-launch improvements. Be concrete, numbered, beginner-friendly, and tailored to the project's content.`,
   },
   {
     id: "clone",
@@ -401,7 +401,7 @@ You are the Refactoring agent. Clean up the HTML: remove duplication, consistent
     multiplier: 2,
     mode: "report",
     tags: ["quality"],
-    systemPrompt: `You are the QA agent. Produce a QA report for the website: each section, each link/anchor, each button and form — expected vs. actual behaviour based on the code, plus a list of failing items and fixes.`,
+    systemPrompt: `You are the QA agent. Produce a QA report for the website: each section, each link/anchor, each button and form, expected vs. actual behaviour based on the code, plus a list of failing items and fixes.`,
   },
 ];
 

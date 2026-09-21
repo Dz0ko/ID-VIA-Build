@@ -7,7 +7,7 @@ export async function POST(_req: Request, ctx: RouteContext<"/api/projects/[id]/
     const project = await db.project.findFirst({ where: { id, userId: user.id } });
     if (!project) return error("Not found", 404);
     if (project.kind === "app") return error("React app projects are deployed by exporting the ZIP (Vite project) to Vercel/Netlify/Cloudflare. One-click hosting for apps is coming.", 400, { code: "APP_EXPORT" });
-    if (!project.html.trim()) return error("Nothing to publish yet — generate the site first.");
+    if (!project.html.trim()) return error("Nothing to publish yet: generate the site first.");
     let html = project.html;
     if (user.plan === "FREE") {
       html = html.replace(

@@ -1,6 +1,6 @@
 @import "tailwindcss";
 
-/* IDÆVIA Build — brand tokens (see public/brand/BRAND.md) */
+/* IDÆVIA Build: brand tokens (see public/brand/BRAND.md) */
 :root {
   --void: #0a0a0b;
   --ink: #121214;
@@ -204,3 +204,96 @@ body {
     linear-gradient(to bottom, rgba(255, 255, 255, 0.04) 1px, transparent 1px);
   background-size: 48px 48px;
 }
+
+/* ---------- Landing effects ---------- */
+.reveal {
+  opacity: 0;
+  transform: translateY(22px);
+  transition: opacity 0.8s cubic-bezier(0.2, 0.7, 0.2, 1), transform 0.8s cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+.reveal.in {
+  opacity: 1;
+  transform: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  .reveal { opacity: 1; transform: none; transition: none; }
+}
+[data-tilt] {
+  transition: transform 0.25s ease, border-color 0.25s ease, box-shadow 0.25s ease;
+  transform-style: preserve-3d;
+  will-change: transform;
+}
+[data-tilt]:hover {
+  border-color: var(--ash);
+  box-shadow: 0 30px 60px -30px rgba(91, 92, 255, 0.45);
+}
+[data-magnetic] {
+  transition: transform 0.2s ease, background 0.15s ease;
+}
+[data-spotlight] {
+  position: relative;
+}
+[data-spotlight]::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: radial-gradient(520px circle at var(--sx, 50%) var(--sy, 30%), rgba(91, 92, 255, 0.14), transparent 60%);
+  transition: opacity 0.3s;
+}
+.glass {
+  background: rgba(18, 18, 20, 0.62);
+  border: 1px solid rgba(201, 201, 207, 0.14);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  box-shadow: 0 20px 60px -30px rgba(0, 0, 0, 0.8), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+.card-shine:not(.absolute) {
+  position: relative;
+  overflow: hidden;
+}
+.card-shine::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: radial-gradient(240px circle at var(--mx, 50%) var(--my, 50%), rgba(255, 255, 255, 0.08), transparent 60%);
+  opacity: 0;
+  transition: opacity 0.25s;
+}
+.card-shine:hover::after { opacity: 1; }
+@keyframes float-y {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-10px); }
+}
+.float { animation: float-y 6s ease-in-out infinite; }
+.float-delay { animation: float-y 7s ease-in-out infinite 1.4s; }
+@keyframes marquee {
+  from { transform: translateX(0); }
+  to { transform: translateX(-50%); }
+}
+.marquee { display: flex; width: max-content; animation: marquee 38s linear infinite; }
+.marquee:hover { animation-play-state: paused; }
+@keyframes shimmer {
+  0% { background-position: 0% 50%; }
+  100% { background-position: 200% 50%; }
+}
+.text-shimmer {
+  background: linear-gradient(90deg, #f5f5f7 0%, #9b9cff 35%, #f5c04a 55%, #f5f5f7 75%);
+  background-size: 200% auto;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: shimmer 6s linear infinite;
+}
+@keyframes word-in {
+  from { opacity: 0; transform: translateY(24px) rotateX(-30deg); filter: blur(6px); }
+  to { opacity: 1; transform: none; filter: blur(0); }
+}
+.word { display: inline-block; animation: word-in 0.9s cubic-bezier(0.2, 0.7, 0.2, 1) both; }
+@media (prefers-reduced-motion: reduce) {
+  .word, .float, .float-delay, .marquee, .text-shimmer { animation: none; }
+}
+.btn-glow { box-shadow: 0 0 0 1px rgba(91,92,255,0.35), 0 12px 40px -12px rgba(91,92,255,0.7); }
+.btn-glow:hover { box-shadow: 0 0 0 1px rgba(91,92,255,0.6), 0 16px 50px -12px rgba(91,92,255,0.9); }
+.step-line { background: linear-gradient(to bottom, var(--signal), transparent); }

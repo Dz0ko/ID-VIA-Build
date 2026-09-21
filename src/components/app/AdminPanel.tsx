@@ -26,7 +26,7 @@ export function AdminPanel() {
 
   async function save() {
     const res = await fetch("/api/admin/settings", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(settings) });
-    setMsg(res.ok ? "Settings saved — takes effect immediately, no redeploy." : "Failed to save.");
+    setMsg(res.ok ? "Settings saved: takes effect immediately, no redeploy." : "Failed to save.");
     setTimeout(() => setMsg(null), 3000);
   }
   async function patchUser(id: string, data: Record<string, unknown>) {

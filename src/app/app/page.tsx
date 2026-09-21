@@ -59,7 +59,7 @@ export default async function Dashboard() {
             <Link href="/app/agents" className="mt-4 inline-block text-xs text-signal-soft hover:underline">Browse the catalog →</Link>
           </div>
           <div className="card p-5">
-            <h2 className="text-sm font-medium">Quick starts</h2>
+            <div className="flex items-center justify-between"><h2 className="text-sm font-medium">Quick starts</h2><Link href="/app/assistant" className="text-xs text-signal-soft hover:underline">Ask the IDÆVIA Agent for ideas →</Link></div>
             <div className="mt-3 grid gap-2">
               {[
                 ["SaaS landing page", "Build a modern dark SaaS landing page for an AI CRM targeting agencies with pricing, testimonials and FAQ."],

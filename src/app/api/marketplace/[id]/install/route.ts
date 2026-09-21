@@ -8,7 +8,7 @@ const nanoid = customAlphabet("abcdefghijklmnopqrstuvwxyz0123456789", 6);
 
 /**
  * Install a marketplace item: template → new project, agent → copy into my custom agents,
- * prompt/component → returned to the client. Paid items require a Whop purchase (checkout link) — v1 treats
+ * prompt/component → returned to the client. Paid items require a Whop purchase (checkout link), v1 treats
  * items with price > 0 as "buy via Whop" and only installs free items here.
  */
 export async function POST(_req: Request, ctx: RouteContext<"/api/marketplace/[id]/install">) {

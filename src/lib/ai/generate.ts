@@ -83,7 +83,7 @@ export async function runAgent(opts: RunOptions) {
     system = agent.id === "builder" ? BUILDER_SYSTEM : agent.systemPrompt;
     userPrompt = buildUserPrompt({ request: opts.request, html: project.html, memory });
   }
-  if (opts.images?.length) userPrompt += `\n\n(${opts.images.length} reference image(s) attached — recreate their design faithfully.)`;
+  if (opts.images?.length) userPrompt += `\n\n(${opts.images.length} reference image(s) attached, recreate their design faithfully.)`;
 
   await db.message.create({
     data: { projectId: project.id, role: "user", content: opts.images?.length ? `${opts.request}\n[${opts.images.length} image(s) attached]` : opts.request, agentId: agent.id },

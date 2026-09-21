@@ -23,7 +23,7 @@ export default function App() {
         <header className="flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-semibold tracking-tight capitalize">{page}</h1>
-            <p className="text-sm ${dark ? "text-zinc-400" : "text-zinc-500"}">Welcome back — here is what is happening today.</p>
+            <p className="text-sm ${dark ? "text-zinc-400" : "text-zinc-500"}">Welcome back, here is what is happening today.</p>
           </div>
           <button className="rounded-full bg-${accent}-500 hover:bg-${accent}-400 text-white px-4 py-2 text-sm font-medium transition">New report</button>
         </header>
