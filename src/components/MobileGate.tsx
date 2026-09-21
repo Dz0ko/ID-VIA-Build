@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Monitor, ArrowLeft } from "lucide-react";
+import { Monitor, ArrowLeft } from "@/components/icons";
 import { Logo } from "@/components/Logo";
 
 /**

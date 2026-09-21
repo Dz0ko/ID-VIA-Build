@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Sparkles, FilePlus2 } from "lucide-react";
+import { Sparkles, FilePlus2 } from "@/components/icons";
 
 type Template = { id: string; name: string; category: string };
 

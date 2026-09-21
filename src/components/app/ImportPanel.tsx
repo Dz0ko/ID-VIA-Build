@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Globe, GitBranch, FileArchive, Image as ImageIcon, Lock } from "lucide-react";
+import { Globe, GitBranch, FileArchive, Image as ImageIcon, Lock } from "@/components/icons";
 import type { PlanId } from "@/lib/plans";
 
 export function ImportPanel({ plan }: { plan: PlanId }) {

@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { Copy, Check, Plus, Trash2, Link2 } from "lucide-react";
+import { Copy, Check, Plus, Trash2, Link2 } from "@/components/icons";
 
 type Aff = { id: string; name: string; code: string; url: string; commissionPct: number; active: boolean; contact: string | null; notes: string | null; signups: number; paying: number; revenueCents: number; owedCents: number; paidCents: number };
 const usd = (c: number) => `$${(c / 100).toFixed(2)}`;

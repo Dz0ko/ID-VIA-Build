@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { Lock, Plus, Trash2, Pencil } from "lucide-react";
+import { Lock, Plus, Trash2, Pencil } from "@/components/icons";
 import { MODEL_TIERS } from "@/lib/plans";
 
 type Agent = { id: string; name: string; description: string; systemPrompt: string; tier: string; multiplier: number; mode: string; isPublic: boolean; userId: string };

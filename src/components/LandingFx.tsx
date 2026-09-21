@@ -21,31 +21,46 @@ export function LandingFx() {
     if (!reduced && !coarse) {
       document.querySelectorAll<HTMLElement>("[data-tilt]").forEach((card) => {
         const max = Number(card.dataset.tilt || 8);
-        const move = (e: PointerEvent) => {
-          const r = card.getBoundingClientRect();
-          const px = (e.clientX - r.left) / r.width - 0.5;
-          const py = (e.clientY - r.top) / r.height - 0.5;
+        let rect: DOMRect | null = null;
+        let raf = 0;
+        let last: PointerEvent | null = null;
+        const apply = () => {
+          raf = 0;
+          if (!last || !rect) return;
+          const px = (last.clientX - rect.left) / rect.width - 0.5;
+          const py = (last.clientY - rect.top) / rect.height - 0.5;
           card.style.transform = `perspective(900px) rotateX(${-py * max}deg) rotateY(${px * max}deg) translateY(-4px)`;
           card.style.setProperty("--mx", `${(px + 0.5) * 100}%`);
           card.style.setProperty("--my", `${(py + 0.5) * 100}%`);
         };
-        const leave = () => { card.style.transform = ""; };
-        card.addEventListener("pointermove", move); card.addEventListener("pointerleave", leave);
-        cleanups.push(() => { card.removeEventListener("pointermove", move); card.removeEventListener("pointerleave", leave); });
+        const enter = () => { rect = card.getBoundingClientRect(); card.style.willChange = "transform"; };
+        const move = (e: PointerEvent) => { last = e; if (!raf) raf = requestAnimationFrame(apply); };
+        const leave = () => { if (raf) cancelAnimationFrame(raf); raf = 0; card.style.transform = ""; card.style.willChange = ""; };
+        card.addEventListener("pointerenter", enter); card.addEventListener("pointermove", move, { passive: true }); card.addEventListener("pointerleave", leave);
+        cleanups.push(() => { card.removeEventListener("pointerenter", enter); card.removeEventListener("pointermove", move); card.removeEventListener("pointerleave", leave); });
       });
       document.querySelectorAll<HTMLElement>("[data-magnetic]").forEach((btn) => {
+        let r: DOMRect | null = null;
         const move = (e: PointerEvent) => {
-          const r = btn.getBoundingClientRect();
+          if (!r) r = btn.getBoundingClientRect();
           const dx = e.clientX - (r.left + r.width / 2), dy = e.clientY - (r.top + r.height / 2);
           btn.style.transform = `translate(${dx * 0.18}px, ${dy * 0.18}px)`;
         };
+        const reset = () => { r = null; };
+        btn.addEventListener("pointerenter", reset);
+        cleanups.push(() => btn.removeEventListener("pointerenter", reset));
         const leave = () => { btn.style.transform = ""; };
         btn.addEventListener("pointermove", move); btn.addEventListener("pointerleave", leave);
         cleanups.push(() => { btn.removeEventListener("pointermove", move); btn.removeEventListener("pointerleave", leave); });
       });
       document.querySelectorAll<HTMLElement>("[data-spotlight]").forEach((sec) => {
-        const move = (e: PointerEvent) => { const r = sec.getBoundingClientRect(); sec.style.setProperty("--sx", `${e.clientX - r.left}px`); sec.style.setProperty("--sy", `${e.clientY - r.top}px`); };
-        sec.addEventListener("pointermove", move);
+        let raf = 0; let last: PointerEvent | null = null;
+        const move = (e: PointerEvent) => {
+          last = e;
+          if (raf) return;
+          raf = requestAnimationFrame(() => { raf = 0; if (!last) return; const r = sec.getBoundingClientRect(); sec.style.setProperty("--sx", `${last.clientX - r.left}px`); sec.style.setProperty("--sy", `${last.clientY - r.top}px`); });
+        };
+        sec.addEventListener("pointermove", move, { passive: true });
         cleanups.push(() => sec.removeEventListener("pointermove", move));
       });
     }

@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArrowLeft, ArrowRight, Clock, Lightbulb } from "lucide-react";
+import { ArrowLeft, ArrowRight, Clock, Lightbulb } from "@/components/icons";
 import { PageHeader } from "@/components/app/PageHeader";
 import { UseInProject } from "@/components/app/UseInProject";
 import { adjacentLessons, getLesson, lessonsByGroup, type LessonBlock } from "@/lib/learn";

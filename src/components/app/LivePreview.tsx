@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Maximize2, X } from "lucide-react";
+import { Maximize2, X } from "@/components/icons";
 
 /**
  * Sandboxed live demo of a component or effect. Scripts run inside the iframe

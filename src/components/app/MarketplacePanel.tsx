@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Download, Upload, Trash2, ShoppingBag, Eye, Lock, X, Wallet, Search } from "lucide-react";
+import { Download, Upload, Trash2, ShoppingBag, Eye, Lock, X, Wallet, Search } from "@/components/icons";
 import type { PlanId } from "@/lib/plans";
 
 type Item = {

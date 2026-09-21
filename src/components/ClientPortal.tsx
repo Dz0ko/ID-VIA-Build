@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import dynamic from "next/dynamic";
-import { CheckCircle2, MessageSquare, AlertCircle, Lock } from "lucide-react";
+import { CheckCircle2, MessageSquare, AlertCircle, Lock } from "@/components/icons";
 
 const AppSandbox = dynamic(() => import("./app/AppSandbox").then((m) => m.AppSandbox), { ssr: false });
 

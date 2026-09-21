@@ -1,3 +1,4 @@
+import { BrandIcon } from "@/components/BrandIcon";
 import Link from "next/link";
 import { db } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
@@ -42,7 +43,7 @@ export default async function Deployments() {
           <p className="text-xs text-ash mt-1">IDÆVIA builds and hosts previews. For production you follow a personalised guide generated for your project.</p>
           <ol className="mt-5 grid md:grid-cols-2 gap-x-8 gap-y-4">
             {STEPS.map(([t, d], i) => (
-              <li key={t} className="flex gap-3"><span className="font-mono text-signal-soft text-xs w-6 shrink-0">{String(i + 1).padStart(2, "0")}</span><div><div className="text-sm font-medium">{t}</div><div className="text-xs text-ash mt-0.5">{d}</div></div></li>
+              <li key={t} className="flex gap-3"><span className="w-6 h-6 shrink-0 rounded-md grid place-items-center bg-signal/15 text-signal-soft"><BrandIcon name="check" size={13} /></span><div><div className="text-sm font-medium">{t}</div><div className="text-xs text-ash mt-0.5">{d}</div></div></li>
             ))}
           </ol>
         </div>

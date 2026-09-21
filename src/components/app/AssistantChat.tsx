@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Sparkle, Send, Trash2, FilePlus2, Lightbulb, Palette, LayoutTemplate, Rocket } from "lucide-react";
+import { Sparkle, Send, Trash2, FilePlus2, Lightbulb, Palette, LayoutTemplate, Rocket } from "@/components/icons";
 import { parseActions, type AssistantAction } from "@/lib/assistant";
 
 type Msg = { id: string; role: string; content: string; createdAt?: string };

@@ -1,5 +1,6 @@
+import { BrandIcon, agentIcon } from "@/components/BrandIcon";
 import Link from "next/link";
-import { Lock } from "lucide-react";
+import { Lock } from "@/components/icons";
 import { AGENTS, AGENT_TEAMS, agentAllowed, minPlanForAgent } from "@/lib/agents";
 import { requireUser } from "@/lib/auth";
 import { PLANS } from "@/lib/plans";
@@ -34,7 +35,7 @@ export default async function Agents() {
               return (
                 <div key={a.id} className={`card p-4 ${ok ? "" : "opacity-70"}`}>
                   <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2"><span className="font-mono text-[11px] text-ash">{String(a.order).padStart(2, "0")}</span><span className="font-medium text-sm">{a.name}</span></div>
+                    <div className="flex items-center gap-2"><span className="w-7 h-7 rounded-lg grid place-items-center bg-signal/15 text-paper"><BrandIcon name={agentIcon(a.id)} size={15} /></span><span className="font-medium text-sm">{a.name}</span></div>
                     {ok ? <span className="pill text-[10px] text-success border-success/40">Unlocked</span> : <span className="pill text-[10px] flex items-center gap-1"><Lock size={9} />{PLANS[minPlanForAgent(a)].name}</span>}
                   </div>
                   <p className="text-xs text-ash mt-2">{a.description}</p>

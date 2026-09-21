@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Copy, Check, Gift } from "lucide-react";
+import { Copy, Check, Gift } from "@/components/icons";
 
 export function ReferralCard({ url, invited, converted, creditsEarned, rewards }: { url: string; invited: number; converted: number; creditsEarned: number; rewards: { referredSignupCredits: number; referrerSignupCredits: number; referrerPaidCredits: number } }) {
   const [copied, setCopied] = useState(false);

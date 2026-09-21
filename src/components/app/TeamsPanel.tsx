@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { Users, Lock, Trash2, Palette, FolderPlus } from "lucide-react";
+import { Users, Lock, Trash2, Palette, FolderPlus } from "@/components/icons";
 
 type Member = { id: string; email: string; role: string; status: string };
 type Project = { id: string; name: string; status: string; clientStatus: string; slug: string };

@@ -3,19 +3,19 @@ import { Logo } from "@/components/Logo";
 import { LandingFx } from "@/components/LandingFx";
 import { HeroBlob } from "@/components/HeroBlob";
 import { MobileNav } from "@/components/MobileNav";
-import { BrandIcon, type BrandIconName } from "@/components/BrandIcon";
+import { BrandIcon, agentIcon, type BrandIconName } from "@/components/BrandIcon";
 import { getCurrentUser } from "@/lib/auth";
 import { CREDIT_GUIDE, PLANS, PLAN_ORDER, TIER_LABELS } from "@/lib/plans";
 import { AGENTS } from "@/lib/agents";
 import { TEMPLATES } from "@/lib/templates";
 
-const STEPS = [
-  { n: "01", title: "Describe it", text: "Name the project and write a prompt. A landing page, a SaaS site, a dashboard, an app. Or start from one of the templates." },
-  { n: "02", title: "Build with your AI team", text: "The Builder streams the first version in seconds. Keep chatting: add sections, remove things, change copy, colours and layout. Every change is a saved version." },
-  { n: "03", title: "The right agent, automatically", text: "You just describe what you want. IDÆVIA reads the request and switches on the specialist that fits: Designer for looks, Copywriter for text, SEO, Animation, Debugger and 25 more. One-click workflows like Make it Premium and Production Ready run whole teams." },
-  { n: "04", title: "Test and audit", text: "Run the production audit for performance, SEO, accessibility, security and mobile. Fix everything with the Debugger in one click." },
-  { n: "05", title: "Share and approve", text: "Send a client portal link. Clients preview, comment and approve without an account. Feedback flows back into the Builder." },
-  { n: "06", title: "Launch with a guide", text: "Export the code or publish a preview link. The Deploy agent writes a personalised launch guide for your project: which database and hosting to use, how to set up your domain and go live, step by step." },
+const STEPS: { n: string; icon: BrandIconName; title: string; text: string }[] = [
+  { n: "01", icon: "describe", title: "Describe it", text: "Name the project and write a prompt. A landing page, a SaaS site, a dashboard, an app. Or start from one of the templates." },
+  { n: "02", icon: "build", title: "Build with your AI team", text: "The Builder streams the first version in seconds. Keep chatting: add sections, remove things, change copy, colours and layout. Every change is a saved version." },
+  { n: "03", icon: "router", title: "The right agent, automatically", text: "You just describe what you want. IDÆVIA reads the request and switches on the specialist that fits: Designer for looks, Copywriter for text, SEO, Animation, Debugger and 25 more. One-click workflows like Make it Premium and Production Ready run whole teams." },
+  { n: "04", icon: "audit", title: "Test and audit", text: "Run the production audit for performance, SEO, accessibility, security and mobile. Fix everything with the Debugger in one click." },
+  { n: "05", icon: "share", title: "Share and approve", text: "Send a client portal link. Clients preview, comment and approve without an account. Feedback flows back into the Builder." },
+  { n: "06", icon: "launch", title: "Launch with a guide", text: "Export the code or publish a preview link. The Deploy agent writes a personalised launch guide for your project: which database and hosting to use, how to set up your domain and go live, step by step." },
 ];
 
 const FEATURES: [string, string, BrandIconName][] = [
@@ -35,6 +35,8 @@ const AGENT_GROUPS: [string, string[]][] = [
 ];
 
 const words = "Build anything. Ship everything.".split(" ");
+
+
 
 export default async function Home() {
   const user = await getCurrentUser();
@@ -129,7 +131,7 @@ export default async function Home() {
                   <div className="card-grid" />
                   <span className="card-arrow">↗</span>
                   <div className="card-body flex gap-5">
-                    <div className="step-num">{s.n}</div>
+                    <div className="step-num"><BrandIcon name={s.icon} size={22} strokeWidth={1.6} /></div>
                     <div><h3 className="card-title text-lg font-medium">{s.title}</h3><p className="mt-3 text-sm text-fog/90 leading-relaxed">{s.text}</p></div>
                   </div>
                 </div>
@@ -173,7 +175,7 @@ export default async function Home() {
                       <div key={id} className="agent-card glass-card rounded-2xl p-4 reveal-up" style={{ transitionDelay: `${i * 50}ms` }} data-tilt="8">
                         <div className="card-grid" />
                         <div className="card-body flex items-center gap-3">
-                          <span className="agent-num w-9 h-9 rounded-xl grid place-items-center font-mono text-[11px] bg-gradient-to-br from-signal/40 to-[#f5c04a]/20 text-paper border border-paper/10 shadow-[inset_0_1px_0_rgba(255,255,255,.2)]">{String(a.order).padStart(2, "0")}</span>
+                          <span className="agent-num w-9 h-9 rounded-xl grid place-items-center bg-gradient-to-br from-signal/40 to-[#f5c04a]/20 text-paper border border-paper/10 shadow-[inset_0_1px_0_rgba(255,255,255,.2)]"><BrandIcon name={agentIcon(id)} size={17} strokeWidth={1.7} /></span>
                           <div className="min-w-0"><div className="text-sm font-medium">{a.name}</div><div className="text-[11px] text-ash truncate">{a.short}</div></div>
                         </div>
                         <div className="mt-3 flex gap-1.5"><span className="pill text-[10px]">{a.tier} tier</span><span className="pill text-[10px]">{a.mode === "rewrite" ? "edits" : "report"}</span></div>

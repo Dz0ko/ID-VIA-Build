@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { GraduationCap, Clock, ArrowRight, Lock } from "lucide-react";
+import { GraduationCap, Clock, ArrowRight, Lock } from "@/components/icons";
 import { PageHeader } from "@/components/app/PageHeader";
 import { GLOSSARY, LESSONS, lessonsByGroup } from "@/lib/learn";
 import { requireUser } from "@/lib/auth";

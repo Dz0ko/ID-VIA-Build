@@ -6,7 +6,7 @@ import dynamic from "next/dynamic";
 import Link from "next/link";
 import {
   ArrowLeft, Rocket, Download, Monitor, Tablet, Smartphone, Code2, Eye, History, MessageSquare, TerminalSquare, AlertTriangle, Lock, Play, RotateCcw, Save, Activity, ExternalLink, Users, FileCode2, Folder, ChevronRight, Image as ImageIcon, X, Share2, Link2, Trash2, CheckCircle2,
-} from "lucide-react";
+} from "@/components/icons";
 import type { AgentDef } from "@/lib/agents";
 import type { PlanId, ModelTier } from "@/lib/plans";
 import { MODEL_TIERS } from "@/lib/plans";

@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Lock, ArrowRight } from "lucide-react";
+import { Lock, ArrowRight } from "@/components/icons";
 import { PLANS } from "@/lib/plans";
 
 /** Shown to Free users on the Learn pages: the course unlocks with the Starter plan. */

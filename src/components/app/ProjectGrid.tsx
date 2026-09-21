@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Globe, Trash2, ExternalLink } from "lucide-react";
+import { Globe, Trash2, ExternalLink } from "@/components/icons";
 
 export type ProjectRow = {
   id: string;
