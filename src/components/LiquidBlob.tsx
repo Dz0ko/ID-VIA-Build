@@ -17,6 +17,7 @@ export function LiquidBlob({ className }: { className?: string }) {
 
     // Skip entirely on weak hardware or when WebGL is unavailable (the page still works without it).
     if ((navigator.hardwareConcurrency ?? 4) <= 2) return;
+    if (window.innerWidth < 768 || window.matchMedia("(hover: none), (pointer: coarse)").matches) return;
     let renderer: THREE.WebGLRenderer;
     try {
       renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: "high-performance" });

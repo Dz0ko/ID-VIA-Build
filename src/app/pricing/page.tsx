@@ -14,12 +14,12 @@ export default async function Pricing() {
           <Link href={user ? "/app" : "/signup"} className="btn btn-primary btn-sm">{user ? "Open workspace" : "Start free"}</Link>
         </div>
       </header>
-      <main className="max-w-6xl mx-auto px-6 py-20">
+      <main className="max-w-6xl mx-auto px-5 sm:px-6 py-12 md:py-20">
         <p className="label">Pricing</p>
         <h1 className="heading mt-3">Pick the plan that fits how you build.</h1>
         <p className="mt-4 text-fog max-w-2xl">Every plan includes the AI builder, live preview, templates and IDÆVIA hosting. Higher plans unlock more agents, stronger model tiers and more credits.</p>
 
-        <div className="mt-12 grid md:grid-cols-2 lg:grid-cols-5 gap-4">
+        <div className="mt-12 grid sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
           {PLAN_ORDER.map((id) => {
             const p = PLANS[id];
             const agents = agentsForPlan(id);

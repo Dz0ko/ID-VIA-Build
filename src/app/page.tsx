@@ -2,6 +2,7 @@ import Link from "next/link";
 import { Logo } from "@/components/Logo";
 import { LandingFx } from "@/components/LandingFx";
 import { HeroBlob } from "@/components/HeroBlob";
+import { MobileNav } from "@/components/MobileNav";
 import { getCurrentUser } from "@/lib/auth";
 import { CREDIT_GUIDE, PLANS, PLAN_ORDER, TIER_LABELS } from "@/lib/plans";
 import { AGENTS } from "@/lib/agents";
@@ -50,15 +51,16 @@ export default async function Home() {
             <a href="#templates" className="hover:text-paper transition">Templates</a>
             <a href="#pricing" className="hover:text-paper transition">Pricing</a>
           </nav>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 md:gap-3">
             {user ? (
-              <Link href="/app" className="btn btn-primary btn-sm" data-magnetic>Open workspace</Link>
+              <Link href="/app" className="btn btn-primary btn-sm hidden md:inline-flex" data-magnetic>Open workspace</Link>
             ) : (
               <>
-                <Link href="/login" className="btn btn-ghost btn-sm">Log in</Link>
+                <Link href="/login" className="btn btn-ghost btn-sm hidden md:inline-flex">Log in</Link>
                 <Link href="/signup" className="btn btn-primary btn-sm" data-magnetic>Start building</Link>
               </>
             )}
+            <MobileNav loggedIn={Boolean(user)} />
           </div>
         </div>
       </header>
@@ -68,7 +70,7 @@ export default async function Home() {
         <section className="relative overflow-hidden" data-spotlight>
           <HeroBlob className="absolute inset-0 -z-0 [&>canvas]:w-full [&>canvas]:h-full" />
           <div className="absolute inset-0 bg-[radial-gradient(70%_60%_at_50%_100%,rgba(245,185,66,0.10),transparent_60%),radial-gradient(60%_50%_at_50%_0%,rgba(91,92,255,0.14),transparent_70%)] pointer-events-none" />
-          <div className="relative max-w-6xl mx-auto px-6 pt-32 pb-24 text-center w-full">
+          <div className="relative max-w-6xl mx-auto px-5 sm:px-6 pt-20 sm:pt-28 md:pt-32 pb-16 md:pb-24 text-center w-full">
             <h1 className="display max-w-4xl mx-auto" aria-label="Build anything. Ship everything.">
               {words.map((w, i) => (
                 <span key={i} className="word mr-[0.22em]" style={{ animationDelay: `${120 + i * 110}ms` }}>
@@ -76,10 +78,10 @@ export default async function Home() {
                 </span>
               ))}
             </h1>
-            <p className="reveal in mt-8 text-lg md:text-xl text-fog max-w-2xl mx-auto" style={{ transitionDelay: "500ms" }}>
+            <p className="reveal in mt-6 md:mt-8 text-base sm:text-lg md:text-xl text-fog max-w-2xl mx-auto" style={{ transitionDelay: "500ms" }}>
               Type one sentence. A team of 30 AI agents plans, designs and builds your website, SaaS or app, then tests it, optimises it and walks you to launch. Your first version is live in under a minute.
             </p>
-            <div className="reveal in mt-10 flex flex-wrap items-center justify-center gap-3" style={{ transitionDelay: "650ms" }}>
+            <div className="reveal in mt-8 md:mt-10 flex flex-col sm:flex-row items-stretch sm:items-center justify-center gap-3 max-w-sm sm:max-w-none mx-auto" style={{ transitionDelay: "650ms" }}>
               <Link href={user ? "/app" : "/signup"} className="btn btn-signal btn-glow px-8 py-4 text-base" data-magnetic>
                 {user ? "Open your workspace" : "Build your first project free"}
               </Link>
@@ -87,7 +89,7 @@ export default async function Home() {
             </div>
 
             {/* Floating glass cards */}
-            <div className="mt-24 grid md:grid-cols-3 gap-5 max-w-5xl mx-auto text-left items-start">
+            <div className="mt-14 md:mt-24 grid sm:grid-cols-2 md:grid-cols-3 gap-4 md:gap-5 max-w-5xl mx-auto text-left items-start">
               <div className="glass rounded-2xl p-5 float card-shine" data-tilt="10">
                 <div className="flex items-center justify-between text-[10px] font-mono uppercase tracking-[0.14em] text-ash"><span>Agent team</span><span className="w-6 h-6 rounded-full bg-paper text-void grid place-items-center">↗</span></div>
                 <div className="mt-3 text-sm font-medium">Planner → Builder → Designer → SEO</div>
@@ -98,7 +100,7 @@ export default async function Home() {
                 <div className="mt-2 text-sm text-fog">“Build a premium SaaS landing page for an AI CRM. Dark, gold accents, pricing and FAQ.”</div>
                 <div className="mt-3 text-[11px] text-success">✓ v03 built · 7 sections · 30 credits</div>
               </div>
-              <div className="glass rounded-2xl p-5 float-delay card-shine md:mt-4" data-tilt="10">
+              <div className="glass rounded-2xl p-5 float-delay card-shine md:mt-4 hidden md:block" data-tilt="10">
                 <div className="flex items-center justify-between text-[10px] font-mono uppercase tracking-[0.14em] text-ash"><span>Client portal</span><span className="w-6 h-6 rounded-full bg-paper text-void grid place-items-center">↗</span></div>
                 <div className="mt-3 flex items-center gap-2">
                   <span className="w-7 h-7 rounded-full bg-gradient-to-br from-signal to-[#f5c04a] grid place-items-center text-[10px] font-medium text-void">MK</span>
@@ -114,7 +116,7 @@ export default async function Home() {
         </section>
 
         {/* HOW IT WORKS */}
-        <section id="how" className="py-28 border-t border-graphite">
+        <section id="how" className="py-16 md:py-28 border-t border-graphite">
           <div className="max-w-6xl mx-auto px-6">
             <p className="label reveal">How it works</p>
             <h2 className="heading mt-3 max-w-2xl reveal">From an idea to a live product, step by step.</h2>
@@ -130,7 +132,7 @@ export default async function Home() {
         </section>
 
         {/* PRODUCT */}
-        <section id="product" className="py-28 border-t border-graphite" data-spotlight>
+        <section id="product" className="py-16 md:py-28 border-t border-graphite" data-spotlight>
           <div className="max-w-6xl mx-auto px-6">
             <p className="label reveal">The whole workflow</p>
             <h2 className="heading mt-3 max-w-2xl reveal">Not just prompt to code. Idea to production.</h2>
@@ -147,7 +149,7 @@ export default async function Home() {
         </section>
 
         {/* AGENTS */}
-        <section id="agents" className="py-28 border-t border-graphite">
+        <section id="agents" className="py-16 md:py-28 border-t border-graphite">
           <div className="max-w-6xl mx-auto px-6">
             <p className="label reveal">AI agent catalog</p>
             <h2 className="heading mt-3 reveal">{AGENTS.length} specialised agents. One team.</h2>
@@ -174,11 +176,11 @@ export default async function Home() {
         </section>
 
         {/* TEMPLATES */}
-        <section id="templates" className="py-28 border-t border-graphite">
+        <section id="templates" className="py-16 md:py-28 border-t border-graphite">
           <div className="max-w-6xl mx-auto px-6">
             <p className="label reveal">Templates</p>
             <h2 className="heading mt-3 reveal">{TEMPLATES.length} production-ready templates, remixable with one sentence.</h2>
-            <div className="mt-12 grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="mt-12 grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4">
               {TEMPLATES.slice(0, 8).map((t, i) => (
                 <div key={t.id} className="glass-card rounded-2xl overflow-hidden reveal-up group" style={{ transitionDelay: `${i * 60}ms` }} data-tilt="8">
                   <div className="h-32 grid place-items-center relative overflow-hidden" style={{ background: t.palette.bg, color: t.palette.text }}>
@@ -193,7 +195,7 @@ export default async function Home() {
         </section>
 
         {/* PRICING */}
-        <section id="pricing" className="py-28 border-t border-graphite" data-spotlight>
+        <section id="pricing" className="py-16 md:py-28 border-t border-graphite" data-spotlight>
           <div className="max-w-7xl mx-auto px-6">
             <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-6">
               <div>
@@ -203,7 +205,7 @@ export default async function Home() {
               <Link href="/pricing" className="btn btn-ghost btn-sm reveal self-start md:self-auto">Compare every feature →</Link>
             </div>
 
-            <div className="mt-12 grid md:grid-cols-2 xl:grid-cols-4 gap-6 items-stretch">
+            <div className="mt-10 md:mt-12 grid md:grid-cols-2 xl:grid-cols-4 gap-4 md:gap-6 items-stretch">
               {PLAN_ORDER.filter((id) => id !== "FREE").map((id, i) => {
                 const p = PLANS[id];
                 const featured = id === "PRO";
@@ -242,7 +244,7 @@ export default async function Home() {
             </div>
 
             {/* Free banner */}
-            <div className="mt-6 glass-card rounded-3xl px-8 py-6 flex flex-col md:flex-row md:items-center gap-6 reveal-up" data-tilt="2">
+            <div className="mt-6 glass-card rounded-3xl px-6 md:px-8 py-6 flex flex-col md:flex-row md:items-center gap-4 md:gap-6 reveal-up" data-tilt="2">
               <div className="md:w-56 shrink-0">
                 <div className="text-lg font-medium">Free</div>
                 <div className="text-sm text-ash">{PLANS.FREE.tagline}</div>
@@ -261,10 +263,10 @@ export default async function Home() {
         </section>
 
         {/* CTA */}
-        <section className="py-28 border-t border-graphite relative overflow-hidden" data-spotlight>
+        <section className="py-16 md:py-28 border-t border-graphite relative overflow-hidden" data-spotlight>
           <div className="absolute inset-0 bg-[radial-gradient(50%_60%_at_50%_100%,rgba(91,92,255,0.18),transparent_70%)] pointer-events-none" />
           <div className="relative max-w-3xl mx-auto px-6 text-center reveal-up">
-            <h2 className="display text-[44px] md:text-[64px]">Describe what you want to build.</h2>
+            <h2 className="display !text-[clamp(34px,7vw,64px)]">Describe what you want to build.</h2>
             <p className="mt-6 text-lg text-fog">IDÆVIA builds it with you.</p>
             <div className="mt-10"><Link href={user ? "/app" : "/signup"} className="btn btn-signal btn-glow px-8 py-4 text-base" data-magnetic>Start building free</Link></div>
           </div>

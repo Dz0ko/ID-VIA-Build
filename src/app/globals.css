@@ -44,6 +44,26 @@ body {
   height: 100%;
 }
 
+html {
+  scroll-behavior: smooth;
+  -webkit-text-size-adjust: 100%;
+  -webkit-tap-highlight-color: transparent;
+  overscroll-behavior-y: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+}
+/* Touch devices: no hover-only affordances, larger tap targets */
+@media (hover: none) {
+  .glass-card:hover::before { animation: none; }
+  .btn { min-height: 44px; }
+}
+/* Desktop app / high-end: GPU-composited transitions for the animated surfaces */
+.glass-card, .card, .btn, .reveal, .reveal-up, .reveal-left, .reveal-right, .float, .float-delay {
+  backface-visibility: hidden;
+  transform: translateZ(0);
+}
+
 body {
   background: var(--background);
   color: var(--foreground);
@@ -80,14 +100,14 @@ body {
 }
 
 .display {
-  font-size: clamp(44px, 8vw, 88px);
+  font-size: clamp(38px, 9vw, 88px);
   line-height: 0.95;
   letter-spacing: -0.035em;
   font-weight: 600;
 }
 
 .heading {
-  font-size: 40px;
+  font-size: clamp(28px, 4.5vw, 40px);
   line-height: 1.1;
   letter-spacing: -0.02em;
   font-weight: 500;

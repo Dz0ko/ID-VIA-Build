@@ -9,6 +9,8 @@ import { useEffect } from "react";
 export function LandingFx() {
   useEffect(() => {
     const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    // Pointer effects only make sense with a real cursor; on touch they just cost battery.
+    const coarse = window.matchMedia("(hover: none), (pointer: coarse)").matches;
 
     const io = new IntersectionObserver((entries) => {
       for (const e of entries) if (e.isIntersecting) { e.target.classList.add("in"); io.unobserve(e.target); }
@@ -16,7 +18,7 @@ export function LandingFx() {
     document.querySelectorAll<HTMLElement>(".reveal, .reveal-up, .reveal-left, .reveal-right").forEach((el) => io.observe(el));
 
     const cleanups: (() => void)[] = [];
-    if (!reduced) {
+    if (!reduced && !coarse) {
       document.querySelectorAll<HTMLElement>("[data-tilt]").forEach((card) => {
         const max = Number(card.dataset.tilt || 8);
         const move = (e: PointerEvent) => {
