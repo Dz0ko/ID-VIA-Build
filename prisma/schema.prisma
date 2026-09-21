@@ -182,6 +182,20 @@ model Setting {
   updatedAt DateTime @updatedAt
 }
 
+/// Every Whop checkout we create, so webhooks can be attributed by checkout_configuration_id
+/// even when Whop omits metadata or the buyer's email.
+model WhopCheckout {
+  id        String   @id // ch_… checkout configuration id
+  userId    String
+  kind      String // plan | pack | market
+  plan      String? // STARTER | PRO | MAX | AGENCY
+  credits   Int? // credit pack size
+  purchaseId String? // marketplace order
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+}
+
 model WebhookEvent {
   id        String   @id // webhook-id header (idempotency)
   type      String

@@ -1,5 +1,5 @@
 import { db } from "./db";
-import { createWhopCheckoutSession } from "./whop";
+import { createWhopCheckoutSession, rememberCheckout } from "./whop";
 
 /** Platform commission on every marketplace sale, in percent. */
 export const MARKETPLACE_FEE_PCT = 10;
@@ -74,7 +74,7 @@ export async function createWhopCheckout(opts: {
   buyerEmail: string;
   appUrl: string;
 }): Promise<{ checkoutId: string; url: string }> {
-  return createWhopCheckoutSession({
+  const session = await createWhopCheckoutSession({
     plan: {
       plan_type: "one_time",
       billing_period: null,
@@ -86,6 +86,8 @@ export async function createWhopCheckout(opts: {
     metadata: { purchase_id: opts.purchaseId, market_item_id: opts.itemId, idaevia_user_id: opts.buyerId, email: opts.buyerEmail },
     redirect_url: `${opts.appUrl}/app/marketplace?purchase=${opts.purchaseId}`,
   });
+  await rememberCheckout({ id: session.checkoutId, userId: opts.buyerId, kind: "market", purchaseId: opts.purchaseId });
+  return session;
 }
 
 function priceCentsToUsd(cents: number) {

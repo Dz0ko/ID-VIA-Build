@@ -1,6 +1,6 @@
 import { db } from "@/lib/db";
 import { PLANS, isPlanId } from "@/lib/plans";
-import { extractWhop, verifyWhopSignature, whopPlanMap, type WhopWebhookEvent } from "@/lib/whop";
+import { extractWhop, findCheckout, verifyWhopSignature, whopPlanMap, type WhopWebhookEvent } from "@/lib/whop";
 import { grantCredits } from "@/lib/credits";
 import { markPurchasePaid } from "@/lib/marketplace";
 import { onPaidConversion } from "@/lib/referrals";
@@ -46,24 +46,32 @@ export async function POST(req: Request) {
   if (seen) return Response.json({ ok: true, duplicate: true });
   await db.webhookEvent.create({ data: { id: eventId, type: event.type, payload: raw } });
 
-  // Marketplace orders carry their purchase id in metadata; settle them before any user matching.
+  const d = (event.data ?? {}) as Record<string, unknown>;
+  const meta = (d.metadata ?? {}) as Record<string, unknown>;
+  // The checkout we created for this purchase (plans, packs, marketplace) — the most reliable link to our user.
+  const checkoutId = typeof d.checkout_configuration_id === "string" ? d.checkout_configuration_id
+    : typeof d.checkout_id === "string" ? d.checkout_id : null;
+  const checkout = await findCheckout(checkoutId);
+
+  // Marketplace orders: settle them before any user matching.
   if (event.type === "payment.succeeded") {
-    const meta = (event.data?.metadata ?? {}) as Record<string, unknown>;
-    if (typeof meta.purchase_id === "string") {
-      const paid = await markPurchasePaid(meta.purchase_id, event.data?.id ?? null);
+    const purchaseId = typeof meta.purchase_id === "string" ? meta.purchase_id : checkout?.purchaseId ?? null;
+    if (purchaseId) {
+      const paid = await markPurchasePaid(purchaseId, d.id as string | undefined ?? null);
       return Response.json({ ok: true, purchase: paid?.id ?? null });
     }
   }
 
   const { membershipId, planId, userId: whopUserId, email, status, valid } = extractWhop(event);
-  const meta = (event.data?.metadata ?? {}) as Record<string, unknown>;
-  // Plan: from checkout metadata (API-created checkouts) or the static plan-id map (checkout links).
+  // Plan: from our checkout record, then checkout metadata, then the static plan-id map (checkout links).
   const map = whopPlanMap();
   const metaPlan = typeof meta.idaevia_plan === "string" && isPlanId(meta.idaevia_plan) ? meta.idaevia_plan : undefined;
-  const mapped = metaPlan ?? (planId ? map[planId] : undefined);
+  const recordPlan = checkout?.plan && isPlanId(checkout.plan) ? checkout.plan : undefined;
+  const mapped = recordPlan ?? metaPlan ?? (planId ? map[planId] : undefined);
 
-  // Find our user: by our own id from checkout metadata, then Whop id, then email.
-  let user = typeof meta.idaevia_user_id === "string" ? await db.user.findUnique({ where: { id: meta.idaevia_user_id } }) : null;
+  // Find our user: by our checkout record, then our id from metadata, then Whop id, then email.
+  let user = checkout ? await db.user.findUnique({ where: { id: checkout.userId } }) : null;
+  if (!user && typeof meta.idaevia_user_id === "string") user = await db.user.findUnique({ where: { id: meta.idaevia_user_id } });
   if (!user && whopUserId) user = await db.user.findUnique({ where: { whopUserId } });
   if (!user && email) user = await db.user.findUnique({ where: { email: email.toLowerCase() } });
   if (!user && email) {
@@ -98,11 +106,10 @@ export async function POST(req: Request) {
     const stillActive = await db.membership.findFirst({ where: { userId: user.id, status: "active" }, orderBy: { updatedAt: "desc" } });
     await db.user.update({ where: { id: user.id }, data: { plan: stillActive?.plan ?? "FREE" } });
   } else if (type === "payment.succeeded") {
-    const credits = Number(meta.credits ?? 0);
+    const credits = Number(checkout?.credits ?? meta.credits ?? 0);
     if (credits > 0) await grantCredits(user.id, credits, "credit_pack");
     // Plan payments (subscriptions, renewals) earn affiliate commission and the referral paid bonus.
-    const d = event.data as Record<string, unknown>;
-    const paid = Number(d.final_amount ?? d.amount_after_fees ?? d.amount ?? 0);
+    const paid = Number(d.total ?? d.subtotal ?? d.final_amount ?? d.amount_after_fees ?? d.amount ?? 0);
     if (credits === 0 && paid > 0) await onPaidConversion(user.id, { amountCents: Math.round(paid * 100), reason: `payment:${d.id ?? eventId}` });
   }
 

@@ -1,6 +1,7 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 import type { PlanId } from "./plans";
 import { CREDIT_PACKS, PLANS, isPlanId } from "./plans";
+import { db } from "./db";
 
 /**
  * Whop is the payment processor only. Sign-in is handled by ./oauth.ts
@@ -63,11 +64,21 @@ export async function createWhopCheckoutSession(input: WhopCheckoutInput): Promi
   return { checkoutId: data.id, url };
 }
 
+/** Remember who a checkout belongs to, so the webhook can attribute it without relying on metadata/email. */
+export async function rememberCheckout(data: { id: string; userId: string; kind: "plan" | "pack" | "market"; plan?: PlanId; credits?: number; purchaseId?: string }) {
+  await db.whopCheckout.upsert({ where: { id: data.id }, create: data, update: data });
+}
+
+export async function findCheckout(id: string | null | undefined) {
+  if (!id) return null;
+  return db.whopCheckout.findUnique({ where: { id } });
+}
+
 /** Monthly subscription checkout for a paid plan. */
 export async function createPlanCheckout(opts: { plan: PlanId; userId: string; email: string; appUrl: string }) {
   const p = PLANS[opts.plan];
   if (opts.plan === "FREE" || p.price <= 0) throw new Error("Free plan needs no checkout.");
-  return createWhopCheckoutSession({
+  const session = await createWhopCheckoutSession({
     plan: {
       plan_type: "renewal",
       billing_period: 30,
@@ -84,13 +95,15 @@ export async function createPlanCheckout(opts: { plan: PlanId; userId: string; e
     metadata: { idaevia_user_id: opts.userId, idaevia_plan: opts.plan, email: opts.email },
     redirect_url: `${opts.appUrl}/app/settings?checkout=plan&plan=${opts.plan}`,
   });
+  await rememberCheckout({ id: session.checkoutId, userId: opts.userId, kind: "plan", plan: opts.plan });
+  return session;
 }
 
 /** One-time checkout for a credit pack (credits granted by the webhook from metadata.credits). */
 export async function createPackCheckout(opts: { credits: number; userId: string; email: string; appUrl: string }) {
   const pack = CREDIT_PACKS.find((c) => c.credits === opts.credits);
   if (!pack) throw new Error("Unknown credit pack.");
-  return createWhopCheckoutSession({
+  const session = await createWhopCheckoutSession({
     plan: {
       plan_type: "one_time",
       billing_period: null,
@@ -107,6 +120,8 @@ export async function createPackCheckout(opts: { credits: number; userId: string
     metadata: { idaevia_user_id: opts.userId, credits: pack.credits, email: opts.email },
     redirect_url: `${opts.appUrl}/app/settings?checkout=pack&credits=${pack.credits}`,
   });
+  await rememberCheckout({ id: session.checkoutId, userId: opts.userId, kind: "pack", credits: pack.credits });
+  return session;
 }
 
 export function whopPlanMap(): Record<string, PlanId> {
