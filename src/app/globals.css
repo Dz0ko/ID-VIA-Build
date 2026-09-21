@@ -335,54 +335,124 @@ body {
 }
 .glass-card {
   position: relative;
-  background: linear-gradient(160deg, rgba(28, 28, 31, 0.75), rgba(18, 18, 20, 0.6));
-  border: 1px solid rgba(201, 201, 207, 0.12);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06), 0 24px 60px -36px rgba(0, 0, 0, 0.9);
-  transition: transform 0.35s cubic-bezier(0.2, 0.7, 0.2, 1), border-color 0.3s, box-shadow 0.3s;
+  isolation: isolate;
+  background:
+    radial-gradient(120% 80% at 0% 0%, rgba(91, 92, 255, 0.10), transparent 55%),
+    radial-gradient(90% 70% at 100% 100%, rgba(245, 192, 74, 0.06), transparent 60%),
+    linear-gradient(160deg, rgba(30, 30, 34, 0.92), rgba(16, 16, 19, 0.88));
+  border: 1px solid rgba(201, 201, 207, 0.10);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.07),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.4),
+    0 1px 2px rgba(0, 0, 0, 0.5),
+    0 30px 70px -40px rgba(0, 0, 0, 0.95);
+  transition: transform 0.45s cubic-bezier(0.2, 0.8, 0.2, 1), border-color 0.35s, box-shadow 0.45s;
   transform-style: preserve-3d;
   overflow: hidden;
 }
+/* Fine dot grid texture, fades in on hover */
+.glass-card .card-grid {
+  position: absolute; inset: 0; pointer-events: none; z-index: 0;
+  background-image: radial-gradient(rgba(255, 255, 255, 0.10) 1px, transparent 1px);
+  background-size: 18px 18px;
+  mask: radial-gradient(60% 60% at var(--mx, 50%) var(--my, 50%), #000, transparent 75%);
+  opacity: 0; transition: opacity 0.4s;
+}
+/* Animated gradient ring, follows the cursor on hover */
 .glass-card::before {
   content: "";
   position: absolute;
   inset: -1px;
   border-radius: inherit;
   padding: 1px;
-  background: conic-gradient(from var(--angle, 0deg), rgba(91, 92, 255, 0.0), rgba(91, 92, 255, 0.9), rgba(245, 192, 74, 0.8), rgba(91, 92, 255, 0.0));
+  background:
+    radial-gradient(240px circle at var(--mx, 50%) var(--my, 50%), rgba(255, 255, 255, 0.55), transparent 45%),
+    conic-gradient(from var(--angle, 0deg), rgba(91, 92, 255, 0) 0%, rgba(91, 92, 255, 0.9) 22%, rgba(155, 156, 255, 0.5) 40%, rgba(245, 192, 74, 0.85) 62%, rgba(91, 92, 255, 0) 85%);
   -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
   mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
   -webkit-mask-composite: xor;
   mask-composite: exclude;
   opacity: 0;
-  transition: opacity 0.35s;
+  transition: opacity 0.4s;
   pointer-events: none;
+  z-index: 2;
 }
+/* Cursor spotlight + top sheen */
 .glass-card::after {
   content: "";
   position: absolute;
   inset: 0;
   pointer-events: none;
-  background: radial-gradient(260px circle at var(--mx, 50%) var(--my, 50%), rgba(255, 255, 255, 0.09), transparent 60%);
+  background:
+    radial-gradient(320px circle at var(--mx, 50%) var(--my, 50%), rgba(155, 156, 255, 0.16), transparent 60%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.05), transparent 30%);
   opacity: 0;
-  transition: opacity 0.3s;
+  transition: opacity 0.35s;
+  z-index: 1;
 }
 @property --angle { syntax: "<angle>"; initial-value: 0deg; inherits: false; }
 @keyframes spin-border { to { --angle: 360deg; } }
-.glass-card:hover { border-color: rgba(201, 201, 207, 0.22); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08), 0 40px 80px -40px rgba(91, 92, 255, 0.55); }
-.glass-card:hover::before { opacity: 1; animation: spin-border 2.4s linear infinite; }
+.glass-card:hover {
+  border-color: rgba(201, 201, 207, 0.22);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.10),
+    0 2px 4px rgba(0, 0, 0, 0.5),
+    0 30px 60px -24px rgba(91, 92, 255, 0.45),
+    0 60px 120px -60px rgba(245, 192, 74, 0.25);
+}
+.glass-card:hover::before { opacity: 1; animation: spin-border 3s linear infinite; }
 .glass-card:hover::after { opacity: 1; }
+.glass-card:hover .card-grid { opacity: 1; }
+/* Content floats above the surface in 3D when the card tilts */
+.glass-card > .card-body { position: relative; z-index: 3; transform: translateZ(28px); transition: transform 0.45s cubic-bezier(0.2, 0.8, 0.2, 1); }
+.glass-card:hover > .card-body { transform: translateZ(44px); }
+
+/* Numbered step badge: glass cube with glow */
+.step-num {
+  position: relative;
+  width: 48px; height: 48px; border-radius: 14px; flex-shrink: 0;
+  display: grid; place-items: center;
+  font-family: var(--font-mono); font-size: 13px; font-weight: 600; color: var(--paper);
+  background: linear-gradient(145deg, rgba(91, 92, 255, 0.45), rgba(91, 92, 255, 0.12));
+  border: 1px solid rgba(155, 156, 255, 0.35);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.25), inset 0 -6px 12px rgba(0, 0, 0, 0.35), 0 8px 24px -8px rgba(91, 92, 255, 0.7);
+  transform: translateZ(20px);
+  transition: transform 0.5s cubic-bezier(0.2, 0.8, 0.2, 1), box-shadow 0.4s;
+}
+.step-num::after {
+  content: ""; position: absolute; inset: -6px; border-radius: 18px; z-index: -1;
+  background: radial-gradient(circle, rgba(91, 92, 255, 0.45), transparent 70%);
+  opacity: 0; filter: blur(8px); transition: opacity 0.4s;
+}
+.glass-card:hover .step-num { transform: translateZ(40px) rotateY(-14deg) rotateX(8deg) scale(1.06); box-shadow: inset 0 1px 0 rgba(255,255,255,.35), inset 0 -6px 12px rgba(0,0,0,.35), 0 16px 34px -8px rgba(91, 92, 255, 0.9); }
+.glass-card:hover .step-num::after { opacity: 1; }
+/* Underline that draws itself under the title on hover */
+.card-title { position: relative; display: inline-block; }
+.card-title::after { content: ""; position: absolute; left: 0; bottom: -4px; height: 1px; width: 100%; background: linear-gradient(90deg, var(--signal), rgba(245, 192, 74, 0.9), transparent); transform: scaleX(0); transform-origin: left; transition: transform 0.5s cubic-bezier(0.2, 0.8, 0.2, 1); }
+.glass-card:hover .card-title::after { transform: scaleX(1); }
+/* Arrow that slides in at the corner */
+.card-arrow { position: absolute; top: 18px; right: 18px; width: 30px; height: 30px; border-radius: 999px; display: grid; place-items: center; color: var(--void); background: var(--paper); opacity: 0; transform: translate(-6px, 6px) scale(0.8); transition: opacity 0.35s, transform 0.45s cubic-bezier(0.2, 0.8, 0.2, 1); z-index: 3; }
+.glass-card:hover .card-arrow { opacity: 1; transform: translate(0, 0) scale(1); }
+
 .icon-orb {
-  width: 44px; height: 44px; border-radius: 14px; display: grid; place-items: center;
-  background: linear-gradient(135deg, rgba(91, 92, 255, 0.35), rgba(245, 192, 74, 0.18));
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  width: 48px; height: 48px; border-radius: 15px; display: grid; place-items: center;
+  background: linear-gradient(145deg, rgba(91, 92, 255, 0.45), rgba(245, 192, 74, 0.18));
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.25), 0 10px 24px -10px rgba(91, 92, 255, 0.7);
   color: var(--paper);
-  transition: transform 0.5s cubic-bezier(0.2, 0.7, 0.2, 1);
+  transform: translateZ(20px);
+  transition: transform 0.6s cubic-bezier(0.2, 0.8, 0.2, 1), box-shadow 0.4s;
 }
 .icon-orb svg { width: 20px; height: 20px; }
-.flip-card:hover .icon-orb { transform: rotateY(360deg) scale(1.08); }
+.glass-card:hover .icon-orb { transform: translateZ(40px) rotateY(360deg) scale(1.1); box-shadow: inset 0 1px 0 rgba(255,255,255,.35), 0 18px 34px -10px rgba(91, 92, 255, 0.9); }
 .agent-card:hover { transform: translateY(-6px) rotate(-0.6deg); }
+.agent-card .agent-num { transition: transform 0.4s cubic-bezier(0.2,0.8,0.2,1), box-shadow 0.4s; }
+.agent-card:hover .agent-num { transform: translateZ(30px) scale(1.08); box-shadow: 0 10px 24px -8px rgba(91,92,255,.8); }
+@media (hover: none) {
+  .glass-card > .card-body, .step-num, .icon-orb { transform: none; }
+}
 
 /* ---------- Admin console: light "bento" theme scoped to .admin-theme ---------- */
 .admin-theme {

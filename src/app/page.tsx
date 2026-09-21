@@ -124,9 +124,13 @@ export default async function Home() {
             <h2 className="heading mt-3 max-w-2xl reveal">From an idea to a live product, step by step.</h2>
             <div className="mt-14 grid md:grid-cols-2 gap-5">
               {STEPS.map((s, i) => (
-                <div key={s.n} className={`glass-card rounded-2xl p-6 flex gap-5 ${i % 2 ? "reveal-right" : "reveal-left"}`} data-tilt="6">
-                  <div className="shrink-0 w-11 h-11 rounded-xl bg-signal/15 text-signal-soft grid place-items-center font-mono text-sm">{s.n}</div>
-                  <div><h3 className="text-lg font-medium">{s.title}</h3><p className="mt-2 text-sm text-ash leading-relaxed">{s.text}</p></div>
+                <div key={s.n} className={`glass-card rounded-3xl p-7 ${i % 2 ? "reveal-right" : "reveal-left"}`} data-tilt="7">
+                  <div className="card-grid" />
+                  <span className="card-arrow">↗</span>
+                  <div className="card-body flex gap-5">
+                    <div className="step-num">{s.n}</div>
+                    <div><h3 className="card-title text-lg font-medium">{s.title}</h3><p className="mt-3 text-sm text-fog/90 leading-relaxed">{s.text}</p></div>
+                  </div>
                 </div>
               ))}
             </div>
@@ -140,10 +144,13 @@ export default async function Home() {
             <h2 className="heading mt-3 max-w-2xl reveal">Not just prompt to code. Idea to production.</h2>
             <div className="mt-14 grid md:grid-cols-2 lg:grid-cols-3 gap-5" style={{ perspective: "1200px" }}>
               {FEATURES.map(([t, d, path], i) => (
-                <div key={t} className="glass-card flip-card rounded-2xl p-6 reveal-up" style={{ transitionDelay: `${i * 80}ms` }} data-tilt="14">
-                  <div className="icon-orb"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><path d={path} /></svg></div>
-                  <h3 className="mt-5 font-medium text-lg">{t}</h3>
-                  <p className="mt-2 text-sm text-ash leading-relaxed">{d}</p>
+                <div key={t} className="glass-card rounded-3xl p-7 reveal-up" style={{ transitionDelay: `${i * 80}ms` }} data-tilt="12">
+                  <div className="card-grid" />
+                  <div className="card-body">
+                    <div className="icon-orb"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><path d={path} /></svg></div>
+                    <h3 className="card-title mt-6 font-medium text-lg">{t}</h3>
+                    <p className="mt-3 text-sm text-fog/90 leading-relaxed">{d}</p>
+                  </div>
                 </div>
               ))}
             </div>
@@ -163,8 +170,9 @@ export default async function Home() {
                   <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-3">
                     {ids.map((id, i) => { const a = agentById.get(id); if (!a) return null; return (
                       <div key={id} className="agent-card glass-card rounded-2xl p-4 reveal-up" style={{ transitionDelay: `${i * 50}ms` }} data-tilt="8">
-                        <div className="flex items-center gap-3">
-                          <span className="w-9 h-9 rounded-xl grid place-items-center font-mono text-[11px] bg-gradient-to-br from-signal/30 to-[#f5c04a]/20 text-paper border border-paper/10">{String(a.order).padStart(2, "0")}</span>
+                        <div className="card-grid" />
+                        <div className="card-body flex items-center gap-3">
+                          <span className="agent-num w-9 h-9 rounded-xl grid place-items-center font-mono text-[11px] bg-gradient-to-br from-signal/40 to-[#f5c04a]/20 text-paper border border-paper/10 shadow-[inset_0_1px_0_rgba(255,255,255,.2)]">{String(a.order).padStart(2, "0")}</span>
                           <div className="min-w-0"><div className="text-sm font-medium">{a.name}</div><div className="text-[11px] text-ash truncate">{a.short}</div></div>
                         </div>
                         <div className="mt-3 flex gap-1.5"><span className="pill text-[10px]">{a.tier} tier</span><span className="pill text-[10px]">{a.mode === "rewrite" ? "edits" : "report"}</span></div>
@@ -213,7 +221,9 @@ export default async function Home() {
                 const featured = id === "PRO";
                 const pages = Math.round(p.credits / CREDIT_GUIDE.page);
                 return (
-                  <div key={id} className={`glass-card rounded-3xl p-8 flex flex-col reveal-up ${featured ? "ring-1 ring-signal" : ""}`} style={{ transitionDelay: `${i * 80}ms` }} data-tilt="3">
+                  <div key={id} className={`glass-card rounded-3xl p-8 flex flex-col reveal-up ${featured ? "ring-1 ring-signal" : ""}`} style={{ transitionDelay: `${i * 80}ms` }} data-tilt="4">
+                    <div className="card-grid" />
+                    <div className="card-body flex flex-col flex-1">
                     <div className="flex items-center justify-between gap-2">
                       <div className="text-lg font-medium">{p.name}</div>
                       {featured && <span className="pill border-signal text-signal-soft text-[10px]">Most popular</span>}
@@ -240,6 +250,7 @@ export default async function Home() {
                     </ul>
 
                     <Link href={`/api/billing/checkout?plan=${id}`} className={`btn mt-8 ${featured ? "btn-signal btn-glow" : "btn-outline"}`}>Choose {p.name}</Link>
+                    </div>
                   </div>
                 );
               })}
