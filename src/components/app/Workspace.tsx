@@ -9,6 +9,7 @@ import {
 } from "lucide-react";
 import type { AgentDef } from "@/lib/agents";
 import type { PlanId, ModelTier } from "@/lib/plans";
+import { MODEL_TIERS } from "@/lib/plans";
 import type { AuditResult } from "@/lib/audit";
 
 const MonacoEditor = dynamic(() => import("@monaco-editor/react").then((m) => m.default), { ssr: false });
@@ -42,7 +43,7 @@ export interface WorkspaceProps {
 }
 
 type LogLine = { t: string; text: string; kind?: "info" | "ok" | "err" };
-const TIERS: ModelTier[] = ["fast", "standard", "advanced", "premium"];
+const TIERS: ModelTier[] = [...MODEL_TIERS];
 
 declare global {
   interface Window { __TAURI__?: { core: { invoke: (cmd: string, args?: Record<string, unknown>) => Promise<unknown> } } }

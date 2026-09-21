@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { Lock, Plus, Trash2, Pencil } from "lucide-react";
+import { MODEL_TIERS } from "@/lib/plans";
 
 type Agent = { id: string; name: string; description: string; systemPrompt: string; tier: string; multiplier: number; mode: string; isPublic: boolean; userId: string };
 const empty = { name: "", description: "", systemPrompt: "", tier: "standard", multiplier: 2, mode: "rewrite", isPublic: false };
@@ -42,7 +43,7 @@ export function CustomAgents({ allowed, userId }: { allowed: boolean; userId: st
             <label><span className="label">Description</span><input className="input mt-1" value={editing.description ?? ""} onChange={(e) => setEditing({ ...editing, description: e.target.value })} placeholder="Always follows our brand and structure" /></label>
             <label className="sm:col-span-2"><span className="label">System prompt</span><textarea className="input mt-1 min-h-40 font-mono text-[12px]" value={editing.systemPrompt ?? ""} onChange={(e) => setEditing({ ...editing, systemPrompt: e.target.value })} placeholder={"You are …\nAlways use: brand colours #…, fonts …, sections in this order: …"} /></label>
             <label><span className="label">Mode</span><select className="input mt-1" value={editing.mode} onChange={(e) => setEditing({ ...editing, mode: e.target.value })}><option value="rewrite">Edits the project (rewrite)</option><option value="report">Writes a report</option></select></label>
-            <label><span className="label">Model tier</span><select className="input mt-1" value={editing.tier} onChange={(e) => setEditing({ ...editing, tier: e.target.value })}>{["fast", "standard", "advanced", "premium"].map((t) => <option key={t}>{t}</option>)}</select></label>
+            <label><span className="label">Model tier</span><select className="input mt-1" value={editing.tier} onChange={(e) => setEditing({ ...editing, tier: e.target.value })}>{MODEL_TIERS.map((t) => <option key={t}>{t}</option>)}</select></label>
             <label><span className="label">Credit multiplier</span><input type="number" step="0.5" min={0.5} max={10} className="input mt-1" value={editing.multiplier ?? 2} onChange={(e) => setEditing({ ...editing, multiplier: Number(e.target.value) })} /></label>
             <label className="flex items-end gap-2 pb-2"><input type="checkbox" checked={Boolean(editing.isPublic)} onChange={(e) => setEditing({ ...editing, isPublic: e.target.checked })} />Public (other users can run it)</label>
           </div>

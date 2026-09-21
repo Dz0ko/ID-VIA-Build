@@ -3,14 +3,14 @@ import { getCurrentUser } from "@/lib/auth";
 import { checkAgentAccess, resolveAgent } from "@/lib/agents-runtime";
 import { runAgent, type RunEvent } from "@/lib/ai/generate";
 import { InsufficientCredits } from "@/lib/credits";
-import { PLANS } from "@/lib/plans";
+import { MODEL_TIERS, PLANS } from "@/lib/plans";
 import { db } from "@/lib/db";
 import { agentAllowed, pickAgent } from "@/lib/agents";
 
 const schema = z.object({
   request: z.string().min(1).max(8000),
   agentId: z.string().optional(),
-  tier: z.enum(["fast", "standard", "advanced", "premium"]).optional(),
+  tier: z.enum(MODEL_TIERS).optional(),
   images: z
     .array(z.object({ mediaType: z.enum(["image/png", "image/jpeg", "image/webp", "image/gif"]), data: z.string().max(6_000_000) }))
     .max(4)

@@ -1,11 +1,20 @@
 export type PlanId = "FREE" | "STARTER" | "PRO" | "MAX" | "AGENCY";
 
-export type ModelTier = "fast" | "standard" | "advanced" | "premium";
+/**
+ * fast → Claude Haiku 4.5 · standard → Claude Sonnet 5 · advanced → Claude Sonnet 5 (high effort)
+ * premium → Claude Opus 5 · frontier → Claude Fable 5.1 / GPT-6 Astra (opt-in, Max and Agency only).
+ */
+export type ModelTier = "fast" | "standard" | "advanced" | "premium" | "frontier";
+export const MODEL_TIERS = ["fast", "standard", "advanced", "premium", "frontier"] as const;
 
 export interface Plan {
   id: PlanId;
   name: string;
   price: number; // USD / month
+  /** Original price shown struck through when a launch discount applies. */
+  listPrice?: number;
+  /** Discount percentage displayed as a badge (derived from listPrice). */
+  discountPct?: number;
   tagline: string;
   credits: number; // monthly
   agentLimit: number | "all";
@@ -89,12 +98,13 @@ export const PLANS: Record<PlanId, Plan> = {
     credits: 7500,
     agentLimit: 30,
     projectLimit: "unlimited",
-    maxTier: "premium",
+    maxTier: "frontier",
     rolloverPct: 25,
     features: [
       "7,500 AI credits per month",
       "All 30 standard agents: adds Reference, Rebuild, Analytics, Conversion, Documentation, Refactoring, Dependency, Project Manager, Security, QA",
-      "Premium reasoning tier for architecture and complex features",
+      "Premium reasoning tier (Claude Opus 5) for architecture and complex features",
+      "Frontier tier on demand: Claude Fable 5.1 and GPT-6 Astra for the hardest builds",
       "Agent teams and one-click workflows (Make it Premium, Production Ready)",
       "Project memory and background agents",
       "Larger context and priority generation",
@@ -105,16 +115,19 @@ export const PLANS: Record<PlanId, Plan> = {
   AGENCY: {
     id: "AGENCY",
     name: "Agency",
-    price: 199,
+    price: 489,
+    listPrice: 652,
+    discountPct: 25,
     tagline: "For agencies and teams.",
     credits: 15000,
     agentLimit: "all",
     projectLimit: "unlimited",
-    maxTier: "premium",
+    maxTier: "frontier",
     rolloverPct: 25,
     features: [
       "15,000 AI credits per month, plus optional credit packs",
       "Every agent, plus custom and private agents",
+      "Premium and Frontier tiers: Claude Opus 5, Claude Fable 5.1 and GPT-6 Astra",
       "Teams with roles and invitations",
       "Client portal: preview, comments, change requests and approvals",
       "White-label branding (your name, logo and colours)",
@@ -128,7 +141,7 @@ export const PLANS: Record<PlanId, Plan> = {
 
 export const PLAN_ORDER: PlanId[] = ["FREE", "STARTER", "PRO", "MAX", "AGENCY"];
 
-export const TIER_ORDER: ModelTier[] = ["fast", "standard", "advanced", "premium"];
+export const TIER_ORDER: ModelTier[] = [...MODEL_TIERS];
 
 export function planRank(plan: PlanId) {
   return PLAN_ORDER.indexOf(plan);
@@ -142,9 +155,14 @@ export function isPlanId(v: string): v is PlanId {
   return (PLAN_ORDER as string[]).includes(v);
 }
 
+/**
+ * Credit top-ups. Priced at or above $0.015 per credit so a pack never sells
+ * below the blended model cost (see the "Credit economics" doc): the plans
+ * themselves carry the discount, refills do not.
+ */
 export const CREDIT_PACKS = [
-  { credits: 500, price: 10 },
-  { credits: 2000, price: 30 },
-  { credits: 5000, price: 60 },
-  { credits: 10000, price: 100 },
+  { credits: 500, price: 12 },
+  { credits: 2000, price: 40 },
+  { credits: 5000, price: 85 },
+  { credits: 10000, price: 150 },
 ];

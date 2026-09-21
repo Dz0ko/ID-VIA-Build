@@ -12,6 +12,7 @@ import {
 } from "./prompts";
 import { classifyTask, resolveModel, tierForTask, type TaskClass } from "./router";
 import type { InputImage } from "./provider";
+import { estimateUsd } from "./cost";
 
 export interface RunOptions {
   userId: string;
@@ -32,7 +33,7 @@ export type RunEvent =
   | { type: "done"; mode: "rewrite" | "report"; versionNumber?: number; html?: string; files?: { path: string; content: string }[]; report?: string; creditsUsed: number }
   | { type: "error"; message: string };
 
-const ORDER: ModelTier[] = ["fast", "standard", "advanced", "premium"];
+const ORDER: ModelTier[] = ["fast", "standard", "advanced", "premium", "frontier"];
 
 /**
  * Run one agent against a project: classify → route → reserve credits → generate → persist.
@@ -100,6 +101,11 @@ export async function runAgent(opts: RunOptions) {
       onText: (t) => opts.onEvent?.({ type: "delta", text: t }),
       signal: opts.signal,
     });
+    const usage = {
+      inputTokens: result.inputTokens,
+      outputTokens: result.outputTokens,
+      costUsd: resolved.provider.id === "mock" ? 0 : estimateUsd(result.model, result),
+    };
 
     if (agent.mode === "rewrite" && isApp) {
       const files = parseFileManifest(result.text, project.files);
@@ -111,7 +117,7 @@ export async function runAgent(opts: RunOptions) {
         ...files.map((f) => db.projectFile.create({ data: { projectId: project.id, path: f.path, content: f.content } })),
         db.version.create({ data: { projectId: project.id, number, html: JSON.stringify(files), message: `${agent.name}: ${opts.request.slice(0, 120)}` } }),
         db.message.create({ data: { projectId: project.id, role: "assistant", content: `Updated the app (v${number}, ${files.length} files) using ${agent.name}.`, agentId: agent.id, model: result.model, creditsUsed: credits } }),
-        db.agentRun.update({ where: { id: run.id }, data: { status: "DONE", finishedAt: new Date(), output: `v${number}` } }),
+        db.agentRun.update({ where: { id: run.id }, data: { status: "DONE", finishedAt: new Date(), output: `v${number}`, ...usage } }),
       ]);
       opts.onEvent?.({ type: "done", mode: "rewrite", versionNumber: number, files, creditsUsed: credits });
       return { mode: "rewrite" as const, files, versionNumber: number, credits };
@@ -126,7 +132,7 @@ export async function runAgent(opts: RunOptions) {
         db.project.update({ where: { id: project.id }, data: { html } }),
         db.version.create({ data: { projectId: project.id, number, html, message: `${agent.name}: ${opts.request.slice(0, 120)}` } }),
         db.message.create({ data: { projectId: project.id, role: "assistant", content: `Updated the project (v${number}) using ${agent.name}.`, agentId: agent.id, model: result.model, creditsUsed: credits } }),
-        db.agentRun.update({ where: { id: run.id }, data: { status: "DONE", finishedAt: new Date(), output: `v${number}` } }),
+        db.agentRun.update({ where: { id: run.id }, data: { status: "DONE", finishedAt: new Date(), output: `v${number}`, ...usage } }),
       ]);
       opts.onEvent?.({ type: "done", mode: "rewrite", versionNumber: number, html, creditsUsed: credits });
       return { mode: "rewrite" as const, html, versionNumber: number, credits };
@@ -134,7 +140,7 @@ export async function runAgent(opts: RunOptions) {
 
     await db.$transaction([
       db.message.create({ data: { projectId: project.id, role: "assistant", content: result.text, agentId: agent.id, model: result.model, creditsUsed: credits } }),
-      db.agentRun.update({ where: { id: run.id }, data: { status: "DONE", finishedAt: new Date(), output: result.text } }),
+      db.agentRun.update({ where: { id: run.id }, data: { status: "DONE", finishedAt: new Date(), output: result.text, ...usage } }),
     ]);
     opts.onEvent?.({ type: "done", mode: "report", report: result.text, creditsUsed: credits });
     return { mode: "report" as const, report: result.text, credits };

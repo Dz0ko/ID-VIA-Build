@@ -69,23 +69,37 @@ export const anthropicProvider: AIProvider = {
   async generate(model, input) {
     const client = anthropic();
     const adaptive = /fable|opus-5|sonnet-5|opus-4-[678]|sonnet-4-6/.test(model);
-    const stream = client.messages.stream(
-      {
-        model,
-        max_tokens: input.maxOutput ?? 32000,
-        system: [{ type: "text", text: input.system, cache_control: { type: "ephemeral" } }],
-        messages: anthropicMessages(input),
-        ...(adaptive
-          ? { thinking: { type: "adaptive" as const }, output_config: { effort: input.effort ?? "medium" } }
-          : {}),
-      },
-      { signal: input.signal },
-    );
-    stream.on("text", (t) => input.onText?.(t));
-    const final = await stream.finalMessage();
+    const frontier = /fable|mythos/.test(model);
+    const params = {
+      model,
+      max_tokens: input.maxOutput ?? 32000,
+      system: [{ type: "text" as const, text: input.system, cache_control: { type: "ephemeral" as const } }],
+      messages: anthropicMessages(input),
+      ...(adaptive
+        ? { thinking: { type: "adaptive" as const }, output_config: { effort: input.effort ?? "medium" } }
+        : {}),
+    };
+    // Claude Fable 5.1 runs safety classifiers that can decline a request. The
+    // server-side fallback re-runs a declined request on an Opus-class model in
+    // the same call, so the user still gets a result and is billed for one run.
+    let final: Anthropic.Message | Anthropic.Beta.BetaMessage;
+    if (frontier) {
+      const stream = client.beta.messages.stream(
+        { ...params, betas: ["server-side-fallback-2026-07-01"], fallbacks: "default" },
+        { signal: input.signal },
+      );
+      stream.on("text", (t) => input.onText?.(t));
+      final = await stream.finalMessage();
+    } else {
+      const stream = client.messages.stream(params, { signal: input.signal });
+      stream.on("text", (t) => input.onText?.(t));
+      final = await stream.finalMessage();
+    }
+    if (final.stop_reason === "refusal") {
+      throw new Error("The model declined this request. Rephrase it or try a different tier. Your credits have been refunded.");
+    }
     const text = final.content
-      .filter((b): b is Anthropic.TextBlock => b.type === "text")
-      .map((b) => b.text)
+      .map((b) => (b.type === "text" ? b.text : ""))
       .join("");
     return {
       text,
@@ -128,8 +142,18 @@ export const openaiProvider: AIProvider = {
         };
       }
     }
+    // GPT-5.x / GPT-6 reasoning models accept reasoning_effort (low … max);
+    // older chat models reject it.
+    const reasoning = /^(gpt-5|gpt-6|o\d)/.test(model);
     const stream = await client.chat.completions.create(
-      { model, stream: true, stream_options: { include_usage: true }, messages },
+      {
+        model,
+        stream: true,
+        stream_options: { include_usage: true },
+        messages,
+        max_completion_tokens: input.maxOutput ?? 32000,
+        ...(reasoning && input.effort ? { reasoning_effort: input.effort } : {}),
+      },
       { signal: input.signal },
     );
     let text = "";

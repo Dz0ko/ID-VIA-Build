@@ -1,6 +1,6 @@
 import type { ModelTier, PlanId } from "../plans";
 import { TIER_ORDER, tierAllowed } from "../plans";
-import { getSettings, type ModelConfig } from "../settings";
+import { getSettings, OPENAI_TIER_MODELS, type ModelConfig } from "../settings";
 import { PROVIDERS, type AIProvider } from "./provider";
 
 export type TaskClass = "tiny" | "small" | "section" | "page" | "feature" | "fullstack";
@@ -46,6 +46,8 @@ export function tierForTask(task: TaskClass, plan: PlanId, requested?: ModelTier
       break;
   }
   if (requested) tier = requested;
+  // Auto routing never escalates to the frontier tier: it is a deliberate user choice.
+  if (!requested && tier === "frontier") tier = "premium";
   // clamp to plan
   while (!tierAllowed(plan, tier)) {
     const i = TIER_ORDER.indexOf(tier);
@@ -75,7 +77,7 @@ export async function resolveModel(tier: ModelTier): Promise<ResolvedModel> {
       cfg = {
         ...cfg,
         provider: provider.id,
-        model: provider.id === "openai" ? process.env.OPENAI_MODEL || "gpt-4.1" : cfg.model,
+        model: provider.id === "openai" ? process.env.OPENAI_MODEL || OPENAI_TIER_MODELS[tier] : cfg.model,
       };
       return { tier, config: cfg, provider, fallback: false };
     }

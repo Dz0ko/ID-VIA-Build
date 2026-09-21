@@ -36,8 +36,10 @@ export const DEFAULT_SETTINGS: AppSettings = {
       effort: "medium",
     },
     advanced: {
+      // Sonnet 5 at high effort builds full pages at ~2.5x lower token cost than
+      // Opus 5; Opus stays reserved for the premium tier (full-stack features).
       provider: "anthropic",
-      model: process.env.AI_TIER_ADVANCED || "claude-opus-5",
+      model: process.env.AI_TIER_ADVANCED || "claude-sonnet-5",
       label: "Advanced coding tier",
       enabled: true,
       maxOutput: 32000,
@@ -51,10 +53,37 @@ export const DEFAULT_SETTINGS: AppSettings = {
       maxOutput: 64000,
       effort: "xhigh",
     },
+    frontier: {
+      // Anthropic's most capable model ($10/$50 per 1M tokens). Never auto-routed:
+      // users on Max/Agency pick it explicitly. Switch provider to "openai" and
+      // model to "gpt-6-astra" (same price) to run the frontier tier on OpenAI.
+      provider: "anthropic",
+      model: process.env.AI_TIER_FRONTIER || "claude-fable-5-1",
+      label: "Frontier tier",
+      enabled: true,
+      maxOutput: 64000,
+      effort: "xhigh",
+    },
   },
-  tierMultiplier: { fast: 1, standard: 1.5, advanced: 3, premium: 5 },
-  creditBase: { tiny: 1, small: 2, section: 4, page: 8, feature: 15, fullstack: 30 },
+  // Calibrated so every task class costs the platform <= ~$0.02 per credit
+  // (Anthropic list prices, whole-document rewrites). See the "Credit economics" doc.
+  tierMultiplier: { fast: 1, standard: 1.5, advanced: 3, premium: 6, frontier: 12 },
+  creditBase: { tiny: 2, small: 3, section: 5, page: 10, feature: 20, fullstack: 40 },
   routing: "auto",
+};
+
+/**
+ * OpenAI model used per tier when a tier falls back to OpenAI (Anthropic key
+ * missing or tier disabled). Priced comparably to the Anthropic model of the
+ * same tier: Luna $0.20/$1.20, Terra $2/$12, Sol $4/$20, Astra $10/$50.
+ * `OPENAI_MODEL` overrides every tier (legacy single-model setup).
+ */
+export const OPENAI_TIER_MODELS: Record<ModelTier, string> = {
+  fast: "gpt-5.6-luna",
+  standard: "gpt-5.6-terra",
+  advanced: "gpt-5.6-terra",
+  premium: "gpt-5.6-sol",
+  frontier: "gpt-6-astra",
 };
 
 const KEY = "app";

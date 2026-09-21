@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import type { AppSettings } from "@/lib/settings";
 import type { ModelTier } from "@/lib/plans";
-import { PLAN_ORDER } from "@/lib/plans";
+import { MODEL_TIERS, PLAN_ORDER } from "@/lib/plans";
 
 type UserRow = { id: string; email: string; name: string | null; plan: string; credits: number; role: string; createdAt: string; whopUserId: string | null; _count: { projects: number } };
 
@@ -35,7 +35,7 @@ export function AdminPanel() {
   }
 
   if (!settings) return <div className="p-6 text-sm text-ash">Loading…</div>;
-  const tiers: ModelTier[] = ["fast", "standard", "advanced", "premium"];
+  const tiers: ModelTier[] = [...MODEL_TIERS];
 
   return (
     <div className="p-6 space-y-8">

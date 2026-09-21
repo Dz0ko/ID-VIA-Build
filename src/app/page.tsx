@@ -17,7 +17,7 @@ const STEPS = [
 ];
 
 const FEATURES: [string, string, string][] = [
-  ["Multi-model AI router", "Small edits go to fast models, architecture goes to premium reasoning. You spend credits, never tokens.", "M4 12h16M12 4v16"],
+  ["Multi-model AI router", "Small edits go to fast models, architecture goes to Claude Opus 5, and the frontier tier puts Claude Fable 5.1 and GPT-6 Astra one click away. You spend credits, never tokens.", "M4 12h16M12 4v16"],
   ["30 agents, one team", "Planner, Builder, Designer, Copywriter, SEO, Debugger, QA, 3D, Animation and more, orchestrated per task.", "M12 3l8 4.5v9L12 21l-8-4.5v-9L12 3z"],
   ["Templates, prompts, effects", "Production-ready templates, a prompt library, a component library and hover, scroll, cursor and 3D effects.", "M4 5h16v14H4zM4 10h16"],
   ["Screenshot and URL to site", "Attach reference images or point at a live page. IDÆVIA recreates the structure as original, editable code.", "M4 7h3l2-3h6l2 3h3v12H4zM12 17a4 4 0 100-8 4 4 0 000 8z"],
@@ -76,13 +76,20 @@ export default async function Home() {
                 </span>
               ))}
             </h1>
-            <p className="reveal in mt-8 text-lg text-fog max-w-2xl mx-auto" style={{ transitionDelay: "500ms" }}>
-              Describe it. IDÆVIA plans, designs and builds your website, SaaS or app with a team of AI agents, then tests, optimises and guides you to launch.
+            <p className="reveal in mt-8 text-lg md:text-xl text-fog max-w-2xl mx-auto" style={{ transitionDelay: "500ms" }}>
+              Type one sentence. A team of 30 AI agents plans, designs and builds your website, SaaS or app, then tests it, optimises it and walks you to launch. Your first version is live in under a minute.
             </p>
             <div className="reveal in mt-10 flex flex-wrap items-center justify-center gap-3" style={{ transitionDelay: "650ms" }}>
-              <Link href={user ? "/app" : "/signup"} className="btn btn-signal btn-glow px-7 py-3.5 text-base" data-magnetic>Start building free</Link>
-              <a href="#how" className="btn btn-outline px-7 py-3.5 text-base bg-void/50 backdrop-blur" data-magnetic>See how it works</a>
+              <Link href={user ? "/app" : "/signup"} className="btn btn-signal btn-glow px-8 py-4 text-base" data-magnetic>
+                {user ? "Open your workspace" : "Build your first project free"}
+              </Link>
+              <a href="#how" className="btn btn-outline px-7 py-4 text-base bg-void/50 backdrop-blur" data-magnetic>See how it works</a>
             </div>
+            <ul className="reveal in mt-6 flex flex-wrap items-center justify-center gap-x-6 gap-y-2 text-xs text-ash" style={{ transitionDelay: "800ms" }}>
+              <li className="flex items-center gap-1.5"><span className="text-success">✓</span>100 free credits every month</li>
+              <li className="flex items-center gap-1.5"><span className="text-success">✓</span>No credit card required</li>
+              <li className="flex items-center gap-1.5"><span className="text-success">✓</span>Export the code any time</li>
+            </ul>
 
             {/* Floating glass cards */}
             <div className="mt-24 grid md:grid-cols-3 gap-5 max-w-5xl mx-auto text-left items-start">
@@ -94,12 +101,18 @@ export default async function Home() {
               <div className="glass rounded-2xl p-5 float card-shine md:mt-10" data-tilt="10" style={{ animationDelay: "0.7s" }}>
                 <div className="text-[10px] font-mono uppercase tracking-[0.14em] text-ash">Prompt</div>
                 <div className="mt-2 text-sm text-fog">“Build a premium SaaS landing page for an AI CRM. Dark, gold accents, pricing and FAQ.”</div>
-                <div className="mt-3 text-[11px] text-success">✓ v03 built · 7 sections · 24 credits</div>
+                <div className="mt-3 text-[11px] text-success">✓ v03 built · 7 sections · 30 credits</div>
               </div>
               <div className="glass rounded-2xl p-5 float-delay card-shine md:mt-4" data-tilt="10">
-                <div className="flex items-center justify-between text-[10px] font-mono uppercase tracking-[0.14em] text-ash"><span>Project health</span><span className="w-6 h-6 rounded-full bg-paper text-void grid place-items-center">↗</span></div>
-                <div className="mt-2 text-4xl font-semibold tracking-tight">96<span className="text-lg text-ash">/100</span></div>
-                <div className="mt-3 h-1 rounded-full bg-graphite overflow-hidden"><div className="h-full w-[96%] bg-gradient-to-r from-signal to-[#f5c04a]" /></div>
+                <div className="flex items-center justify-between text-[10px] font-mono uppercase tracking-[0.14em] text-ash"><span>Client portal</span><span className="w-6 h-6 rounded-full bg-paper text-void grid place-items-center">↗</span></div>
+                <div className="mt-3 flex items-center gap-2">
+                  <span className="w-7 h-7 rounded-full bg-gradient-to-br from-signal to-[#f5c04a] grid place-items-center text-[10px] font-medium text-void">MK</span>
+                  <div className="min-w-0"><div className="text-sm font-medium">Approved by the client</div><div className="text-[11px] text-ash">Nova Studio · 2 min ago</div></div>
+                </div>
+                <div className="mt-3 flex items-center justify-between text-[11px]">
+                  <span className="text-fog">3 change requests resolved</span>
+                  <span className="pill text-[10px] border-success/40 text-success">Ready to launch</span>
+                </div>
               </div>
             </div>
           </div>
@@ -189,20 +202,24 @@ export default async function Home() {
           <div className="max-w-7xl mx-auto px-6">
             <p className="label reveal">Plans</p>
             <h2 className="heading mt-3 reveal">Capability, models, agents and credits per plan.</h2>
-            <div className="mt-12 grid md:grid-cols-2 xl:grid-cols-6 gap-5">
+            <div className="mt-12 grid md:grid-cols-2 xl:grid-cols-5 gap-5 items-stretch">
               {PLAN_ORDER.map((id, i) => {
                 const p = PLANS[id];
                 const featured = id === "PRO";
-                const span = i < 3 ? "xl:col-span-2" : "xl:col-span-3";
                 return (
-                  <div key={id} className={`glass-card rounded-2xl p-7 flex flex-col reveal-up ${span} ${featured ? "ring-1 ring-signal" : ""}`} style={{ transitionDelay: `${i * 70}ms` }} data-tilt="4">
-                    <div className="flex items-center justify-between">
+                  <div key={id} className={`glass-card rounded-2xl p-6 flex flex-col reveal-up ${featured ? "ring-1 ring-signal" : ""}`} style={{ transitionDelay: `${i * 70}ms` }} data-tilt="4">
+                    <div className="flex items-center justify-between gap-2 min-h-6">
                       <div className="text-base font-medium">{p.name}</div>
                       {featured && <span className="pill border-signal text-signal-soft text-[10px]">Most popular</span>}
+                      {p.discountPct && <span className="pill border-success/40 text-success text-[10px]">Save {p.discountPct}%</span>}
                     </div>
-                    <div className="mt-3 text-4xl font-semibold tracking-tight">${p.price}<span className="text-sm text-ash font-normal">/mo</span></div>
-                    <div className="mt-1 text-sm text-ash">{p.tagline}</div>
-                    <ul className={`mt-6 gap-x-6 gap-y-2.5 text-sm text-fog flex-1 ${i >= 3 ? "grid sm:grid-cols-2" : "space-y-2.5"}`}>
+                    <div className="mt-3 flex items-baseline gap-2">
+                      <span className="text-4xl font-semibold tracking-tight">${p.price}</span>
+                      <span className="text-sm text-ash">/mo</span>
+                      {p.listPrice && <span className="text-sm text-ash line-through">${p.listPrice}</span>}
+                    </div>
+                    <div className="mt-1 text-sm text-ash min-h-10">{p.tagline}</div>
+                    <ul className="mt-6 space-y-2.5 text-sm text-fog flex-1">
                       {p.features.map((f) => <li key={f} className="flex gap-2.5"><span className="text-signal-soft shrink-0">✓</span><span>{f}</span></li>)}
                     </ul>
                     <Link href={id === "FREE" ? (user ? "/app" : "/signup") : `/api/billing/checkout?plan=${id}`} className={`btn mt-7 ${featured ? "btn-signal" : "btn-outline"}`}>{id === "FREE" ? "Start free" : `Choose ${p.name}`}</Link>
@@ -210,7 +227,7 @@ export default async function Home() {
                 );
               })}
             </div>
-            <p className="mt-6 text-xs text-ash reveal">Credits measure AI usage: renaming a button costs about 1 credit, a full page 8 to 40, a full-stack feature 75 or more. Extra credit packs are available on every paid plan.</p>
+            <p className="mt-6 text-xs text-ash reveal">Credits measure AI usage: a small edit costs 2 to 5 credits, a full page 30 to 60, a full-stack feature 240 or more. Extra credit packs are available on every paid plan.</p>
           </div>
         </section>
 

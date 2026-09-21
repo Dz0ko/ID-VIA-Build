@@ -27,8 +27,13 @@ export default async function Pricing() {
             return (
               <div key={id} className={`card p-6 flex flex-col ${featured ? "border-signal" : ""}`}>
                 {featured && <span className="pill self-start border-signal text-signal-soft mb-3">Most popular</span>}
+                {p.discountPct && <span className="pill self-start border-success/40 text-success mb-3">Save {p.discountPct}%</span>}
                 <div className="text-sm font-medium">{p.name}</div>
-                <div className="mt-2 text-4xl font-semibold tracking-tight">${p.price}<span className="text-sm text-ash font-normal">/mo</span></div>
+                <div className="mt-2 flex items-baseline gap-2">
+                  <span className="text-4xl font-semibold tracking-tight">${p.price}</span>
+                  <span className="text-sm text-ash">/mo</span>
+                  {p.listPrice && <span className="text-sm text-ash line-through">${p.listPrice}</span>}
+                </div>
                 <div className="mt-1 text-xs text-ash">{p.tagline}</div>
                 <ul className="mt-5 space-y-2 text-sm text-fog flex-1">
                   {p.features.map((f) => (
@@ -57,7 +62,7 @@ export default async function Pricing() {
               </div>
             ))}
           </div>
-          <p className="mt-4 text-xs text-ash">Credits measure AI usage: renaming a button costs ~1 credit, building a full page 8–40, a full-stack feature 75+. Pro and above roll over 25% of unused credits.</p>
+          <p className="mt-4 text-xs text-ash">Credits measure AI usage: a small edit costs 2–5 credits, building a full page 30–60, a full-stack feature 240+. Pro and above roll over 25% of unused credits.</p>
         </div>
       </main>
     </div>
