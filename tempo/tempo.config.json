@@ -1,0 +1,15 @@
+{
+  "paths": {
+    "canvases": "./designs"
+  },
+  "scripts": {
+    "install": "cd .. && npm install && npx prisma generate && npx prisma db push && cd tempo && npm install",
+    "start": "npm run dev"
+  },
+  "apps": [
+    {
+      "start": "npx next dev -p ${APP_PORT}",
+      "url": "http://localhost:${APP_PORT}"
+    }
+  ]
+}
