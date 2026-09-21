@@ -11,6 +11,12 @@ import { onPaidConversion } from "@/lib/referrals";
  *                 membership.deactivated / membership.went_invalid → downgrade to FREE
  *                 payment.succeeded → (credit top-up packs via metadata.credits)
  */
+const HANDLED = new Set([
+  "membership.activated", "membership.went_valid", "membership.created",
+  "membership.deactivated", "membership.went_invalid", "membership.canceled", "membership.expired",
+  "payment.succeeded",
+]);
+
 export async function POST(req: Request) {
   const raw = await req.text();
   const secret = process.env.WHOP_WEBHOOK_SECRET ?? "";
@@ -30,6 +36,9 @@ export async function POST(req: Request) {
   } catch {
     return new Response("bad json", { status: 400 });
   }
+
+  // Only the events we act on; anything else (ads, cards, disputes, …) is acknowledged and ignored.
+  if (!HANDLED.has(event.type)) return Response.json({ ok: true, ignored: event.type });
 
   // Idempotency
   const eventId = id ?? event.id ?? `${event.type}:${Date.now()}`;
