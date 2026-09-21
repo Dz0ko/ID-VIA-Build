@@ -3,6 +3,7 @@ import { Logo } from "@/components/Logo";
 import { LandingFx } from "@/components/LandingFx";
 import { HeroBlob } from "@/components/HeroBlob";
 import { MobileNav } from "@/components/MobileNav";
+import { BrandIcon, type BrandIconName } from "@/components/BrandIcon";
 import { getCurrentUser } from "@/lib/auth";
 import { CREDIT_GUIDE, PLANS, PLAN_ORDER, TIER_LABELS } from "@/lib/plans";
 import { AGENTS } from "@/lib/agents";
@@ -17,13 +18,13 @@ const STEPS = [
   { n: "06", title: "Launch with a guide", text: "Export the code or publish a preview link. The Deploy agent writes a personalised launch guide for your project: which database and hosting to use, how to set up your domain and go live, step by step." },
 ];
 
-const FEATURES: [string, string, string][] = [
-  ["Multi-model AI router", "Small edits go to fast models, architecture goes to Claude Opus 5, and the frontier tier puts Claude Fable 5.1 and GPT-6 Astra one click away. You spend credits, never tokens.", "M4 12h16M12 4v16"],
-  ["30 agents, one team", "Planner, Builder, Designer, Copywriter, SEO, Debugger, QA, 3D, Animation and more, orchestrated per task.", "M12 3l8 4.5v9L12 21l-8-4.5v-9L12 3z"],
-  ["Templates, prompts, effects", "Production-ready templates, a prompt library, a component library and hover, scroll, cursor and 3D effects.", "M4 5h16v14H4zM4 10h16"],
-  ["Screenshot and URL to site", "Attach reference images or point at a live page. IDÆVIA recreates the structure as original, editable code.", "M4 7h3l2-3h6l2 3h3v12H4zM12 17a4 4 0 100-8 4 4 0 000 8z"],
-  ["Live preview and real code", "Watch the site stream in, then edit in a real code editor. React apps run in a live in-browser sandbox.", "M8 9l-4 3 4 3M16 9l4 3-4 3M14 5l-4 14"],
-  ["Versions, portal, marketplace", "Rollback to any version, collect client approvals, and publish your own templates, prompts and agents.", "M12 8v4l3 3M21 12a9 9 0 11-18 0 9 9 0 0118 0z"],
+const FEATURES: [string, string, BrandIconName][] = [
+  ["Multi-model AI router", "Small edits go to fast models, architecture goes to Claude Opus 5, and the frontier tier puts Claude Fable 5.1 and GPT-6 Astra one click away. You spend credits, never tokens.", "router"],
+  ["30 agents, one team", "Planner, Builder, Designer, Copywriter, SEO, Debugger, QA, 3D, Animation and more, orchestrated per task.", "agents"],
+  ["Templates, prompts, effects", "Production-ready templates, a prompt library, a component library and hover, scroll, cursor and 3D effects.", "library"],
+  ["Screenshot and URL to site", "Attach reference images or point at a live page. IDÆVIA recreates the structure as original, editable code.", "screenshot"],
+  ["Live preview and real code", "Watch the site stream in, then edit in a real code editor. React apps run in a live in-browser sandbox.", "code"],
+  ["Versions, portal, marketplace", "Rollback to any version, collect client approvals, and publish your own templates, prompts and agents.", "versions"],
 ];
 
 const AGENT_GROUPS: [string, string[]][] = [
@@ -143,11 +144,11 @@ export default async function Home() {
             <p className="label reveal">The whole workflow</p>
             <h2 className="heading mt-3 max-w-2xl reveal">Not just prompt to code. Idea to production.</h2>
             <div className="mt-14 grid md:grid-cols-2 lg:grid-cols-3 gap-5" style={{ perspective: "1200px" }}>
-              {FEATURES.map(([t, d, path], i) => (
+              {FEATURES.map(([t, d, icon], i) => (
                 <div key={t} className="glass-card rounded-3xl p-7 reveal-up" style={{ transitionDelay: `${i * 80}ms` }} data-tilt="12">
                   <div className="card-grid" />
                   <div className="card-body">
-                    <div className="icon-orb"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><path d={path} /></svg></div>
+                    <div className="icon-orb"><BrandIcon name={icon} size={22} strokeWidth={1.6} /></div>
                     <h3 className="card-title mt-6 font-medium text-lg">{t}</h3>
                     <p className="mt-3 text-sm text-fog/90 leading-relaxed">{d}</p>
                   </div>

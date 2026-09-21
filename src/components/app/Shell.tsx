@@ -2,34 +2,32 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import {
-  LayoutDashboard, FolderKanban, LayoutTemplate, Sparkles, Bot, Blocks, Wand2, Rocket, Settings, ShieldCheck, LogOut, CreditCard, Import, Store, Users, Sparkle, GraduationCap, Lock,
-} from "lucide-react";
 import { Logo } from "@/components/Logo";
+import { BrandIcon, type BrandIconName } from "@/components/BrandIcon";
 import type { SessionUser } from "@/lib/auth";
 import { PLANS } from "@/lib/plans";
 import { planAtLeast } from "@/lib/agents";
 
-type Item = { href: string; label: string; icon: typeof LayoutDashboard; exact?: boolean; minPlan?: "STARTER" };
+type Item = { href: string; label: string; icon: BrandIconName; exact?: boolean; minPlan?: "STARTER" };
 const GROUPS: { title: string; items: Item[] }[] = [
   { title: "Workspace", items: [
-    { href: "/app", label: "Dashboard", icon: LayoutDashboard, exact: true },
-    { href: "/app/projects", label: "Projects", icon: FolderKanban },
-    { href: "/app/assistant", label: "IDÆVIA Agent", icon: Sparkle },
-    { href: "/app/import", label: "Import", icon: Import },
+    { href: "/app", label: "Dashboard", icon: "dashboard", exact: true },
+    { href: "/app/projects", label: "Projects", icon: "projects" },
+    { href: "/app/assistant", label: "IDÆVIA Agent", icon: "agent" },
+    { href: "/app/import", label: "Import", icon: "import" },
   ] },
   { title: "Library", items: [
-    { href: "/app/templates", label: "Templates", icon: LayoutTemplate },
-    { href: "/app/prompts", label: "Prompts", icon: Sparkles },
-    { href: "/app/components", label: "Components", icon: Blocks },
-    { href: "/app/effects", label: "Effects", icon: Wand2 },
-    { href: "/app/agents", label: "Agents", icon: Bot },
+    { href: "/app/templates", label: "Templates", icon: "templates" },
+    { href: "/app/prompts", label: "Prompts", icon: "prompts" },
+    { href: "/app/components", label: "Components", icon: "components" },
+    { href: "/app/effects", label: "Effects", icon: "effects" },
+    { href: "/app/agents", label: "Agents", icon: "agents" },
   ] },
   { title: "Grow", items: [
-    { href: "/app/marketplace", label: "Marketplace", icon: Store },
-    { href: "/app/deployments", label: "Deployments", icon: Rocket },
-    { href: "/app/teams", label: "Teams & clients", icon: Users },
-    { href: "/app/learn", label: "Learn", icon: GraduationCap, minPlan: "STARTER" },
+    { href: "/app/marketplace", label: "Marketplace", icon: "marketplace" },
+    { href: "/app/deployments", label: "Deployments", icon: "deployments" },
+    { href: "/app/teams", label: "Teams & clients", icon: "teams" },
+    { href: "/app/learn", label: "Learn", icon: "learn", minPlan: "STARTER" },
   ] },
 ];
 
@@ -56,14 +54,13 @@ export function Shell({ user, children }: { user: SessionUser; children: React.R
               <div className="space-y-px">
                 {g.items.map((n) => {
                   const active = n.exact ? pathname === n.href : pathname.startsWith(n.href);
-                  const Icon = n.icon;
                   const locked = n.minPlan && !planAtLeast(user.plan, n.minPlan);
                   return (
                     <Link key={n.href} href={n.href} className={`relative flex items-center gap-2.5 rounded-md px-3 py-[7px] text-[13px] transition ${active ? "bg-graphite/80 text-paper" : "text-fog/90 hover:bg-ink hover:text-paper"}`}>
                       {active && <span className="absolute left-0 top-1/2 -translate-y-1/2 h-4 w-0.5 rounded-full bg-signal" />}
-                      <Icon size={15} strokeWidth={1.8} className={active ? "text-signal-soft" : "text-ash"} />
+                      <BrandIcon name={n.icon} size={16} className={active ? "text-paper" : "text-ash"} />
                       <span className="flex-1 truncate">{n.label}</span>
-                      {locked && <Lock size={11} className="text-ash/70" />}
+                      {locked && <BrandIcon name="lock" size={12} className="text-ash/70" />}
                     </Link>
                   );
                 })}
@@ -72,14 +69,14 @@ export function Shell({ user, children }: { user: SessionUser; children: React.R
           ))}
           {user.role === "ADMIN" && (
             <Link href="/admin" className="flex items-center gap-2.5 rounded-md px-3 py-[7px] text-[13px] text-fog/90 hover:bg-ink hover:text-paper transition">
-              <ShieldCheck size={15} strokeWidth={1.8} className="text-ash" /><span className="flex-1">Admin console</span><span className="text-[10px] text-ash">↗</span>
+              <BrandIcon name="admin" size={16} className="text-ash" /><span className="flex-1">Admin console</span><span className="text-[10px] text-ash">↗</span>
             </Link>
           )}
         </nav>
         <div className="p-3 border-t border-graphite space-y-3">
           <div>
             <div className="flex items-center justify-between text-xs">
-              <span className="text-fog flex items-center gap-1.5"><CreditCard size={12} className="text-ash" />{user.credits.toLocaleString()} credits</span>
+              <span className="text-fog flex items-center gap-1.5"><BrandIcon name="credits" size={13} className="text-ash" />{user.credits.toLocaleString()} credits</span>
               <span className="pill text-[10px]">{plan.name}</span>
             </div>
             <div className="mt-2 h-1 rounded-full bg-graphite overflow-hidden"><div className="h-full bg-signal" style={{ width: `${pct}%` }} /></div>
@@ -95,8 +92,8 @@ export function Shell({ user, children }: { user: SessionUser; children: React.R
               )}
               <div className="min-w-0 flex-1"><div className="text-xs truncate">{user.name ?? user.email}</div><div className="text-[10px] text-ash truncate">{user.email}</div></div>
             </Link>
-            <Link href="/app/settings" title="Settings & billing" className={`w-7 h-7 grid place-items-center rounded-md hover:bg-ink ${pathname.startsWith("/app/settings") ? "text-signal-soft" : "text-ash hover:text-paper"}`}><Settings size={14} /></Link>
-            <button onClick={logout} title="Log out" className="w-7 h-7 grid place-items-center rounded-md text-ash hover:text-paper hover:bg-ink"><LogOut size={14} /></button>
+            <Link href="/app/settings" title="Settings & billing" className={`w-7 h-7 grid place-items-center rounded-md hover:bg-ink ${pathname.startsWith("/app/settings") ? "text-signal-soft" : "text-ash hover:text-paper"}`}><BrandIcon name="settings" size={15} /></Link>
+            <button onClick={logout} title="Log out" className="w-7 h-7 grid place-items-center rounded-md text-ash hover:text-paper hover:bg-ink"><BrandIcon name="logout" size={15} /></button>
           </div>
         </div>
       </aside>

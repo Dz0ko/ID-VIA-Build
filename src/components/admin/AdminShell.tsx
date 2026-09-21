@@ -3,17 +3,17 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import { LayoutDashboard, Users, CreditCard, Banknote, Link2, Store, SlidersHorizontal, LogOut, Bell, Home, Plus, Search, UserRound } from "lucide-react";
+import { BrandIcon, type BrandIconName } from "@/components/BrandIcon";
 import type { SessionUser } from "@/lib/auth";
 
 const NAV = [
-  { href: "/admin", label: "Overview", icon: LayoutDashboard, exact: true, hint: "KPIs, trends, MRR" },
-  { href: "/admin/users", label: "Users", icon: Users, hint: "Accounts, plans, credits" },
-  { href: "/admin/payments", label: "Payments", icon: CreditCard, hint: "Subscriptions, packs, webhooks" },
-  { href: "/admin/payouts", label: "Payouts", icon: Banknote, hint: "Sellers and affiliates owed" },
-  { href: "/admin/affiliates", label: "Affiliates", icon: Link2, hint: "Partner links and commissions" },
-  { href: "/admin/marketplace", label: "Marketplace", icon: Store, hint: "Listings and orders" },
-  { href: "/admin/settings", label: "Settings", icon: SlidersHorizontal, hint: "Models, credits, referrals" },
+  { href: "/admin", label: "Overview", icon: "overview" as BrandIconName, exact: true, hint: "KPIs, trends, MRR" },
+  { href: "/admin/users", label: "Users", icon: "users" as BrandIconName, hint: "Accounts, plans, credits" },
+  { href: "/admin/payments", label: "Payments", icon: "payments" as BrandIconName, hint: "Subscriptions, packs, webhooks" },
+  { href: "/admin/payouts", label: "Payouts", icon: "payouts" as BrandIconName, hint: "Sellers and affiliates owed" },
+  { href: "/admin/affiliates", label: "Affiliates", icon: "affiliates" as BrandIconName, hint: "Partner links and commissions" },
+  { href: "/admin/marketplace", label: "Marketplace", icon: "marketplace" as BrandIconName, hint: "Listings and orders" },
+  { href: "/admin/settings", label: "Settings", icon: "settings" as BrandIconName, hint: "Models, credits, referrals" },
 ];
 const ITEM_H = 56;
 const RAIL_TOP = 96; // logo block height above the nav list
@@ -54,10 +54,9 @@ export function AdminShell({ user, children }: { user: SessionUser; children: Re
         <div className="admin-notch" style={{ top: RAIL_TOP + idx * ITEM_H }} />
         <nav className="relative flex flex-col">
           {NAV.map((n, i) => {
-            const Icon = n.icon;
             return (
               <Link key={n.href} href={n.href} className={`admin-rail-item ${i === idx ? "active" : ""}`} aria-label={n.label} aria-current={i === idx ? "page" : undefined}>
-                <Icon size={19} strokeWidth={1.9} />
+                <BrandIcon name={n.icon} size={20} strokeWidth={1.7} />
                 <span className="admin-rail-tip">{n.label}</span>
               </Link>
             );
@@ -65,10 +64,10 @@ export function AdminShell({ user, children }: { user: SessionUser; children: Re
         </nav>
         <div className="mt-auto pb-4 flex flex-col items-center gap-2">
           <Link href="/app/profile" className="admin-rail-item !h-12" aria-label="Your profile">
-            <span className="w-9 h-9 rounded-full bg-white text-black grid place-items-center"><UserRound size={16} /></span>
+            <span className="w-9 h-9 rounded-full bg-white text-black grid place-items-center"><BrandIcon name="profile" size={17} /></span>
             <span className="admin-rail-tip">Profile · back to the app</span>
           </Link>
-          <button onClick={logout} className="admin-rail-item !h-10" aria-label="Log out"><LogOut size={17} strokeWidth={1.9} /><span className="admin-rail-tip">Log out</span></button>
+          <button onClick={logout} className="admin-rail-item !h-10" aria-label="Log out"><BrandIcon name="logout" size={18} /><span className="admin-rail-tip">Log out</span></button>
         </div>
       </aside>
 
@@ -81,12 +80,12 @@ export function AdminShell({ user, children }: { user: SessionUser; children: Re
           </div>
           <div className="flex items-center gap-2">
             <div className="flex items-center rounded-full bg-white shadow-[0_1px_2px_rgba(20,20,26,.05),0_8px_24px_-16px_rgba(20,20,26,.2)] p-1">
-              <Link href="/app" className="btn btn-ghost btn-sm rounded-full"><Home size={14} />App</Link>
-              <Link href="/admin/affiliates" className="btn btn-ghost btn-sm rounded-full"><Plus size={14} />Affiliate</Link>
-              <Link href="/admin/users" className="btn btn-ghost btn-sm rounded-full"><Search size={14} />Find user</Link>
+              <Link href="/app" className="btn btn-ghost btn-sm rounded-full"><BrandIcon name="home" size={14} />App</Link>
+              <Link href="/admin/affiliates" className="btn btn-ghost btn-sm rounded-full"><BrandIcon name="plus" size={14} />Affiliate</Link>
+              <Link href="/admin/users" className="btn btn-ghost btn-sm rounded-full"><BrandIcon name="search" size={14} />Find user</Link>
             </div>
             <Link href="/admin/payouts" className="w-10 h-10 rounded-full bg-white grid place-items-center text-fog hover:text-paper shadow-[0_1px_2px_rgba(20,20,26,.05),0_8px_24px_-16px_rgba(20,20,26,.2)] relative" title="Payouts waiting">
-              <Bell size={16} />
+              <BrandIcon name="bell" size={17} />
             </Link>
             <div className="rounded-full bg-white px-4 py-2 text-sm font-semibold shadow-[0_1px_2px_rgba(20,20,26,.05),0_8px_24px_-16px_rgba(20,20,26,.2)] tabular-nums">{now ? now.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "--:--"}</div>
             <div className="text-right leading-tight">
