@@ -3,7 +3,7 @@ import { db } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { json, withUser } from "@/lib/api";
 import { ASSISTANT_SYSTEM, mockAssistantReply } from "@/lib/assistant";
-import { resolveModel, tierForTask } from "@/lib/ai/router";
+import { generateWithFallback, resolveModel, tierForTask } from "@/lib/ai/router";
 import { estimateCredits, InsufficientCredits, refundCredits, reserveCredits } from "@/lib/credits";
 import { rateLimit } from "@/lib/security";
 
@@ -49,7 +49,7 @@ export async function POST(req: Request) {
           text = mockAssistantReply(body.data.message);
           for (let i = 0; i < text.length; i += 60) { send({ type: "delta", text: text.slice(i, i + 60) }); await new Promise((r) => setTimeout(r, 12)); }
         } else {
-          const result = await resolved.provider.generate(resolved.config.model, {
+          const result = await generateWithFallback(resolved, {
             system: ASSISTANT_SYSTEM,
             messages,
             maxOutput: 4000,

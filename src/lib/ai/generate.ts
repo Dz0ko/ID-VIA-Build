@@ -10,7 +10,7 @@ import {
   extractHtml,
   parseFileManifest,
 } from "./prompts";
-import { classifyTask, resolveModel, tierForTask, type TaskClass } from "./router";
+import { classifyTask, generateWithFallback, resolveModel, tierForTask, type TaskClass } from "./router";
 import type { InputImage } from "./provider";
 import { estimateUsd } from "./cost";
 
@@ -92,7 +92,7 @@ export async function runAgent(opts: RunOptions) {
   });
 
   try {
-    const result = await resolved.provider.generate(resolved.config.model, {
+    const result = await generateWithFallback(resolved, {
       system,
       messages: [{ role: "user", content: userPrompt }],
       images: opts.images,
@@ -102,9 +102,10 @@ export async function runAgent(opts: RunOptions) {
       signal: opts.signal,
     });
     const usage = {
+      model: result.model, // the model that actually answered (may differ after a provider fallback)
       inputTokens: result.inputTokens,
       outputTokens: result.outputTokens,
-      costUsd: resolved.provider.id === "mock" ? 0 : estimateUsd(result.model, result),
+      costUsd: resolved.provider.id === "mock" && !result.fellBack ? 0 : estimateUsd(result.model, result),
     };
 
     if (agent.mode === "rewrite" && isApp) {
