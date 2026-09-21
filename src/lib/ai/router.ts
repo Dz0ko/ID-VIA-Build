@@ -98,6 +98,17 @@ export async function generateWithFallback(resolved: ResolvedModel, input: Gener
   }
 }
 
+/** Turn provider SDK errors into a message safe to show users. */
+export function friendlyAiError(e: unknown): string {
+  const err = e as { status?: number; message?: string };
+  const msg = err?.message ?? "";
+  if (isAccountOrCapacityError(e) || /no credits remaining|insufficient_quota|billing/i.test(msg)) {
+    return "The AI providers are temporarily unavailable. Your credits were refunded; please try again in a few minutes.";
+  }
+  if (err?.status === 400) return "The request could not be processed by the model. Try a shorter or clearer prompt.";
+  return msg.length > 200 ? "Generation failed. Your credits were refunded." : msg || "Generation failed.";
+}
+
 /** Resolve a tier to a concrete model + provider, falling back to mock when no key is set. */
 export async function resolveModel(tier: ModelTier): Promise<ResolvedModel> {
   const settings = await getSettings();

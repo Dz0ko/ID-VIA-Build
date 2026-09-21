@@ -10,7 +10,7 @@ import {
   extractHtml,
   parseFileManifest,
 } from "./prompts";
-import { classifyTask, generateWithFallback, resolveModel, tierForTask, type TaskClass } from "./router";
+import { classifyTask, friendlyAiError, generateWithFallback, resolveModel, tierForTask, type TaskClass } from "./router";
 import type { InputImage } from "./provider";
 import { estimateUsd } from "./cost";
 
@@ -146,7 +146,8 @@ export async function runAgent(opts: RunOptions) {
     opts.onEvent?.({ type: "done", mode: "report", report: result.text, creditsUsed: credits });
     return { mode: "report" as const, report: result.text, credits };
   } catch (err) {
-    const message = err instanceof Error ? err.message : "Generation failed";
+    const message = friendlyAiError(err);
+    console.error("[agent run failed]", err instanceof Error ? err.message : err);
     await refundCredits(opts.userId, credits, `refund:${agent.id}`, project.id);
     await db.agentRun.update({ where: { id: run.id }, data: { status: "FAILED", finishedAt: new Date(), output: message, creditsUsed: 0 } });
     opts.onEvent?.({ type: "error", message });

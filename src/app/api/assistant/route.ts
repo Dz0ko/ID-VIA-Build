@@ -3,7 +3,7 @@ import { db } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { json, withUser } from "@/lib/api";
 import { ASSISTANT_SYSTEM, mockAssistantReply } from "@/lib/assistant";
-import { generateWithFallback, resolveModel, tierForTask } from "@/lib/ai/router";
+import { friendlyAiError, generateWithFallback, resolveModel, tierForTask } from "@/lib/ai/router";
 import { estimateCredits, InsufficientCredits, refundCredits, reserveCredits } from "@/lib/credits";
 import { rateLimit } from "@/lib/security";
 
@@ -63,7 +63,7 @@ export async function POST(req: Request) {
         send({ type: "done", id: saved.id, content: text, credits });
       } catch (e) {
         if (e instanceof InsufficientCredits) send({ type: "error", message: `Not enough credits (need ${e.needed}, have ${e.have}).` });
-        else { await refundCredits(user.id, credits, "refund:assistant"); send({ type: "error", message: e instanceof Error ? e.message : "Failed" }); }
+        else { await refundCredits(user.id, credits, "refund:assistant"); send({ type: "error", message: friendlyAiError(e) }); }
       } finally {
         controller.close();
       }
