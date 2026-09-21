@@ -24,6 +24,9 @@ model User {
   plan           String   @default("FREE") // FREE | STARTER | PRO | MAX | AGENCY
   credits        Int      @default(100)
   creditsResetAt DateTime @default(now())
+  /// Marketplace earnings (USD cents) not yet paid out, and total paid out.
+  sellerBalanceCents Int  @default(0)
+  sellerPaidOutCents Int  @default(0)
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
@@ -31,6 +34,8 @@ model User {
   ledger      CreditLedger[]
   memberships Membership[]
   agentRuns   AgentRun[]
+  purchases   Purchase[] @relation("buyer")
+  sales       Purchase[] @relation("seller")
 }
 
 model Project {
@@ -213,10 +218,35 @@ model MarketItem {
   price       Int      @default(0) // USD cents; 0 = free
   authorId    String
   authorName  String
-  payload     String // JSON: { html } | { prompt } | { agent: {...} }
+  payload     String // JSON: { html } | { files } | { prompt } | { agent: {...} }  — never sent to non-buyers
+  previewHtml String? // sanitised, script-free render for the public preview (websites only)
   installs    Int      @default(0)
+  sales       Int      @default(0)
   published   Boolean  @default(true)
   createdAt   DateTime @default(now())
+
+  purchases Purchase[]
+}
+
+/// A marketplace order. Paid through Whop; the platform keeps MARKETPLACE_FEE_PCT.
+model Purchase {
+  id             String    @id @default(cuid())
+  itemId         String
+  item           MarketItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  buyerId        String
+  buyer          User      @relation("buyer", fields: [buyerId], references: [id], onDelete: Cascade)
+  sellerId       String
+  seller         User      @relation("seller", fields: [sellerId], references: [id], onDelete: Cascade)
+  priceCents     Int
+  feeCents       Int // platform fee
+  sellerCents    Int // credited to seller balance when paid
+  status         String    @default("PENDING") // PENDING | PAID | REFUNDED
+  whopCheckoutId String?
+  whopPaymentId  String?   @unique
+  createdAt      DateTime  @default(now())
+  paidAt         DateTime?
+
+  @@index([buyerId, itemId])
 }
 
 model CustomAgent {

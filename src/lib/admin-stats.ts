@@ -43,6 +43,7 @@ export interface AdminStats {
     byAgent: { agentId: string; runs: number; credits: number }[];
   };
   credits: { packsGranted: number; packsCount: number; adminGranted: number; refunded: number };
+  marketplace: { listings: number; paidListings: number; orders: number; gmvCents: number; feeCents: number; payoutsOwedCents: number; paidOutCents: number };
   daily: { day: string; signups: number; projects: number; runs: number; credits: number; costUsd: number }[];
   recentUsers: { id: string; email: string; name: string | null; plan: string; credits: number; createdAt: Date; projects: number; provider: string }[];
   topUsers: { id: string; email: string; name: string | null; plan: string; credits: number; used: number }[];
@@ -60,6 +61,7 @@ export async function getAdminStats(): Promise<AdminStats> {
     runsTotal, runsDone, runsFailed, runAgg, runAgg30, byModel, byAgent,
     packs, adminGrants, refunds,
     recentSignups, recentProjects, recentRuns, recentUsers, spenders,
+    listings, paidListings, orders, sellerAgg,
   ] = await Promise.all([
     db.user.count(),
     db.user.count({ where: { createdAt: { gte: d7 } } }),
@@ -95,6 +97,10 @@ export async function getAdminStats(): Promise<AdminStats> {
       select: { id: true, email: true, name: true, plan: true, credits: true, createdAt: true, googleId: true, githubId: true, passwordHash: true, _count: { select: { projects: true } } },
     }),
     db.agentRun.groupBy({ by: ["userId"], _sum: { creditsUsed: true }, where: { status: "DONE" }, orderBy: { _sum: { creditsUsed: "desc" } }, take: 6 }),
+    db.marketItem.count({ where: { published: true } }),
+    db.marketItem.count({ where: { published: true, price: { gt: 0 } } }),
+    db.purchase.aggregate({ _count: true, _sum: { priceCents: true, feeCents: true }, where: { status: "PAID" } }),
+    db.user.aggregate({ _sum: { sellerBalanceCents: true, sellerPaidOutCents: true } }),
   ]);
 
   const byPlan = PLAN_ORDER.map((plan) => {
@@ -157,6 +163,15 @@ export async function getAdminStats(): Promise<AdminStats> {
       packsCount: packs._count,
       adminGranted: adminGrants._sum.delta ?? 0,
       refunded: refunds._sum.delta ?? 0,
+    },
+    marketplace: {
+      listings,
+      paidListings,
+      orders: orders._count,
+      gmvCents: orders._sum.priceCents ?? 0,
+      feeCents: orders._sum.feeCents ?? 0,
+      payoutsOwedCents: sellerAgg._sum.sellerBalanceCents ?? 0,
+      paidOutCents: sellerAgg._sum.sellerPaidOutCents ?? 0,
     },
     daily,
     recentUsers: recentUsers.map((u) => ({

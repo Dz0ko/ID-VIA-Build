@@ -2,6 +2,7 @@ import { db } from "@/lib/db";
 import { PLANS, isPlanId } from "@/lib/plans";
 import { extractWhop, verifyWhopSignature, whopPlanMap, type WhopWebhookEvent } from "@/lib/whop";
 import { grantCredits } from "@/lib/credits";
+import { markPurchasePaid } from "@/lib/marketplace";
 
 /**
  * Whop webhook receiver.
@@ -34,6 +35,15 @@ export async function POST(req: Request) {
   const seen = await db.webhookEvent.findUnique({ where: { id: eventId } });
   if (seen) return Response.json({ ok: true, duplicate: true });
   await db.webhookEvent.create({ data: { id: eventId, type: event.type, payload: raw } });
+
+  // Marketplace orders carry their purchase id in metadata; settle them before any user matching.
+  if (event.type === "payment.succeeded") {
+    const meta = (event.data?.metadata ?? {}) as Record<string, unknown>;
+    if (typeof meta.purchase_id === "string") {
+      const paid = await markPurchasePaid(meta.purchase_id, event.data?.id ?? null);
+      return Response.json({ ok: true, purchase: paid?.id ?? null });
+    }
+  }
 
   const { membershipId, planId, userId: whopUserId, email, status, valid } = extractWhop(event);
   const map = whopPlanMap();

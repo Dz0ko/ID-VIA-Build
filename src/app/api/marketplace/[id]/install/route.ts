@@ -3,24 +3,26 @@ import { db } from "@/lib/db";
 import { error, json, slugify, withUser } from "@/lib/api";
 import { PLANS } from "@/lib/plans";
 import { customAgentsAllowed } from "@/lib/agents-runtime";
+import { hasPurchased } from "@/lib/marketplace";
 
 const nanoid = customAlphabet("abcdefghijklmnopqrstuvwxyz0123456789", 6);
 
 /**
  * Install a marketplace item: template → new project, agent → copy into my custom agents,
- * prompt/component → returned to the client. Paid items require a Whop purchase (checkout link), v1 treats
- * items with price > 0 as "buy via Whop" and only installs free items here.
+ * prompt/component → returned to the client. Paid items require a PAID purchase (Whop) or ownership.
+ * Unpublished items stay installable for buyers who already paid.
  */
 export async function POST(_req: Request, ctx: RouteContext<"/api/marketplace/[id]/install">) {
   const { id } = await ctx.params;
   return withUser(async (user) => {
     const item = await db.marketItem.findUnique({ where: { id } });
-    if (!item || !item.published) return error("Item not found", 404);
-    if (item.price > 0 && item.authorId !== user.id) {
-      return error("Paid items are purchased through Whop. Configure a checkout link for this item first.", 402, { code: "PAID" });
-    }
+    if (!item) return error("Item not found", 404);
+    const owner = item.authorId === user.id;
+    const bought = item.price > 0 ? await hasPurchased(user.id, id) : false;
+    if (!item.published && !owner && !bought) return error("Item not found", 404);
+    if (item.price > 0 && !owner && !bought) return error("Buy this item to unlock it.", 402, { code: "PAID" });
     const payload = JSON.parse(item.payload) as Record<string, unknown>;
-    await db.marketItem.update({ where: { id }, data: { installs: { increment: 1 } } });
+    if (!bought) await db.marketItem.update({ where: { id }, data: { installs: { increment: 1 } } });
 
     if (item.type === "template") {
       const limit = PLANS[user.plan].projectLimit;
