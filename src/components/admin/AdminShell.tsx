@@ -47,7 +47,7 @@ export function AdminShell({ user, children }: { user: SessionUser; children: Re
   return (
     <div className="admin-theme h-screen flex">
       {/* Icon rail */}
-      <aside className="admin-rail w-[68px] shrink-0 relative flex flex-col">
+      <aside className="admin-rail w-[68px] shrink-0 relative flex flex-col isolate">
         <div className="h-24 grid place-items-center">
           <Link href="/admin" className="w-10 h-10 rounded-full bg-white text-black grid place-items-center font-semibold text-sm shadow-[0_0_0_4px_rgba(255,255,255,0.08)]" title="IDÆVIA admin">Æ</Link>
         </div>
@@ -73,7 +73,7 @@ export function AdminShell({ user, children }: { user: SessionUser; children: Re
       </aside>
 
       {/* Content surface */}
-      <div className="flex-1 min-w-0 flex flex-col overflow-hidden">
+      <div className="flex-1 min-w-0 flex flex-col overflow-hidden relative z-0">
         <header className="shrink-0 px-8 pt-6 pb-4 flex flex-wrap items-start justify-between gap-4">
           <div>
             <h1 className="text-2xl font-semibold tracking-tight flex items-center gap-2">Hi {firstName} <span aria-hidden>👋</span></h1>
