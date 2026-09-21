@@ -4,17 +4,22 @@ import { requireUser } from "@/lib/auth";
 import { PLANS, TIER_LABELS } from "@/lib/plans";
 import { PageHeader } from "@/components/app/PageHeader";
 import { ProfileForm } from "@/components/app/ProfileForm";
+import { ReferralCard } from "@/components/app/ReferralCard";
+import { referralStats } from "@/lib/referrals";
+import { getSettings } from "@/lib/settings";
 
 export default async function Profile() {
   const user = await requireUser();
   const plan = PLANS[user.plan];
   const monthStart = new Date(user.creditsResetAt);
-  const [projects, runs, usedAllTime, usedThisMonth, recent] = await Promise.all([
+  const [projects, runs, usedAllTime, usedThisMonth, recent, ref, settings] = await Promise.all([
     db.project.count({ where: { userId: user.id } }),
     db.agentRun.count({ where: { userId: user.id, status: "DONE" } }),
     db.agentRun.aggregate({ _sum: { creditsUsed: true }, where: { userId: user.id, status: "DONE" } }),
     db.agentRun.aggregate({ _sum: { creditsUsed: true }, where: { userId: user.id, status: "DONE", startedAt: { gte: monthStart } } }),
     db.project.findMany({ where: { userId: user.id }, orderBy: { updatedAt: "desc" }, take: 5, select: { id: true, name: true, kind: true, status: true, updatedAt: true } }),
+    referralStats(user.id),
+    getSettings(),
   ]);
   const used = usedThisMonth._sum.creditsUsed ?? 0;
   const pct = Math.min(100, Math.round((user.credits / plan.credits) * 100));
@@ -58,6 +63,8 @@ export default async function Profile() {
           <div className="card p-4"><div className="label">Projects</div><div className="mt-1 text-2xl font-semibold">{projects}</div><div className="mt-1 text-[11px] text-ash">{plan.projectLimit === "unlimited" ? "Unlimited on your plan" : `${plan.projectLimit} allowed on ${plan.name}`}</div></div>
           <div className="card p-4"><div className="label">Agent runs</div><div className="mt-1 text-2xl font-semibold">{runs.toLocaleString()}</div><div className="mt-1 text-[11px] text-ash">Top model: {TIER_LABELS[plan.maxTier]}</div></div>
         </section>
+
+        <ReferralCard url={ref.url} invited={ref.invited} converted={ref.converted} creditsEarned={ref.creditsEarned} rewards={settings.referral} />
 
         <ProfileForm name={user.name ?? ""} avatarUrl={user.avatarUrl ?? ""} hasPassword={user.providers.password} />
 

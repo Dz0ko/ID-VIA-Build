@@ -3,6 +3,7 @@ import { PLANS, isPlanId } from "@/lib/plans";
 import { extractWhop, verifyWhopSignature, whopPlanMap, type WhopWebhookEvent } from "@/lib/whop";
 import { grantCredits } from "@/lib/credits";
 import { markPurchasePaid } from "@/lib/marketplace";
+import { onPaidConversion } from "@/lib/referrals";
 
 /**
  * Whop webhook receiver.
@@ -87,6 +88,10 @@ export async function POST(req: Request) {
     const meta = (event.data?.metadata ?? {}) as Record<string, unknown>;
     const credits = Number(meta.credits ?? 0);
     if (credits > 0) await grantCredits(user.id, credits, "credit_pack");
+    // Plan payments (subscriptions, renewals) earn affiliate commission and the referral paid bonus.
+    const d = event.data as Record<string, unknown>;
+    const paid = Number(d.final_amount ?? d.amount_after_fees ?? d.amount ?? 0);
+    if (credits === 0 && paid > 0) await onPaidConversion(user.id, { amountCents: Math.round(paid * 100), reason: `payment:${d.id ?? eventId}` });
   }
 
   return Response.json({ ok: true });

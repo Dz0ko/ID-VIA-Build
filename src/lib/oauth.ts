@@ -1,5 +1,6 @@
 import { db } from "./db";
 import { PLANS } from "./plans";
+import { applyReferralOnSignup } from "./referrals";
 
 /**
  * Social sign-in (Google, GitHub). Whop is deliberately NOT a login provider:
@@ -130,6 +131,7 @@ export async function upsertOAuthUser(p: OAuthProvider, profile: OAuthProfile) {
       },
     });
     await db.creditLedger.create({ data: { userId: user.id, delta: PLANS.FREE.credits, reason: "signup" } });
+    await applyReferralOnSignup(user.id);
   } else if (user[idField] !== profile.providerId || (!user.avatarUrl && profile.avatarUrl)) {
     user = await db.user.update({
       where: { id: user.id },

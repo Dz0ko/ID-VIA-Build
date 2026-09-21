@@ -16,6 +16,15 @@ export interface AppSettings {
   tierMultiplier: Record<ModelTier, number>;
   creditBase: Record<"tiny" | "small" | "section" | "page" | "feature" | "fullstack", number>;
   routing: "auto" | "manual";
+  /** Referral programme rewards (credits). */
+  referral: {
+    /** Credits the new user gets for signing up through a friend's link. */
+    referredSignupCredits: number;
+    /** Credits the referrer gets when a friend signs up. */
+    referrerSignupCredits: number;
+    /** Credits the referrer gets the first time a friend buys any paid plan. */
+    referrerPaidCredits: number;
+  };
 }
 
 export const DEFAULT_SETTINGS: AppSettings = {
@@ -70,6 +79,8 @@ export const DEFAULT_SETTINGS: AppSettings = {
   tierMultiplier: { fast: 1, standard: 1.5, advanced: 3, premium: 6, frontier: 12 },
   creditBase: { tiny: 2, small: 3, section: 5, page: 10, feature: 20, fullstack: 40 },
   routing: "auto",
+  // 50 credits ≈ $0.55 of model cost: cheap acquisition; the paid bonus is worth ~1 full page.
+  referral: { referredSignupCredits: 50, referrerSignupCredits: 50, referrerPaidCredits: 300 },
 };
 
 /**
@@ -99,6 +110,7 @@ export async function getSettings(): Promise<AppSettings> {
       tiers: { ...DEFAULT_SETTINGS.tiers, ...(parsed.tiers ?? {}) },
       tierMultiplier: { ...DEFAULT_SETTINGS.tierMultiplier, ...(parsed.tierMultiplier ?? {}) },
       creditBase: { ...DEFAULT_SETTINGS.creditBase, ...(parsed.creditBase ?? {}) },
+      referral: { ...DEFAULT_SETTINGS.referral, ...(parsed.referral ?? {}) },
     };
   } catch {
     return DEFAULT_SETTINGS;

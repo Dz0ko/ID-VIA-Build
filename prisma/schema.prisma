@@ -27,6 +27,14 @@ model User {
   /// Marketplace earnings (USD cents) not yet paid out, and total paid out.
   sellerBalanceCents Int  @default(0)
   sellerPaidOutCents Int  @default(0)
+  /// Referral programme: every user has a share code; signups attribute to a user or an affiliate.
+  referralCode         String?  @unique
+  referredById         String?
+  referredBy           User?    @relation("referrals", fields: [referredById], references: [id], onDelete: SetNull)
+  referrals            User[]   @relation("referrals")
+  affiliateId          String?
+  affiliate            Affiliate? @relation(fields: [affiliateId], references: [id], onDelete: SetNull)
+  referralPaidRewarded Boolean  @default(false) // referrer already received the "friend went paid" bonus
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
@@ -36,6 +44,39 @@ model User {
   agentRuns   AgentRun[]
   purchases   Purchase[] @relation("buyer")
   sales       Purchase[] @relation("seller")
+  commissions AffiliateCommission[]
+}
+
+/// Partner links managed by admins: /r/<code>. Earns a % of every plan payment by referred users.
+model Affiliate {
+  id            String   @id @default(cuid())
+  name          String
+  code          String   @unique
+  commissionPct Float    @default(20)
+  active        Boolean  @default(true)
+  notes         String?
+  contact       String? // email / handle for payouts
+  createdAt     DateTime @default(now())
+
+  users       User[]
+  commissions AffiliateCommission[]
+}
+
+model AffiliateCommission {
+  id              String    @id @default(cuid())
+  affiliateId     String
+  affiliate       Affiliate @relation(fields: [affiliateId], references: [id], onDelete: Cascade)
+  userId          String
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  amountCents     Int // what the referred user paid
+  commissionCents Int
+  pct             Float
+  reason          String // plan:PRO, payment:pay_xxx, dev_upgrade:MAX
+  status          String    @default("PENDING") // PENDING | PAID
+  createdAt       DateTime  @default(now())
+  paidAt          DateTime?
+
+  @@index([affiliateId, status])
 }
 
 model Project {

@@ -35,6 +35,7 @@ See `.env.example`. Key values:
 
 - `ANTHROPIC_API_KEY`, `OPENAI_API_KEY` — AI providers.
 - `AI_TIER_FAST` / `AI_TIER_STANDARD` / `AI_TIER_ADVANCED` / `AI_TIER_PREMIUM` / `AI_TIER_FRONTIER` — override the Anthropic model per tier (defaults: `claude-haiku-4-5`, `claude-sonnet-5`, `claude-sonnet-5`, `claude-opus-5`, `claude-fable-5-1`). The frontier tier (Max and Agency, opt-in) can also be pointed at OpenAI's `gpt-6-astra` from Admin → Model tiers. When a tier falls back to OpenAI it uses `gpt-5.6-luna` / `gpt-5.6-terra` / `gpt-5.6-sol` / `gpt-6-astra`; `OPENAI_MODEL` overrides all of them.
+- Growth: admins create **affiliate links** (`/r/<code>`) with a commission percentage in Admin → Affiliates; every plan payment by a user who signed up through the link records a commission (owed / mark paid). Every user also has a **referral link** on their profile: the friend gets bonus credits on signup, the referrer gets credits on signup and again when the friend buys a plan (amounts editable in Admin → Referral rewards).
 - Credit costs and tier multipliers are editable in Admin → Settings; the defaults and the margin analysis live in the "Credit Economics & Plan Margins" doc in Tempo.
 - `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` — "Continue with Google" on /login. Authorized redirect URI: `${APP_URL}/api/auth/google/callback`.
 - `GITHUB_CLIENT_ID` / `GITHUB_CLIENT_SECRET` — "Continue with GitHub". Callback URL: `${APP_URL}/api/auth/github/callback`.

@@ -5,6 +5,7 @@ import { Shell } from "@/components/app/Shell";
 import { PageHeader } from "@/components/app/PageHeader";
 import { AdminOverview } from "@/components/app/AdminOverview";
 import { AdminPanel } from "@/components/app/AdminPanel";
+import { AffiliatesPanel } from "@/components/app/AffiliatesPanel";
 
 export const dynamic = "force-dynamic";
 
@@ -18,6 +19,10 @@ export default async function Admin() {
       <PageHeader title="Admin" subtitle="Business overview, users, plans, models and credits" />
       <div className="flex-1 overflow-y-auto p-6 space-y-10">
         <AdminOverview s={stats} />
+        <div>
+          <h2 className="text-sm font-medium mb-4">Growth: affiliates and referrals</h2>
+          <AffiliatesPanel />
+        </div>
         <div>
           <h2 className="text-sm font-medium mb-4">Configuration</h2>
           <AdminPanel />

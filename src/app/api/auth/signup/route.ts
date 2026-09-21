@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import { createSession, hashPassword } from "@/lib/auth";
 import { error, json } from "@/lib/api";
 import { PLANS } from "@/lib/plans";
+import { applyReferralOnSignup } from "@/lib/referrals";
 
 const schema = z.object({
   email: z.string().email(),
@@ -26,6 +27,7 @@ export async function POST(req: Request) {
     },
   });
   await db.creditLedger.create({ data: { userId: user.id, delta: PLANS.FREE.credits, reason: "signup" } });
+  await applyReferralOnSignup(user.id);
   await createSession(user.id);
   return json({ ok: true });
 }

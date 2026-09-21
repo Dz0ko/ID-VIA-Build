@@ -61,6 +61,14 @@ export function AdminPanel() {
           })}
         </div>
         <div>
+          <div className="label mb-2">Referral rewards (credits)</div>
+          <div className="grid grid-cols-3 gap-2 text-xs">
+            <label><span className="label">New user gets on signup</span><input type="number" min={0} className="input mt-1 py-1" value={settings.referral.referredSignupCredits} onChange={(e) => setSettings({ ...settings, referral: { ...settings.referral, referredSignupCredits: Number(e.target.value) } })} /></label>
+            <label><span className="label">Referrer gets per signup</span><input type="number" min={0} className="input mt-1 py-1" value={settings.referral.referrerSignupCredits} onChange={(e) => setSettings({ ...settings, referral: { ...settings.referral, referrerSignupCredits: Number(e.target.value) } })} /></label>
+            <label><span className="label">Referrer gets when friend goes paid</span><input type="number" min={0} className="input mt-1 py-1" value={settings.referral.referrerPaidCredits} onChange={(e) => setSettings({ ...settings, referral: { ...settings.referral, referrerPaidCredits: Number(e.target.value) } })} /></label>
+          </div>
+        </div>
+        <div>
           <div className="label mb-2">Base credit cost per task class</div>
           <div className="grid grid-cols-3 md:grid-cols-6 gap-2 text-xs">
             {(Object.keys(settings.creditBase) as (keyof AppSettings["creditBase"])[]).map((k) => (
