@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { PLAN_ORDER, PLANS, type PlanId } from "@/lib/plans";
 
-export function PlanSwitcher({ current, whopEnabled, checkout }: { current: PlanId; whopEnabled: boolean; checkout: Partial<Record<PlanId, string | null>> }) {
+export function PlanSwitcher({ current, whopEnabled, checkout }: { current: PlanId; whopEnabled: boolean; checkout: Partial<Record<PlanId, boolean>> }) {
   const router = useRouter();
   const [busy, setBusy] = useState<PlanId | null>(null);
   async function devSwitch(plan: PlanId) {
@@ -27,7 +27,7 @@ export function PlanSwitcher({ current, whopEnabled, checkout }: { current: Plan
               <span className="pill mt-3 self-start text-signal-soft border-signal">Current plan</span>
             ) : whopEnabled ? (
               id === "FREE" ? <span className="text-[11px] text-ash mt-3">Cancel in Whop to return to Free</span> : (
-                <a href={checkout[id] ? `/api/billing/checkout?plan=${id}` : "#"} className={`btn btn-sm mt-3 ${checkout[id] ? "btn-primary" : "btn-outline opacity-60"}`}>{checkout[id] ? "Upgrade via Whop" : "Checkout link not set"}</a>
+                <a href={checkout[id] ? `/api/billing/checkout?plan=${id}` : "#"} className={`btn btn-sm mt-3 ${checkout[id] ? "btn-primary" : "btn-outline opacity-60"}`}>{checkout[id] ? "Upgrade via Whop" : "Payments not configured"}</a>
               )
             ) : (
               <button disabled={busy !== null} onClick={() => devSwitch(id)} className="btn btn-outline btn-sm mt-3">{busy === id ? "…" : "Switch (dev)"}</button>

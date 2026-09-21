@@ -47,11 +47,15 @@ export async function POST(req: Request) {
   }
 
   const { membershipId, planId, userId: whopUserId, email, status, valid } = extractWhop(event);
+  const meta = (event.data?.metadata ?? {}) as Record<string, unknown>;
+  // Plan: from checkout metadata (API-created checkouts) or the static plan-id map (checkout links).
   const map = whopPlanMap();
-  const mapped = planId ? map[planId] : undefined;
+  const metaPlan = typeof meta.idaevia_plan === "string" && isPlanId(meta.idaevia_plan) ? meta.idaevia_plan : undefined;
+  const mapped = metaPlan ?? (planId ? map[planId] : undefined);
 
-  // Find our user by Whop id, then by email.
-  let user = whopUserId ? await db.user.findUnique({ where: { whopUserId } }) : null;
+  // Find our user: by our own id from checkout metadata, then Whop id, then email.
+  let user = typeof meta.idaevia_user_id === "string" ? await db.user.findUnique({ where: { id: meta.idaevia_user_id } }) : null;
+  if (!user && whopUserId) user = await db.user.findUnique({ where: { whopUserId } });
   if (!user && email) user = await db.user.findUnique({ where: { email: email.toLowerCase() } });
   if (!user && email) {
     // Pre-create the account so the plan is ready when they sign in with Whop.
@@ -85,7 +89,6 @@ export async function POST(req: Request) {
     const stillActive = await db.membership.findFirst({ where: { userId: user.id, status: "active" }, orderBy: { updatedAt: "desc" } });
     await db.user.update({ where: { id: user.id }, data: { plan: stillActive?.plan ?? "FREE" } });
   } else if (type === "payment.succeeded") {
-    const meta = (event.data?.metadata ?? {}) as Record<string, unknown>;
     const credits = Number(meta.credits ?? 0);
     if (credits > 0) await grantCredits(user.id, credits, "credit_pack");
     // Plan payments (subscriptions, renewals) earn affiliate commission and the referral paid bonus.

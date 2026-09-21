@@ -39,12 +39,11 @@ See `.env.example`. Key values:
 - Credit costs and tier multipliers are editable in Admin → Settings; the defaults and the margin analysis live in the "Credit Economics & Plan Margins" doc in Tempo.
 - `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` — "Continue with Google" on /login. Authorized redirect URI: `${APP_URL}/api/auth/google/callback`.
 - `GITHUB_CLIENT_ID` / `GITHUB_CLIENT_SECRET` — "Continue with GitHub". Callback URL: `${APP_URL}/api/auth/github/callback`.
-- Whop is the payment processor only (no Whop login). `WHOP_APP_ID` identifies the Whop app for checkout.
-- `WHOP_API_KEY` + `WHOP_COMPANY_ID` — marketplace sales. Each purchase creates a one-time Whop checkout (`POST /api/v1/checkout_configurations`) with the order id in `metadata.purchase_id`; the `payment.succeeded` webhook unlocks the item for the buyer and credits 90% to the seller's balance (10% platform fee). Without these keys, local dev simulates payments.
-- `WHOP_WEBHOOK_SECRET` — webhook endpoint: `${APP_URL}/api/webhooks/whop` (events: `membership.activated`, `membership.deactivated`, `payment.succeeded`).
-- `WHOP_PLAN_MAP` — JSON map of Whop plan ids → `STARTER | PRO | MAX | AGENCY`.
-- `WHOP_CHECKOUT_*` — checkout links per plan (used by `/pricing` and Settings).
-- Credit packs: sell them as Whop products with `metadata.credits = 500` etc.; the webhook grants the credits on `payment.succeeded`.
+- Whop is the payment processor only (no Whop login). Nothing is created in the Whop dashboard by hand.
+- `WHOP_API_KEY` + `WHOP_COMPANY_ID` — every plan, credit pack and marketplace order is created on the fly with `POST /api/v1/checkout_configurations` (inline plan; products are upserted by `external_identifier`, e.g. `idaevia-plan-pro`, `idaevia-pack-1500`, `idaevia-market-<item>`). Our user id and what was bought travel in `metadata` (`idaevia_user_id`, `idaevia_plan`, `credits`, `purchase_id`).
+- `WHOP_WEBHOOK_SECRET` — webhook endpoint: `${APP_URL}/api/webhooks/whop` (events: `membership.activated`, `membership.deactivated`, `payment.succeeded`). Memberships set the plan and grant the plan's credits; `payment.succeeded` grants pack credits, settles marketplace orders (90% to the seller, 10% platform fee) and pays affiliate commissions.
+- Legacy fallback (optional): `WHOP_CHECKOUT_*` static checkout links + `WHOP_PLAN_MAP` (Whop plan id → `STARTER | PRO | MAX | AGENCY`).
+- Without Whop keys, local dev shows a plan switcher and simulates marketplace payments.
 
 When Whop is **not** configured, Settings shows a dev plan switcher so you can test every plan locally.
 

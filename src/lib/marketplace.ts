@@ -1,4 +1,5 @@
 import { db } from "./db";
+import { createWhopCheckoutSession } from "./whop";
 
 /** Platform commission on every marketplace sale, in percent. */
 export const MARKETPLACE_FEE_PCT = 10;
@@ -73,29 +74,18 @@ export async function createWhopCheckout(opts: {
   buyerEmail: string;
   appUrl: string;
 }): Promise<{ checkoutId: string; url: string }> {
-  const base = process.env.WHOP_API_BASE ?? "https://api.whop.com/api/v1";
-  const res = await fetch(`${base}/checkout_configurations`, {
-    method: "POST",
-    headers: { Authorization: `Bearer ${process.env.WHOP_API_KEY}`, "Content-Type": "application/json" },
-    body: JSON.stringify({
-      mode: "payment",
-      plan: {
-        company_id: process.env.WHOP_COMPANY_ID,
-        currency: "usd",
-        plan_type: "one_time",
-        initial_price: priceCentsToUsd(opts.priceCents),
-        renewal_price: 0,
-        title: opts.title,
-        product: { external_identifier: `idaevia-market-${opts.itemId}`, title: opts.title, description: opts.description.slice(0, 500), collect_shipping_address: false },
-      },
-      metadata: { purchase_id: opts.purchaseId, market_item_id: opts.itemId, idaevia_user_id: opts.buyerId, email: opts.buyerEmail },
-      redirect_url: `${opts.appUrl}/app/marketplace?purchase=${opts.purchaseId}`,
-    }),
+  return createWhopCheckoutSession({
+    plan: {
+      plan_type: "one_time",
+      billing_period: null,
+      initial_price: priceCentsToUsd(opts.priceCents),
+      renewal_price: 0,
+      title: opts.title,
+      product: { external_identifier: `idaevia-market-${opts.itemId}`, title: opts.title, description: opts.description.slice(0, 500), collect_shipping_address: false },
+    },
+    metadata: { purchase_id: opts.purchaseId, market_item_id: opts.itemId, idaevia_user_id: opts.buyerId, email: opts.buyerEmail },
+    redirect_url: `${opts.appUrl}/app/marketplace?purchase=${opts.purchaseId}`,
   });
-  if (!res.ok) throw new Error(`Whop checkout failed (${res.status}): ${await res.text()}`);
-  const data = (await res.json()) as { id: string; purchase_url?: string };
-  const url = data.purchase_url ? (data.purchase_url.startsWith("http") ? data.purchase_url : `https://whop.com${data.purchase_url}`) : `https://whop.com/checkout/${data.id}/`;
-  return { checkoutId: data.id, url };
 }
 
 function priceCentsToUsd(cents: number) {

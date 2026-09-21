@@ -1,7 +1,7 @@
 import { db } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
 import { PLANS, CREDIT_PACKS } from "@/lib/plans";
-import { checkoutUrl, whopConfigured } from "@/lib/whop";
+import { planPurchasable, whopApiConfigured, whopConfigured } from "@/lib/whop";
 import { providerStatus } from "@/lib/ai/router";
 import { PageHeader } from "@/components/app/PageHeader";
 import { PlanSwitcher } from "@/components/app/PlanSwitcher";
@@ -21,14 +21,26 @@ export default async function Settings({ searchParams }: PageProps<"/app/setting
       <PageHeader title="Settings & billing" subtitle={user.email} />
       <div className="flex-1 overflow-y-auto p-6 space-y-8">
         {sp.error === "checkout_not_configured" && (
-          <div className="rounded-lg border border-warning/40 bg-warning/10 px-4 py-3 text-sm text-warning">Checkout link for plan {String(sp.plan)} is not configured. Set <code className="font-mono">WHOP_CHECKOUT_{String(sp.plan)}</code> in .env.</div>
+          <div className="rounded-lg border border-warning/40 bg-warning/10 px-4 py-3 text-sm text-warning">Payments are not configured yet. Set <code className="font-mono">WHOP_API_KEY</code> and <code className="font-mono">WHOP_COMPANY_ID</code> in the environment.</div>
+        )}
+        {sp.error === "checkout_failed" && (
+          <div className="rounded-lg border border-error/40 bg-error/10 px-4 py-3 text-sm text-error">We could not open the checkout. Please try again in a minute.</div>
+        )}
+        {sp.error === "pack_needs_plan" && (
+          <div className="rounded-lg border border-warning/40 bg-warning/10 px-4 py-3 text-sm text-warning">Credit packs are available on paid plans. Choose a plan first.</div>
+        )}
+        {sp.checkout === "plan" && (
+          <div className="rounded-lg border border-success/40 bg-success/10 px-4 py-3 text-sm text-success">Thanks! Your {String(sp.plan)} plan activates within a minute after Whop confirms the payment. Refresh this page.</div>
+        )}
+        {sp.checkout === "pack" && (
+          <div className="rounded-lg border border-success/40 bg-success/10 px-4 py-3 text-sm text-success">Thanks! {String(sp.credits)} credits are added within a minute after Whop confirms the payment.</div>
         )}
         <section>
           <div className="flex items-center justify-between mb-3">
             <h2 className="text-sm font-medium">Plan</h2>
             <span className="text-xs text-ash">{whop ? "Billing by Whop" : "Dev mode: plan switching enabled (admins / local only)"}</span>
           </div>
-          <PlanSwitcher current={user.plan} whopEnabled={whop} checkout={{ STARTER: checkoutUrl("STARTER"), PRO: checkoutUrl("PRO"), MAX: checkoutUrl("MAX"), AGENCY: checkoutUrl("AGENCY") }} />
+          <PlanSwitcher current={user.plan} whopEnabled={whop} checkout={{ STARTER: planPurchasable("STARTER"), PRO: planPurchasable("PRO"), MAX: planPurchasable("MAX"), AGENCY: planPurchasable("AGENCY") }} />
         </section>
 
         <section className="grid md:grid-cols-3 gap-4">
@@ -37,9 +49,15 @@ export default async function Settings({ searchParams }: PageProps<"/app/setting
             <div className="text-3xl font-semibold mt-1">{user.credits.toLocaleString()}</div>
             <div className="text-xs text-ash">of {plan.credits.toLocaleString()} monthly · resets {new Date(new Date(user.creditsResetAt).setMonth(new Date(user.creditsResetAt).getMonth() + 1)).toLocaleDateString()}</div>
             <div className="mt-4 grid grid-cols-2 gap-2">
-              {CREDIT_PACKS.map((c) => <div key={c.credits} className="border border-graphite rounded-lg p-2 text-xs"><div className="font-medium">{c.credits.toLocaleString()} cr</div><div className="text-ash">${c.price}</div></div>)}
+              {CREDIT_PACKS.map((c) =>
+                whopApiConfigured() && user.plan !== "FREE" ? (
+                  <a key={c.credits} href={`/api/billing/pack?credits=${c.credits}`} className="border border-graphite hover:border-signal rounded-lg p-2 text-xs transition-colors"><div className="font-medium">{c.credits.toLocaleString()} cr</div><div className="text-ash">${c.price} · Buy</div></a>
+                ) : (
+                  <div key={c.credits} className="border border-graphite rounded-lg p-2 text-xs opacity-70"><div className="font-medium">{c.credits.toLocaleString()} cr</div><div className="text-ash">${c.price}</div></div>
+                ),
+              )}
             </div>
-            <p className="text-[11px] text-ash mt-2">Top-ups are sold as Whop products; the webhook grants credits from <code className="font-mono">metadata.credits</code>.</p>
+            <p className="text-[11px] text-ash mt-2">{user.plan === "FREE" ? "Top-ups are available on paid plans." : "One-time top-ups paid via Whop. Credits are added automatically after payment."}</p>
           </div>
           <div className="card p-5">
             <div className="label">AI providers</div>

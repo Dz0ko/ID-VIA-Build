@@ -76,6 +76,7 @@ export default async function Pricing() {
                     <li>≈ {Math.round(c.credits / CREDIT_GUIDE.smallEdit)} small edits</li>
                     <li>≈ {Math.max(1, Math.round(c.credits / CREDIT_GUIDE.fullstack))} full-stack features</li>
                   </ul>
+                  <Link href={`/api/billing/pack?credits=${c.credits}`} className={`btn btn-sm mt-4 ${i === 2 ? "btn-primary" : "btn-outline"}`}>Buy {c.credits.toLocaleString()} credits</Link>
                 </div>
               );
             })}
