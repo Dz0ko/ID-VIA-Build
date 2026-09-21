@@ -4,6 +4,9 @@ import { ArrowLeft, ArrowRight, Clock, Lightbulb } from "lucide-react";
 import { PageHeader } from "@/components/app/PageHeader";
 import { UseInProject } from "@/components/app/UseInProject";
 import { adjacentLessons, getLesson, lessonsByGroup, type LessonBlock } from "@/lib/learn";
+import { requireUser } from "@/lib/auth";
+import { planAtLeast } from "@/lib/agents";
+import { LearnLocked } from "@/components/app/LearnLocked";
 
 function Block({ b }: { b: LessonBlock }) {
   switch (b.type) {
@@ -51,6 +54,17 @@ export default async function LessonPage({ params }: PageProps<"/app/learn/[id]"
   const { id } = await params;
   const lesson = getLesson(id);
   if (!lesson) notFound();
+  const user = await requireUser();
+  if (!planAtLeast(user.plan, "STARTER")) {
+    return (
+      <>
+        <PageHeader title={lesson.title} subtitle={`${lesson.group} · Lesson ${lesson.order} · ${lesson.minutes} min`}>
+          <Link href="/app/learn" className="btn btn-ghost btn-sm"><ArrowLeft size={13} />All lessons</Link>
+        </PageHeader>
+        <div className="flex-1 overflow-y-auto p-6"><div className="max-w-3xl mx-auto space-y-4"><h1 className="text-2xl font-semibold tracking-tight">{lesson.title}</h1><p className="text-fog">{lesson.summary}</p><LearnLocked /></div></div>
+      </>
+    );
+  }
   const { prev, next } = adjacentLessons(id);
   const groups = lessonsByGroup();
 

@@ -3,11 +3,12 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
-  LayoutDashboard, FolderKanban, LayoutTemplate, Sparkles, Bot, Blocks, Wand2, Rocket, Settings, ShieldCheck, LogOut, CreditCard, Import, Store, Users, Sparkle, UserRound, GraduationCap,
+  LayoutDashboard, FolderKanban, LayoutTemplate, Sparkles, Bot, Blocks, Wand2, Rocket, Settings, ShieldCheck, LogOut, CreditCard, Import, Store, Users, Sparkle, UserRound, GraduationCap, Lock,
 } from "lucide-react";
 import { Logo } from "@/components/Logo";
 import type { SessionUser } from "@/lib/auth";
 import { PLANS } from "@/lib/plans";
+import { planAtLeast } from "@/lib/agents";
 
 const NAV = [
   { href: "/app", label: "Dashboard", icon: LayoutDashboard, exact: true },
@@ -20,11 +21,11 @@ const NAV = [
   { href: "/app/components", label: "Components", icon: Blocks },
   { href: "/app/effects", label: "Effects", icon: Wand2 },
   { href: "/app/marketplace", label: "Marketplace", icon: Store },
-  { href: "/app/learn", label: "Learn", icon: GraduationCap },
   { href: "/app/deployments", label: "Deployments", icon: Rocket },
   { href: "/app/teams", label: "Teams & clients", icon: Users },
   { href: "/app/profile", label: "Profile", icon: UserRound },
   { href: "/app/settings", label: "Settings & billing", icon: Settings },
+  { href: "/app/learn", label: "Learn", icon: GraduationCap, minPlan: "STARTER" as const },
 ];
 
 export function Shell({ user, children }: { user: SessionUser; children: React.ReactNode }) {
@@ -50,7 +51,8 @@ export function Shell({ user, children }: { user: SessionUser; children: React.R
             return (
               <Link key={n.href} href={n.href} className={`flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition ${active ? "bg-graphite text-paper" : "text-fog hover:bg-ink hover:text-paper"}`}>
                 <Icon size={16} className={active ? "text-signal-soft" : "text-ash"} />
-                {n.label}
+                <span className="flex-1">{n.label}</span>
+                {"minPlan" in n && n.minPlan && !planAtLeast(user.plan, n.minPlan) && <Lock size={12} className="text-ash" />}
               </Link>
             );
           })}

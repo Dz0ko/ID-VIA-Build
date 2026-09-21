@@ -1,10 +1,15 @@
 import Link from "next/link";
-import { GraduationCap, Clock, ArrowRight } from "lucide-react";
+import { GraduationCap, Clock, ArrowRight, Lock } from "lucide-react";
 import { PageHeader } from "@/components/app/PageHeader";
 import { GLOSSARY, LESSONS, lessonsByGroup } from "@/lib/learn";
+import { requireUser } from "@/lib/auth";
+import { planAtLeast } from "@/lib/agents";
+import { LearnLocked } from "@/components/app/LearnLocked";
 
-export default function LearnPage() {
+export default async function LearnPage() {
+  const user = await requireUser();
   const groups = lessonsByGroup();
+  const unlocked = planAtLeast(user.plan, "STARTER");
   const total = LESSONS.reduce((s, l) => s + l.minutes, 0);
   return (
     <>
@@ -16,7 +21,11 @@ export default function LearnPage() {
             <h2 className="mt-2 text-2xl font-semibold tracking-tight">From “what is a website?” to a published product.</h2>
             <p className="mt-2 text-sm text-fog max-w-xl">{LESSONS.length} short lessons, about {Math.round(total / 60 * 10) / 10} hours in total. Every lesson explains the words you will hear from developers and designers, then gives you something to try in the builder right away.</p>
             <div className="mt-4 flex gap-2">
-              <Link href={`/app/learn/${LESSONS[0].id}`} className="btn btn-signal btn-sm">Start lesson 1<ArrowRight size={13} /></Link>
+              {unlocked ? (
+                <Link href={`/app/learn/${LESSONS[0].id}`} className="btn btn-signal btn-sm">Start lesson 1<ArrowRight size={13} /></Link>
+              ) : (
+                <Link href="/pricing" className="btn btn-signal btn-sm">Unlock with Starter, $19/mo<ArrowRight size={13} /></Link>
+              )}
               <a href="#glossary" className="btn btn-outline btn-sm">Glossary ({GLOSSARY.length} terms)</a>
             </div>
           </div>
@@ -27,16 +36,21 @@ export default function LearnPage() {
           </div>
         </section>
 
+        {!unlocked && <LearnLocked />}
+
         {groups.map((g, gi) => (
           <section key={g.group}>
             <div className="flex items-baseline gap-3 mb-3"><span className="font-mono text-xs text-ash">0{gi + 1}</span><h3 className="text-sm font-medium">{g.group}</h3></div>
             <div className="grid sm:grid-cols-2 xl:grid-cols-3 gap-3">
               {g.lessons.map((l) => (
-                <Link key={l.id} href={`/app/learn/${l.id}`} className="card p-4 flex flex-col gap-2 hover:border-signal transition group">
+                <Link key={l.id} href={unlocked ? `/app/learn/${l.id}` : "/pricing"} className={`card p-4 flex flex-col gap-2 hover:border-signal transition group ${unlocked ? "" : "opacity-80"}`}>
                   <div className="flex items-center justify-between text-[11px] text-ash"><span className="font-mono">Lesson {l.order}</span><span className="flex items-center gap-1"><Clock size={11} />{l.minutes} min</span></div>
                   <div className="text-sm font-medium group-hover:text-signal-soft transition">{l.title}</div>
                   <p className="text-xs text-ash flex-1">{l.summary}</p>
-                  {l.blocks.some((b) => b.type === "try") && <span className="pill self-start text-[10px] border-signal/40 text-signal-soft">Hands-on</span>}
+                  <div className="flex gap-1.5">
+                    {l.blocks.some((b) => b.type === "try") && <span className="pill text-[10px] border-signal/40 text-signal-soft">Hands-on</span>}
+                    {!unlocked && <span className="pill text-[10px]"><Lock size={9} className="mr-1" />Starter</span>}
+                  </div>
                 </Link>
               ))}
             </div>

@@ -68,7 +68,7 @@ export const PLANS: Record<PlanId, Plan> = {
     projectLimit: 15,
     maxTier: "standard",
     rolloverPct: 0,
-    highlights: ["Screenshot and reference image to website", "Import from URL, GitHub or ZIP", "Production audit and code export", "Preview links without badge"],
+    highlights: ["Screenshot and reference image to website", "Import from URL, GitHub or ZIP", "Production audit and code export", "IDÆVIA Academy: 18 lessons and tutorials"],
     features: [
       "750 AI credits per month",
       "12 agents: adds UI, UX, Performance, Accessibility, Asset, Localization",
@@ -78,6 +78,7 @@ export const PLANS: Record<PlanId, Plan> = {
       "Effects, animations and components library",
       "Production audit (performance, SEO, accessibility, security, mobile)",
       "Code export as ZIP, preview link without badge",
+      "IDÆVIA Academy: 18 step-by-step lessons, tutorials and glossary",
       "Email support",
     ],
   },
