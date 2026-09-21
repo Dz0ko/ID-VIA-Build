@@ -4,13 +4,14 @@
   "private": true,
   "scripts": {
     "dev": "next dev -p 3737",
-    "build": "prisma generate && next build",
+    "postinstall": "prisma generate",
+    "build": "next build",
     "start": "next start -p 3737",
     "lint": "eslint src",
     "typecheck": "tsc --noEmit -p .",
-    "db:push": "prisma db push",
+    "db:push": "prisma db push --skip-generate",
     "db:seed": "tsx prisma/seed.ts",
-    "setup": "prisma generate && prisma db push && tsx prisma/seed.ts",
+    "setup": "prisma db push --skip-generate && tsx prisma/seed.ts",
     "tauri": "tauri"
   },
   "dependencies": {

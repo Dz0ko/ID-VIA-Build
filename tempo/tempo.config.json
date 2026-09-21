@@ -8,8 +8,8 @@
   },
   "apps": [
     {
-      "start": "npx next dev -p ${APP_PORT}",
-      "url": "http://localhost:${APP_PORT}"
+      "start": "npx next dev -p 3737",
+      "url": "http://localhost:3737"
     }
   ]
 }
