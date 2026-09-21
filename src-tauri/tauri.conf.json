@@ -1,0 +1,40 @@
+{
+  "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
+  "productName": "IDÆVIA Build",
+  "version": "0.1.0",
+  "identifier": "app.idaevia.build",
+  "build": {
+    "frontendDist": "https://idaevia.app",
+    "devUrl": "http://localhost:3737",
+    "beforeDevCommand": "npm run dev"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "IDÆVIA Build",
+        "width": 1440,
+        "height": 900,
+        "minWidth": 1024,
+        "minHeight": 640,
+        "resizable": true,
+        "fullscreen": false,
+        "center": true,
+        "theme": "Dark"
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ]
+  }
+}

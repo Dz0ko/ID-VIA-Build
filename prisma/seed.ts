@@ -1,0 +1,27 @@
+import { PrismaClient } from "@prisma/client";
+import bcrypt from "bcryptjs";
+
+const db = new PrismaClient();
+
+async function main() {
+  const email = (process.env.ADMIN_EMAIL ?? "admin@idaevia.app").toLowerCase();
+  const password = process.env.ADMIN_PASSWORD ?? "admin12345";
+  const existing = await db.user.findUnique({ where: { email } });
+  if (!existing) {
+    await db.user.create({
+      data: {
+        email,
+        name: "IDÆVIA Admin",
+        passwordHash: await bcrypt.hash(password, 10),
+        role: "ADMIN",
+        plan: "AGENCY",
+        credits: 15000,
+      },
+    });
+    console.log(`Created admin ${email} / ${password}`);
+  } else {
+    console.log(`Admin ${email} already exists`);
+  }
+}
+
+main().finally(() => db.$disconnect());

@@ -1,0 +1,45 @@
+{
+  "name": "ai-web-platform",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev -p 3737",
+    "build": "prisma generate && next build",
+    "start": "next start -p 3737",
+    "lint": "eslint src",
+    "typecheck": "tsc --noEmit -p .",
+    "db:push": "prisma db push",
+    "db:seed": "tsx prisma/seed.ts",
+    "setup": "prisma generate && prisma db push && tsx prisma/seed.ts",
+    "tauri": "tauri"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.127.0",
+    "@monaco-editor/react": "^4.7.0",
+    "@prisma/client": "^6.19.3",
+    "bcryptjs": "^3.0.3",
+    "jose": "^6.2.12",
+    "jszip": "^3.10.2",
+    "lucide-react": "^1.47.0",
+    "nanoid": "^6.0.1",
+    "next": "16.3.5",
+    "openai": "^7.20.0",
+    "react": "19.2.8",
+    "react-dom": "19.2.8",
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4",
+    "@tauri-apps/cli": "^2.11.5",
+    "@types/bcryptjs": "^2.4.6",
+    "@types/node": "^20",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "eslint": "^9",
+    "eslint-config-next": "16.3.5",
+    "prisma": "^6.19.3",
+    "tailwindcss": "^4",
+    "tsx": "^4.23.15",
+    "typescript": "^5"
+  }
+}
