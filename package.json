@@ -16,6 +16,7 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.127.0",
+    "@codesandbox/sandpack-react": "^2.20.0",
     "@monaco-editor/react": "^4.7.0",
     "@prisma/client": "^6.19.3",
     "bcryptjs": "^3.0.3",

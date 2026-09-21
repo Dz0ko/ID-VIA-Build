@@ -44,14 +44,20 @@ model Project {
   publishedHtml String?
   publishedAt   DateTime?
   templateId    String?
+  teamId        String?
+  team          Team?     @relation(fields: [teamId], references: [id], onDelete: SetNull)
+  clientStatus  String    @default("NONE") // NONE | REVIEW | CHANGES_REQUESTED | APPROVED
   memory        String    @default("{}") // JSON: brand, design DNA, decisions
-  health        String?   // JSON: last audit scores
+  health        String? // JSON: last audit scores
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
-  versions  Version[]
-  messages  Message[]
-  agentRuns AgentRun[]
+  versions   Version[]
+  messages   Message[]
+  agentRuns  AgentRun[]
+  files      ProjectFile[]
+  shareLinks ShareLink[]
+  comments   Comment[]
 }
 
 model Version {
@@ -70,7 +76,7 @@ model Message {
   id          String   @id @default(cuid())
   projectId   String
   project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  role        String   // user | assistant | system
+  role        String // user | assistant | system
   content     String
   agentId     String?
   model       String?
@@ -110,16 +116,16 @@ model Membership {
   user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   whopMembershipId String   @unique
   whopPlanId       String
-  plan             String   // mapped IDÆVIA plan
-  status           String   // active | inactive
-  raw              String?  // last webhook payload (JSON)
+  plan             String // mapped IDÆVIA plan
+  status           String // active | inactive
+  raw              String? // last webhook payload (JSON)
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
 }
 
 model Setting {
   key       String   @id
-  value     String   // JSON
+  value     String // JSON
   updatedAt DateTime @updatedAt
 }
 
@@ -128,4 +134,97 @@ model WebhookEvent {
   type      String
   payload   String
   createdAt DateTime @default(now())
+}
+
+// ---------- Phase 2: multi-file apps, teams, portal, marketplace, custom agents ----------
+
+model ProjectFile {
+  id        String   @id @default(cuid())
+  projectId String
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  path      String // e.g. "/App.tsx"
+  content   String
+  updatedAt DateTime @updatedAt
+
+  @@unique([projectId, path])
+}
+
+model Team {
+  id         String   @id @default(cuid())
+  name       String
+  slug       String   @unique
+  ownerId    String
+  whiteLabel String   @default("{}") // JSON: { brandName, logoUrl, accent, hideIdaevia }
+  createdAt  DateTime @default(now())
+
+  members  TeamMember[]
+  projects Project[]
+}
+
+model TeamMember {
+  id        String   @id @default(cuid())
+  teamId    String
+  team      Team     @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  userId    String? // null while invite is pending
+  email     String
+  role      String   @default("EDITOR") // OWNER | ADMIN | DEVELOPER | DESIGNER | EDITOR | VIEWER
+  status    String   @default("ACTIVE") // ACTIVE | PENDING
+  createdAt DateTime @default(now())
+
+  @@unique([teamId, email])
+}
+
+model ShareLink {
+  id         String    @id @default(cuid())
+  token      String    @unique
+  projectId  String
+  project    Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  label      String?
+  password   String?
+  canComment Boolean   @default(true)
+  canApprove Boolean   @default(true)
+  createdAt  DateTime  @default(now())
+  expiresAt  DateTime?
+}
+
+model Comment {
+  id         String   @id @default(cuid())
+  projectId  String
+  project    Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  authorName String
+  authorId   String?
+  body       String
+  kind       String   @default("COMMENT") // COMMENT | CHANGE_REQUEST | APPROVAL
+  resolved   Boolean  @default(false)
+  createdAt  DateTime @default(now())
+}
+
+model MarketItem {
+  id          String   @id @default(cuid())
+  type        String // template | prompt | component | agent
+  title       String
+  description String
+  category    String   @default("General")
+  price       Int      @default(0) // USD cents; 0 = free
+  authorId    String
+  authorName  String
+  payload     String // JSON: { html } | { prompt } | { agent: {...} }
+  installs    Int      @default(0)
+  published   Boolean  @default(true)
+  createdAt   DateTime @default(now())
+}
+
+model CustomAgent {
+  id           String   @id @default(cuid())
+  userId       String
+  teamId       String?
+  name         String
+  description  String   @default("")
+  systemPrompt String
+  tier         String   @default("standard") // fast | standard | advanced | premium
+  multiplier   Float    @default(2)
+  mode         String   @default("rewrite") // rewrite | report
+  isPublic     Boolean  @default(false)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 }

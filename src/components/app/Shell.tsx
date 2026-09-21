@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
-  LayoutDashboard, FolderKanban, LayoutTemplate, Sparkles, Bot, Blocks, Wand2, Rocket, Settings, ShieldCheck, LogOut, CreditCard,
+  LayoutDashboard, FolderKanban, LayoutTemplate, Sparkles, Bot, Blocks, Wand2, Rocket, Settings, ShieldCheck, LogOut, CreditCard, Import, Store, Users,
 } from "lucide-react";
 import { Logo } from "@/components/Logo";
 import type { SessionUser } from "@/lib/auth";
@@ -12,12 +12,15 @@ import { PLANS } from "@/lib/plans";
 const NAV = [
   { href: "/app", label: "Dashboard", icon: LayoutDashboard, exact: true },
   { href: "/app/projects", label: "Projects", icon: FolderKanban },
+  { href: "/app/import", label: "Import", icon: Import },
   { href: "/app/templates", label: "Templates", icon: LayoutTemplate },
   { href: "/app/prompts", label: "Prompts", icon: Sparkles },
   { href: "/app/agents", label: "Agents", icon: Bot },
   { href: "/app/components", label: "Components", icon: Blocks },
   { href: "/app/effects", label: "Effects", icon: Wand2 },
+  { href: "/app/marketplace", label: "Marketplace", icon: Store },
   { href: "/app/deployments", label: "Deployments", icon: Rocket },
+  { href: "/app/teams", label: "Teams & clients", icon: Users },
   { href: "/app/settings", label: "Settings", icon: Settings },
 ];
 

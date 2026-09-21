@@ -9,6 +9,7 @@
     "beforeDevCommand": "npm run dev"
   },
   "app": {
+    "withGlobalTauri": true,
     "windows": [
       {
         "title": "IDÆVIA Build",

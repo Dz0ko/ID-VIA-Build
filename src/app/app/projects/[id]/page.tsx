@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { db } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
 import { AGENTS, AGENT_TEAMS, agentsForPlan, minPlanForAgent } from "@/lib/agents";
+import { customAgentsAllowed, listCustomAgentsFor } from "@/lib/agents-runtime";
 import { PLANS, type PlanId } from "@/lib/plans";
 import { providerStatus } from "@/lib/ai/router";
 import { Workspace } from "@/components/app/Workspace";
@@ -16,6 +17,7 @@ export default async function ProjectPage({ params }: PageProps<"/app/projects/[
       versions: { orderBy: { number: "desc" }, select: { id: true, number: true, message: true, createdAt: true } },
       messages: { orderBy: { createdAt: "asc" }, take: 200 },
       agentRuns: { orderBy: { startedAt: "desc" }, take: 50 },
+      files: { orderBy: { path: "asc" }, select: { path: true, content: true } },
     },
   });
   if (!project) notFound();
@@ -23,6 +25,7 @@ export default async function ProjectPage({ params }: PageProps<"/app/projects/[
   const agents = [...AGENTS].sort((a, b) => a.order - b.order);
   const minPlanByAgent = Object.fromEntries(agents.map((a) => [a.id, minPlanForAgent(a)])) as Record<string, PlanId>;
   const providers = providerStatus();
+  const customAgents = await listCustomAgentsFor(user.id);
 
   return (
     <Suspense>
@@ -34,6 +37,7 @@ export default async function ProjectPage({ params }: PageProps<"/app/projects/[
           agentRuns: project.agentRuns.map((r) => ({ ...r, startedAt: r.startedAt.toISOString(), finishedAt: r.finishedAt?.toISOString() ?? null })),
         }}
         agents={agents}
+        customAgents={customAgents.map((c) => ({ id: c.id, name: c.name, description: c.description, tier: c.tier, mode: c.mode }))}
         allowedAgentIds={agentsForPlan(user.plan).map((a) => a.id)}
         minPlanByAgent={minPlanByAgent}
         teams={AGENT_TEAMS}
@@ -41,6 +45,8 @@ export default async function ProjectPage({ params }: PageProps<"/app/projects/[
         maxTier={PLANS[user.plan].maxTier}
         credits={user.credits}
         offline={!providers.anthropic && !providers.openai}
+        visionAllowed={user.plan !== "FREE"}
+        customAgentsAllowed={customAgentsAllowed(user.plan)}
       />
     </Suspense>
   );

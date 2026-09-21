@@ -1,11 +1,8 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "enables the default permissions",
-  "windows": [
-    "main"
-  ],
-  "permissions": [
-    "core:default"
-  ]
+  "description": "Default window permissions; also grants IPC to the hosted app so the real terminal works in production.",
+  "windows": ["main"],
+  "remote": { "urls": ["https://idaevia.app/*", "https://*.idaevia.app/*", "http://localhost:*/*"] },
+  "permissions": ["core:default"]
 }

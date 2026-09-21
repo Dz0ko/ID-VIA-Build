@@ -2,9 +2,16 @@ import Anthropic from "@anthropic-ai/sdk";
 import OpenAI from "openai";
 import type { ModelConfig } from "../settings";
 
+export interface InputImage {
+  mediaType: "image/png" | "image/jpeg" | "image/webp" | "image/gif";
+  data: string; // base64
+}
+
 export interface GenerateInput {
   system: string;
   messages: { role: "user" | "assistant"; content: string }[];
+  /** Optional reference images attached to the LAST user message (vision). */
+  images?: InputImage[];
   maxOutput?: number;
   effort?: ModelConfig["effort"];
   /** Optional callback for streamed text chunks. */
@@ -36,25 +43,40 @@ function anthropic() {
   return anthropicClient;
 }
 
+function anthropicMessages(input: GenerateInput): Anthropic.MessageParam[] {
+  const msgs: Anthropic.MessageParam[] = input.messages.map((m) => ({ role: m.role, content: m.content }));
+  if (input.images?.length) {
+    const last = msgs[msgs.length - 1];
+    if (last && last.role === "user" && typeof last.content === "string") {
+      msgs[msgs.length - 1] = {
+        role: "user",
+        content: [
+          ...input.images.map((img) => ({
+            type: "image" as const,
+            source: { type: "base64" as const, media_type: img.mediaType, data: img.data },
+          })),
+          { type: "text", text: last.content },
+        ],
+      };
+    }
+  }
+  return msgs;
+}
+
 export const anthropicProvider: AIProvider = {
   id: "anthropic",
   available: () => Boolean(process.env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_AUTH_TOKEN),
   async generate(model, input) {
     const client = anthropic();
-    const isFableOrOpus5 = /fable|opus-5|sonnet-5/.test(model);
+    const adaptive = /fable|opus-5|sonnet-5|opus-4-[678]|sonnet-4-6/.test(model);
     const stream = client.messages.stream(
       {
         model,
         max_tokens: input.maxOutput ?? 32000,
-        system: [
-          { type: "text", text: input.system, cache_control: { type: "ephemeral" } },
-        ],
-        messages: input.messages.map((m) => ({ role: m.role, content: m.content })),
-        ...(isFableOrOpus5 || /opus-4-[678]|sonnet-4-6/.test(model)
-          ? {
-              thinking: { type: "adaptive" as const },
-              output_config: { effort: input.effort ?? "medium" },
-            }
+        system: [{ type: "text", text: input.system, cache_control: { type: "ephemeral" } }],
+        messages: anthropicMessages(input),
+        ...(adaptive
+          ? { thinking: { type: "adaptive" as const }, output_config: { effort: input.effort ?? "medium" } }
           : {}),
       },
       { signal: input.signal },
@@ -90,16 +112,24 @@ export const openaiProvider: AIProvider = {
   available: () => Boolean(process.env.OPENAI_API_KEY),
   async generate(model, input) {
     const client = openai();
+    const messages: OpenAI.ChatCompletionMessageParam[] = [
+      { role: "system", content: input.system },
+      ...input.messages.map((m): OpenAI.ChatCompletionMessageParam => ({ role: m.role, content: m.content })),
+    ];
+    if (input.images?.length) {
+      const last = messages[messages.length - 1];
+      if (last.role === "user" && typeof last.content === "string") {
+        messages[messages.length - 1] = {
+          role: "user",
+          content: [
+            ...input.images.map((img) => ({ type: "image_url" as const, image_url: { url: `data:${img.mediaType};base64,${img.data}` } })),
+            { type: "text" as const, text: last.content },
+          ],
+        };
+      }
+    }
     const stream = await client.chat.completions.create(
-      {
-        model,
-        stream: true,
-        stream_options: { include_usage: true },
-        messages: [
-          { role: "system", content: input.system },
-          ...input.messages.map((m) => ({ role: m.role, content: m.content })),
-        ],
-      },
+      { model, stream: true, stream_options: { include_usage: true }, messages },
       { signal: input.signal },
     );
     let text = "";
@@ -126,10 +156,8 @@ export const mockProvider: AIProvider = {
   id: "mock",
   available: () => true,
   async generate(model, input) {
-    // Lazy import to avoid pulling templates into every route.
     const { mockGenerate } = await import("./mock");
     const text = await mockGenerate(input);
-    // simulate streaming
     const step = 400;
     for (let i = 0; i < text.length; i += step) {
       input.onText?.(text.slice(i, i + step));

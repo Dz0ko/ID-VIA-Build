@@ -106,6 +106,23 @@ No AI provider key is configured, so this is a deterministic placeholder generat
 `;
   }
 
+  // Multi-file React app mode
+  if (/MULTI-FILE React/i.test(input.system)) {
+    const { mockReactApp } = await import("./mock-app");
+    const req = (last.match(/REQUEST[^\n]*\n([\s\S]*)$/)?.[1] ?? last).trim();
+    const existing = Array.from(last.matchAll(/<<<FILE\s+([^\s>]+)\s*>>>\n([\s\S]*?)\n<<<END>>>/g)).map((m) => ({ path: m[1], content: m[2] }));
+    let files = existing.length ? existing : mockReactApp(req);
+    if (existing.length) {
+      const accent = accentFromPrompt(req);
+      if (accent) files = files.map((f) => ({ ...f, content: f.content.replace(/#6366f1/g, accent) }));
+      const app = files.find((f) => f.path === "/App.tsx");
+      if (app && !app.content.includes("IDÆVIA mock edit")) {
+        app.content = `// IDÆVIA mock edit: "${req.replace(/\*\//g, "")}" (connect an AI provider key for real edits)\n` + app.content;
+      }
+    }
+    return files.map((f) => `<<<FILE ${f.path}>>>\n${f.content}\n<<<END>>>`).join("\n");
+  }
+
   const htmlMatch = last.match(/<<<HTML\n([\s\S]*?)\nHTML>>>/);
   const requestMatch = last.match(/REQUEST[^\n]*\n([\s\S]*)$/);
   const request = (requestMatch ? requestMatch[1] : last).trim();

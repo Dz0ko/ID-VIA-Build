@@ -1,4 +1,5 @@
 import { cookies } from "next/headers";
+import { redirect } from "next/navigation";
 import { SignJWT, jwtVerify } from "jose";
 import bcrypt from "bcryptjs";
 import { db } from "./db";
@@ -93,9 +94,10 @@ export async function getCurrentUser(): Promise<SessionUser | null> {
   };
 }
 
+/** For server components: redirects to /login when signed out. */
 export async function requireUser(): Promise<SessionUser> {
   const u = await getCurrentUser();
-  if (!u) throw new AuthError("Not authenticated");
+  if (!u) redirect("/login?next=/app");
   return u;
 }
 

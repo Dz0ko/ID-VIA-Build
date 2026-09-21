@@ -4,6 +4,8 @@ import { AGENTS, AGENT_TEAMS, agentAllowed, minPlanForAgent } from "@/lib/agents
 import { requireUser } from "@/lib/auth";
 import { PLANS } from "@/lib/plans";
 import { PageHeader } from "@/components/app/PageHeader";
+import { CustomAgents } from "@/components/app/CustomAgents";
+import { customAgentsAllowed } from "@/lib/agents-runtime";
 
 export default async function Agents() {
   const user = await requireUser();
@@ -15,6 +17,7 @@ export default async function Agents() {
         {user.plan !== "AGENCY" && <Link href="/pricing" className="btn btn-outline btn-sm">Unlock more</Link>}
       </PageHeader>
       <div className="flex-1 overflow-y-auto p-6 space-y-10">
+        <CustomAgents allowed={customAgentsAllowed(user.plan)} userId={user.id} />
         <section>
           <h2 className="text-sm font-medium mb-3">Agent teams</h2>
           <div className="grid md:grid-cols-2 xl:grid-cols-4 gap-3">

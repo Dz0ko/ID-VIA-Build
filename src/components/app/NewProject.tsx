@@ -15,6 +15,7 @@ export function NewProject({ templates }: { templates: Template[] }) {
   const [name, setName] = useState("");
   const [prompt, setPrompt] = useState(initialPrompt);
   const [templateId, setTemplateId] = useState<string>(initialTemplate);
+  const [kind, setKind] = useState<"website" | "app">("website");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -24,7 +25,7 @@ export function NewProject({ templates }: { templates: Template[] }) {
     const res = await fetch("/api/projects", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name: name || (prompt ? prompt.slice(0, 40) : "Untitled project"), templateId: templateId || undefined, description: prompt || undefined }),
+      body: JSON.stringify({ name: name || (prompt ? prompt.slice(0, 40) : "Untitled project"), templateId: kind === "website" ? templateId || undefined : undefined, description: prompt || undefined, kind }),
     });
     const data = await res.json();
     setLoading(false);
@@ -43,12 +44,16 @@ export function NewProject({ templates }: { templates: Template[] }) {
               <h2 className="text-lg font-semibold">New project</h2>
               <p className="text-sm text-ash">Start from a prompt, a template, or both — the AI remixes the template with your prompt.</p>
             </div>
+            <div className="flex gap-2">
+              <button onClick={() => setKind("website")} className={`flex-1 text-left rounded-lg border px-3 py-2 text-xs ${kind === "website" ? "border-signal bg-graphite" : "border-graphite hover:border-ash"}`}><div className="font-medium">Website / landing page</div><div className="text-ash">Single-file HTML + Tailwind. Instant hosting on idaevia.app.</div></button>
+              <button onClick={() => setKind("app")} className={`flex-1 text-left rounded-lg border px-3 py-2 text-xs ${kind === "app" ? "border-signal bg-graphite" : "border-graphite hover:border-ash"}`}><div className="font-medium">React app / dashboard / SaaS UI</div><div className="text-ash">Multi-file React + TypeScript in a live sandbox. Export as a Vite project.</div></button>
+            </div>
             <label className="block"><span className="label">Project name</span><input className="input mt-1" value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Nimbus CRM landing" /></label>
             <label className="block">
               <span className="label flex items-center gap-1"><Sparkles size={11} />Describe what to build (optional)</span>
               <textarea className="input mt-1 min-h-28" value={prompt} onChange={(e) => setPrompt(e.target.value)} placeholder="Build a premium dark SaaS landing page for an AI CRM targeting agencies, with pricing, testimonials and FAQ…" />
             </label>
-            <div>
+            {kind === "website" && <div>
               <span className="label flex items-center gap-1"><LayoutTemplate size={11} />Template (optional)</span>
               <div className="mt-2 grid grid-cols-2 sm:grid-cols-3 gap-2 max-h-40 overflow-y-auto pr-1">
                 <button onClick={() => setTemplateId("")} className={`text-left rounded-lg border px-3 py-2 text-xs ${templateId === "" ? "border-signal bg-graphite" : "border-graphite hover:border-ash"}`}>Blank / AI from scratch</button>
@@ -58,7 +63,7 @@ export function NewProject({ templates }: { templates: Template[] }) {
                   </button>
                 ))}
               </div>
-            </div>
+            </div>}
             {error && <div className="text-sm text-error">{error}</div>}
             <div className="flex justify-end gap-2">
               <button className="btn btn-ghost btn-sm" onClick={() => setOpen(false)}>Cancel</button>

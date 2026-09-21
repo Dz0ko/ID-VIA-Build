@@ -1,9 +1,17 @@
 import { db } from "../db";
-import { AGENT_MAP } from "../agents";
 import type { PlanId, ModelTier } from "../plans";
 import { estimateCredits, refundCredits, reserveCredits } from "../credits";
-import { BUILDER_SYSTEM, buildUserPrompt, extractHtml } from "./prompts";
+import { resolveAgent } from "../agents-runtime";
+import {
+  APP_BUILDER_SYSTEM,
+  BUILDER_SYSTEM,
+  buildAppUserPrompt,
+  buildUserPrompt,
+  extractHtml,
+  parseFileManifest,
+} from "./prompts";
 import { classifyTask, resolveModel, tierForTask, type TaskClass } from "./router";
+import type { InputImage } from "./provider";
 
 export interface RunOptions {
   userId: string;
@@ -12,6 +20,7 @@ export interface RunOptions {
   request: string;
   agentId?: string; // default: builder
   requestedTier?: ModelTier;
+  images?: InputImage[];
   onEvent?: (e: RunEvent) => void;
   signal?: AbortSignal;
 }
@@ -19,81 +28,93 @@ export interface RunOptions {
 export type RunEvent =
   | { type: "meta"; agent: string; tier: ModelTier; model: string; provider: string; credits: number; taskClass: TaskClass; fallback: boolean }
   | { type: "delta"; text: string }
-  | { type: "done"; mode: "rewrite" | "report"; versionNumber?: number; html?: string; report?: string; creditsUsed: number }
+  | { type: "done"; mode: "rewrite" | "report"; versionNumber?: number; html?: string; files?: { path: string; content: string }[]; report?: string; creditsUsed: number }
   | { type: "error"; message: string };
+
+const ORDER: ModelTier[] = ["fast", "standard", "advanced", "premium"];
 
 /**
  * Run one agent against a project: classify → route → reserve credits → generate → persist.
+ * Supports single-file websites (html) and multi-file React apps (kind === "app").
  */
 export async function runAgent(opts: RunOptions) {
-  const agent = AGENT_MAP.get(opts.agentId ?? "builder");
-  if (!agent) throw new Error("Unknown agent");
+  const resolvedAgent = await resolveAgent(opts.agentId ?? "builder", opts.userId);
+  if (!resolvedAgent) throw new Error("Unknown agent");
+  const { agent } = resolvedAgent;
 
   const project = await db.project.findFirstOrThrow({
     where: { id: opts.projectId, userId: opts.userId },
+    include: { files: true },
   });
+  const isApp = project.kind === "app";
+  const hasContent = isApp ? project.files.length > 0 : Boolean(project.html && project.html.trim());
 
-  const hasHtml = Boolean(project.html && project.html.trim());
-  const taskClass: TaskClass = agent.mode === "report" ? "small" : classifyTask(opts.request, hasHtml);
-  // Tier = max(task tier, agent preferred tier), unless the user picked one; then clamp to plan.
+  const taskClass: TaskClass = agent.mode === "report" ? "small" : classifyTask(opts.request, hasContent);
   const taskTier = tierForTask(taskClass, opts.plan);
-  const order: ModelTier[] = ["fast", "standard", "advanced", "premium"];
-  const merged = order[Math.max(order.indexOf(taskTier), order.indexOf(agent.tier))];
+  const merged = ORDER[Math.max(ORDER.indexOf(taskTier), ORDER.indexOf(agent.tier))];
   const tier = tierForTask(taskClass, opts.plan, opts.requestedTier ?? merged);
+  const visionBump = opts.images?.length ? 1.5 : 1;
 
-  const credits = await estimateCredits({ taskClass, agentMultiplier: agent.multiplier, tier });
+  const credits = await estimateCredits({ taskClass, agentMultiplier: agent.multiplier * visionBump * (isApp ? 1.5 : 1), tier });
   await reserveCredits(opts.userId, credits, `agent:${agent.id}`, project.id);
 
   const resolved = await resolveModel(tier);
   const run = await db.agentRun.create({
-    data: {
-      userId: opts.userId,
-      projectId: project.id,
-      agentId: agent.id,
-      status: "RUNNING",
-      task: opts.request,
-      model: resolved.config.model,
-      creditsUsed: credits,
-    },
+    data: { userId: opts.userId, projectId: project.id, agentId: agent.id, status: "RUNNING", task: opts.request, model: resolved.config.model, creditsUsed: credits },
   });
 
-  opts.onEvent?.({
-    type: "meta",
-    agent: agent.id,
-    tier,
-    model: resolved.config.model,
-    provider: resolved.provider.id,
-    credits,
-    taskClass,
-    fallback: resolved.fallback,
-  });
+  opts.onEvent?.({ type: "meta", agent: agent.id, tier, model: resolved.config.model, provider: resolved.provider.id, credits, taskClass, fallback: resolved.fallback });
 
   let memory: Record<string, unknown> = {};
-  try {
-    memory = JSON.parse(project.memory || "{}");
-  } catch {
-    /* ignore */
-  }
+  try { memory = JSON.parse(project.memory || "{}"); } catch { /* ignore */ }
 
-  const system = agent.id === "builder" ? BUILDER_SYSTEM : agent.systemPrompt;
-  const userPrompt =
-    agent.mode === "rewrite"
-      ? buildUserPrompt({ request: opts.request, html: project.html, memory })
-      : `PROJECT: ${project.name}\n${project.description ?? ""}\n\nCURRENT DOCUMENT:\n<<<HTML\n${project.html}\nHTML>>>\n\nREQUEST:\n${opts.request}`;
+  let system: string;
+  let userPrompt: string;
+  if (agent.mode === "report") {
+    system = agent.systemPrompt;
+    const current = isApp
+      ? project.files.map((f) => `<<<FILE ${f.path}>>>\n${f.content}\n<<<END>>>`).join("\n")
+      : `<<<HTML\n${project.html}\nHTML>>>`;
+    userPrompt = `PROJECT: ${project.name}\n${project.description ?? ""}\n\nCURRENT ${isApp ? "FILES" : "DOCUMENT"}:\n${current}\n\nREQUEST:\n${opts.request}`;
+  } else if (isApp) {
+    system = agent.id === "builder" ? APP_BUILDER_SYSTEM : `${APP_BUILDER_SYSTEM}\n\nSPECIALIST ROLE:\n${agent.systemPrompt}`;
+    userPrompt = buildAppUserPrompt({ request: opts.request, files: project.files, memory });
+  } else {
+    system = agent.id === "builder" ? BUILDER_SYSTEM : agent.systemPrompt;
+    userPrompt = buildUserPrompt({ request: opts.request, html: project.html, memory });
+  }
+  if (opts.images?.length) userPrompt += `\n\n(${opts.images.length} reference image(s) attached — recreate their design faithfully.)`;
 
   await db.message.create({
-    data: { projectId: project.id, role: "user", content: opts.request, agentId: agent.id },
+    data: { projectId: project.id, role: "user", content: opts.images?.length ? `${opts.request}\n[${opts.images.length} image(s) attached]` : opts.request, agentId: agent.id },
   });
 
   try {
     const result = await resolved.provider.generate(resolved.config.model, {
       system,
       messages: [{ role: "user", content: userPrompt }],
+      images: opts.images,
       maxOutput: resolved.config.maxOutput,
       effort: resolved.config.effort,
       onText: (t) => opts.onEvent?.({ type: "delta", text: t }),
       signal: opts.signal,
     });
+
+    if (agent.mode === "rewrite" && isApp) {
+      const files = parseFileManifest(result.text, project.files);
+      if (!files.some((f) => f.path === "/App.tsx")) throw new Error("Model did not return /App.tsx.");
+      const last = await db.version.findFirst({ where: { projectId: project.id }, orderBy: { number: "desc" } });
+      const number = (last?.number ?? 0) + 1;
+      await db.$transaction([
+        db.projectFile.deleteMany({ where: { projectId: project.id } }),
+        ...files.map((f) => db.projectFile.create({ data: { projectId: project.id, path: f.path, content: f.content } })),
+        db.version.create({ data: { projectId: project.id, number, html: JSON.stringify(files), message: `${agent.name}: ${opts.request.slice(0, 120)}` } }),
+        db.message.create({ data: { projectId: project.id, role: "assistant", content: `Updated the app (v${number}, ${files.length} files) using ${agent.name}.`, agentId: agent.id, model: result.model, creditsUsed: credits } }),
+        db.agentRun.update({ where: { id: run.id }, data: { status: "DONE", finishedAt: new Date(), output: `v${number}` } }),
+      ]);
+      opts.onEvent?.({ type: "done", mode: "rewrite", versionNumber: number, files, creditsUsed: credits });
+      return { mode: "rewrite" as const, files, versionNumber: number, credits };
+    }
 
     if (agent.mode === "rewrite") {
       const html = extractHtml(result.text);
@@ -102,53 +123,24 @@ export async function runAgent(opts: RunOptions) {
       const number = (last?.number ?? 0) + 1;
       await db.$transaction([
         db.project.update({ where: { id: project.id }, data: { html } }),
-        db.version.create({
-          data: { projectId: project.id, number, html, message: `${agent.name}: ${opts.request.slice(0, 120)}` },
-        }),
-        db.message.create({
-          data: {
-            projectId: project.id,
-            role: "assistant",
-            content: `Updated the project (v${number}) using ${agent.name}.`,
-            agentId: agent.id,
-            model: result.model,
-            creditsUsed: credits,
-          },
-        }),
-        db.agentRun.update({
-          where: { id: run.id },
-          data: { status: "DONE", finishedAt: new Date(), output: `v${number}` },
-        }),
+        db.version.create({ data: { projectId: project.id, number, html, message: `${agent.name}: ${opts.request.slice(0, 120)}` } }),
+        db.message.create({ data: { projectId: project.id, role: "assistant", content: `Updated the project (v${number}) using ${agent.name}.`, agentId: agent.id, model: result.model, creditsUsed: credits } }),
+        db.agentRun.update({ where: { id: run.id }, data: { status: "DONE", finishedAt: new Date(), output: `v${number}` } }),
       ]);
       opts.onEvent?.({ type: "done", mode: "rewrite", versionNumber: number, html, creditsUsed: credits });
       return { mode: "rewrite" as const, html, versionNumber: number, credits };
     }
 
     await db.$transaction([
-      db.message.create({
-        data: {
-          projectId: project.id,
-          role: "assistant",
-          content: result.text,
-          agentId: agent.id,
-          model: result.model,
-          creditsUsed: credits,
-        },
-      }),
-      db.agentRun.update({
-        where: { id: run.id },
-        data: { status: "DONE", finishedAt: new Date(), output: result.text },
-      }),
+      db.message.create({ data: { projectId: project.id, role: "assistant", content: result.text, agentId: agent.id, model: result.model, creditsUsed: credits } }),
+      db.agentRun.update({ where: { id: run.id }, data: { status: "DONE", finishedAt: new Date(), output: result.text } }),
     ]);
     opts.onEvent?.({ type: "done", mode: "report", report: result.text, creditsUsed: credits });
     return { mode: "report" as const, report: result.text, credits };
   } catch (err) {
     const message = err instanceof Error ? err.message : "Generation failed";
     await refundCredits(opts.userId, credits, `refund:${agent.id}`, project.id);
-    await db.agentRun.update({
-      where: { id: run.id },
-      data: { status: "FAILED", finishedAt: new Date(), output: message, creditsUsed: 0 },
-    });
+    await db.agentRun.update({ where: { id: run.id }, data: { status: "FAILED", finishedAt: new Date(), output: message, creditsUsed: 0 } });
     opts.onEvent?.({ type: "error", message });
     throw err;
   }
