@@ -11,8 +11,8 @@ const ERRORS: Record<string, string> = {
   github_failed: "GitHub sign-in failed. Please try again.",
   google_state: "Google sign-in expired. Please try again.",
   github_state: "GitHub sign-in expired. Please try again.",
-  google_not_configured: "Google sign-in is not configured yet.",
-  github_not_configured: "GitHub sign-in is not configured yet.",
+  google_not_configured: "Google sign-in is not configured yet. Add GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET to .env, then restart the server.",
+  github_not_configured: "GitHub sign-in is not configured yet. Add GITHUB_CLIENT_ID and GITHUB_CLIENT_SECRET to .env, then restart the server.",
 };
 
 function GoogleIcon() {
@@ -46,7 +46,6 @@ export function AuthForm({ mode, providers }: { mode: "login" | "signup"; provid
     return e ? ERRORS[e] ?? "Sign-in failed. Please try again." : null;
   });
   const [loading, setLoading] = useState(false);
-  const social = providers.google || providers.github;
   const verb = mode === "login" ? "Continue" : "Sign up";
 
   async function submit(e: React.FormEvent) {
@@ -72,23 +71,18 @@ export function AuthForm({ mode, providers }: { mode: "login" | "signup"; provid
         <p className="text-sm text-ash mt-1">{mode === "login" ? "Log in to your workspace." : "Free plan. No card required."}</p>
       </div>
 
-      {social && (
-        <>
-          <div className="grid gap-2">
-            {providers.google && (
-              <a href={`/api/auth/google?next=${encodeURIComponent(next)}`} className="btn btn-outline w-full gap-2.5">
-                <GoogleIcon />{verb} with Google
-              </a>
-            )}
-            {providers.github && (
-              <a href={`/api/auth/github?next=${encodeURIComponent(next)}`} className="btn btn-outline w-full gap-2.5">
-                <GitHubIcon />{verb} with GitHub
-              </a>
-            )}
-          </div>
-          <div className="flex items-center gap-3 text-xs text-ash"><span className="h-px flex-1 bg-graphite" />or with email<span className="h-px flex-1 bg-graphite" /></div>
-        </>
+      <div className="grid gap-2">
+        <a href={`/api/auth/google?next=${encodeURIComponent(next)}`} className="btn btn-outline w-full gap-2.5" title={providers.google ? undefined : "Set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET in .env"}>
+          <GoogleIcon />{verb} with Google
+        </a>
+        <a href={`/api/auth/github?next=${encodeURIComponent(next)}`} className="btn btn-outline w-full gap-2.5" title={providers.github ? undefined : "Set GITHUB_CLIENT_ID and GITHUB_CLIENT_SECRET in .env"}>
+          <GitHubIcon />{verb} with GitHub
+        </a>
+      </div>
+      {!providers.google && !providers.github && (
+        <p className="text-[11px] text-ash text-center">Social sign-in activates once the Google / GitHub OAuth keys are added to <code className="font-mono">.env</code>.</p>
       )}
+      <div className="flex items-center gap-3 text-xs text-ash"><span className="h-px flex-1 bg-graphite" />or with email<span className="h-px flex-1 bg-graphite" /></div>
 
       {mode === "signup" && (
         <label className="block text-sm"><span className="label">Name</span><input className="input mt-1" value={name} onChange={(e) => setName(e.target.value)} placeholder="Your name" /></label>
