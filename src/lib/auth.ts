@@ -79,13 +79,17 @@ export async function getCurrentUser(): Promise<SessionUser | null> {
   if (new Date() >= next) {
     const r = renewalBalance(user);
     const before = user.credits;
-    user = await db.user.update({
-      where: { id },
+    // Conditional update: concurrent requests (layout + page) renew at most once.
+    const done = await db.user.updateMany({
+      where: { id, creditsResetAt: user.creditsResetAt },
       data: { credits: r.next, purchasedCredits: r.purchased, creditsResetAt: new Date() },
     });
-    await db.creditLedger.create({
-      data: { userId: id, delta: r.next - before, reason: `renewal:${r.plan.id}${r.rollover ? `+rollover:${r.rollover}` : ""}` },
-    });
+    if (done.count === 1) {
+      await db.creditLedger.create({
+        data: { userId: id, delta: r.next - before, reason: `renewal:${r.plan.id}${r.rollover ? `+rollover:${r.rollover}` : ""}` },
+      });
+    }
+    user = await db.user.findUniqueOrThrow({ where: { id } });
   }
 
   return {
