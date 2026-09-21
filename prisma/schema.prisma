@@ -317,3 +317,10 @@ model AssistantMessage {
 
   @@index([userId, createdAt])
 }
+
+/// Fixed-window rate limiting (works across serverless instances).
+model RateLimit {
+  key     String   @id
+  count   Int      @default(0)
+  resetAt DateTime
+}

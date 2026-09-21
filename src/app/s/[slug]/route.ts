@@ -1,4 +1,5 @@
 import { db } from "@/lib/db";
+import { USER_HTML_HEADERS } from "@/lib/security";
 
 /** IDÆVIA hosting: serves the published version of a project at /s/<slug>. */
 export async function GET(_req: Request, ctx: RouteContext<"/s/[slug]">) {
@@ -11,6 +12,6 @@ export async function GET(_req: Request, ctx: RouteContext<"/s/[slug]">) {
     );
   }
   return new Response(project.publishedHtml, {
-    headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "public, max-age=60" },
+    headers: { ...USER_HTML_HEADERS, "X-Robots-Tag": "all", "Cache-Control": "public, max-age=60" },
   });
 }

@@ -5,6 +5,7 @@ import { json, withUser } from "@/lib/api";
 import { ASSISTANT_SYSTEM, mockAssistantReply } from "@/lib/assistant";
 import { resolveModel, tierForTask } from "@/lib/ai/router";
 import { estimateCredits, InsufficientCredits, refundCredits, reserveCredits } from "@/lib/credits";
+import { rateLimit } from "@/lib/security";
 
 export async function GET() {
   return withUser(async (user) => {
@@ -26,6 +27,8 @@ export async function POST(req: Request) {
   if (!user) return Response.json({ error: "Not authenticated" }, { status: 401 });
   const body = z.object({ message: z.string().min(1).max(4000) }).safeParse(await req.json().catch(() => null));
   if (!body.success) return Response.json({ error: "Write a message." }, { status: 400 });
+  const limited = await rateLimit(`assistant:user:${user.id}`, 30, 600);
+  if (limited) return limited;
 
   await db.assistantMessage.create({ data: { userId: user.id, role: "user", content: body.data.message } });
   const history = await db.assistantMessage.findMany({ where: { userId: user.id }, orderBy: { createdAt: "desc" }, take: 24 });

@@ -1,3 +1,4 @@
+import { safeEqual, rateLimit, clientIp } from "@/lib/security";
 import { z } from "zod";
 import { db } from "@/lib/db";
 import { error, json } from "@/lib/api";
@@ -6,7 +7,7 @@ async function loadLink(token: string, password: string | null) {
   const link = await db.shareLink.findUnique({ where: { token }, include: { project: { include: { team: true, comments: { orderBy: { createdAt: "asc" } } } } } });
   if (!link) return { err: error("This link is invalid or was removed.", 404) };
   if (link.expiresAt && link.expiresAt < new Date()) return { err: error("This link has expired.", 410) };
-  if (link.password && link.password !== password) return { err: error("Password required.", 401, { code: "PASSWORD" }) };
+  if (link.password && !safeEqual(link.password, password)) return { err: error("Password required.", 401, { code: "PASSWORD" }) };
   return { link };
 }
 
@@ -27,6 +28,8 @@ export async function GET(req: Request, ctx: RouteContext<"/api/portal/[token]">
 
 /** Public: leave a comment / change request / approval. */
 export async function POST(req: Request, ctx: RouteContext<"/api/portal/[token]">) {
+  const limited = await rateLimit(`portal:ip:${await clientIp()}`, 40, 600);
+  if (limited) return limited;
   const { token } = await ctx.params;
   const { link, err } = await loadLink(token, req.headers.get("x-portal-password"));
   if (err) return err;

@@ -6,6 +6,7 @@ import { InsufficientCredits } from "@/lib/credits";
 import { MODEL_TIERS, PLANS } from "@/lib/plans";
 import { db } from "@/lib/db";
 import { agentAllowed, pickAgent } from "@/lib/agents";
+import { rateLimit } from "@/lib/security";
 
 const schema = z.object({
   request: z.string().min(1).max(8000),
@@ -24,6 +25,8 @@ export async function POST(req: Request, ctx: RouteContext<"/api/projects/[id]/r
   if (!user) return Response.json({ error: "Not authenticated" }, { status: 401 });
   const body = schema.safeParse(await req.json().catch(() => null));
   if (!body.success) return Response.json({ error: "Invalid input." }, { status: 400 });
+  const limited = (await rateLimit(`run:user:${user.id}:min`, 12, 60)) ?? (await rateLimit(`run:user:${user.id}:day`, 400, 86400));
+  if (limited) return limited;
 
   let agentId = body.data.agentId ?? "builder";
   let autoPicked = false;

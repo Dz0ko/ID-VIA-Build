@@ -7,8 +7,13 @@ import type { PlanId } from "./plans";
 import { PLANS, isPlanId } from "./plans";
 
 const COOKIE = "idaevia_session";
-const secret = () =>
-  new TextEncoder().encode(process.env.AUTH_SECRET ?? "dev-secret-change-me");
+const secret = () => {
+  const s = process.env.AUTH_SECRET;
+  if (process.env.NODE_ENV === "production" && (!s || s.length < 32 || s === "dev-secret-change-me")) {
+    throw new Error("AUTH_SECRET must be set to a random string of at least 32 characters in production.");
+  }
+  return new TextEncoder().encode(s ?? "dev-secret-change-me");
+};
 
 export async function createSession(userId: string) {
   const token = await new SignJWT({ sub: userId })

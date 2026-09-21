@@ -1,5 +1,6 @@
 import { db } from "@/lib/db";
 import { error, json, withUser } from "@/lib/api";
+import { rateLimit } from "@/lib/security";
 import { createWhopCheckout, hasPurchased, simulatedPaymentsEnabled, splitPrice, whopPaymentsConfigured } from "@/lib/marketplace";
 
 /**
@@ -14,6 +15,8 @@ export async function POST(req: Request, ctx: RouteContext<"/api/marketplace/[id
     if (item.price <= 0) return error("This item is free. Use install instead.");
     if (item.authorId === user.id) return error("You own this item.");
     if (await hasPurchased(user.id, id)) return json({ alreadyOwned: true });
+    const limited = await rateLimit(`buy:user:${user.id}`, 10, 3600);
+    if (limited) return limited;
 
     const { feeCents, sellerCents } = splitPrice(item.price);
     const purchase = await db.purchase.create({
