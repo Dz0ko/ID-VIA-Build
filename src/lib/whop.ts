@@ -82,7 +82,7 @@ export async function createPlanCheckout(opts: { plan: PlanId; userId: string; e
     plan: {
       plan_type: "renewal",
       billing_period: 30,
-      initial_price: p.price,
+      initial_price: 0, // one-off setup fee on top of the first renewal: none
       renewal_price: p.price,
       title: `IDÆVIA ${p.name} · monthly`,
       product: {
