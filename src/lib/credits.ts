@@ -24,14 +24,19 @@ export async function estimateCredits(opts: {
 }
 
 export async function reserveCredits(userId: string, amount: number, reason: string, projectId?: string) {
-  const user = await db.user.findUniqueOrThrow({ where: { id: userId } });
-  if (user.credits < amount) throw new InsufficientCredits(amount, user.credits);
+  // Atomic conditional decrement: concurrent runs cannot spend the same credits twice.
   // Plan credits are spent first; purchased credits only once the plan allowance is gone.
-  const remaining = user.credits - amount;
-  await db.$transaction([
-    db.user.update({ where: { id: userId }, data: { credits: remaining, purchasedCredits: Math.min(user.purchasedCredits, remaining) } }),
-    db.creditLedger.create({ data: { userId, delta: -amount, reason, projectId } }),
-  ]);
+  const rows = await db.$queryRaw<{ credits: number }[]>`
+    UPDATE "User"
+    SET "credits" = "credits" - ${amount},
+        "purchasedCredits" = LEAST("purchasedCredits", "credits" - ${amount})
+    WHERE "id" = ${userId} AND "credits" >= ${amount}
+    RETURNING "credits"`;
+  if (rows.length === 0) {
+    const user = await db.user.findUnique({ where: { id: userId }, select: { credits: true } });
+    throw new InsufficientCredits(amount, user?.credits ?? 0);
+  }
+  await db.creditLedger.create({ data: { userId, delta: -amount, reason, projectId } });
 }
 
 /**

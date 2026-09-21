@@ -25,7 +25,7 @@ npm run setup               # prisma generate + db push (to Supabase) + seed adm
 npm run dev                 # http://localhost:3737
 ```
 
-Default admin (from `.env`): `admin@idaevia.app` / `admin12345` — plan AGENCY, role ADMIN → `/admin`.
+The seed creates the admin from `ADMIN_EMAIL` / `ADMIN_PASSWORD` in `.env` (required, 12+ characters; there is no default password). Plan AGENCY, role ADMIN → `/admin`.
 
 Without any AI key the platform runs in **offline mode**: generation uses a deterministic template engine so every feature (builder, agents, versions, audit, deploy, export) still works. Add `ANTHROPIC_API_KEY` (and/or `OPENAI_API_KEY`) to `.env` for real AI.
 

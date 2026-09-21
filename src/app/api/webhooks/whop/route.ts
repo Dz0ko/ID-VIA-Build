@@ -1,8 +1,8 @@
 import { db } from "@/lib/db";
-import { PLANS, isPlanId } from "@/lib/plans";
+import { CREDIT_PACKS, PLANS, isPlanId } from "@/lib/plans";
 import { extractWhop, findCheckout, verifyWhopSignature, whopPlanMap, type WhopWebhookEvent } from "@/lib/whop";
 import { grantCredits } from "@/lib/credits";
-import { markPurchasePaid } from "@/lib/marketplace";
+import { markPurchasePaid, reversePurchase } from "@/lib/marketplace";
 import { onPaidConversion } from "@/lib/referrals";
 
 /**
@@ -15,6 +15,7 @@ const HANDLED = new Set([
   "membership.activated", "membership.went_valid", "membership.created",
   "membership.deactivated", "membership.went_invalid", "membership.canceled", "membership.expired",
   "payment.succeeded",
+  "refund.created", "refund.succeeded", "refund.updated", "dispute.created", "dispute.updated", "payment.refunded", "payment.disputed",
 ]);
 
 export async function POST(req: Request) {
@@ -53,11 +54,21 @@ export async function POST(req: Request) {
     : typeof d.checkout_id === "string" ? d.checkout_id : null;
   const checkout = await findCheckout(checkoutId);
 
-  // Marketplace orders: settle them before any user matching.
+  const paidUsd = Number(d.total ?? d.subtotal ?? d.final_amount ?? d.amount_after_fees ?? d.amount ?? 0);
+  const paidCents = Number.isFinite(paidUsd) && paidUsd > 0 ? Math.round(paidUsd * 100) : null;
+
+  // Refunds / chargebacks: reverse marketplace orders so sellers are not paid for returned money.
+  if (/^(refund\.(created|succeeded|updated)|dispute\.(created|updated)|payment\.(refunded|disputed))$/.test(event.type)) {
+    const pid = (typeof d.payment_id === "string" ? d.payment_id : typeof (d.payment as { id?: string })?.id === "string" ? (d.payment as { id: string }).id : typeof d.id === "string" ? d.id : null);
+    const reversed = pid ? await reversePurchase(pid, event.type) : null;
+    return Response.json({ ok: true, reversed: reversed?.id ?? null });
+  }
+
+  // Marketplace orders: settle them before any user matching (the paid amount must cover the price).
   if (event.type === "payment.succeeded") {
     const purchaseId = typeof meta.purchase_id === "string" ? meta.purchase_id : checkout?.purchaseId ?? null;
     if (purchaseId) {
-      const paid = await markPurchasePaid(purchaseId, d.id as string | undefined ?? null);
+      const paid = await markPurchasePaid(purchaseId, d.id as string | undefined ?? null, paidCents);
       return Response.json({ ok: true, purchase: paid?.id ?? null });
     }
   }
@@ -74,13 +85,11 @@ export async function POST(req: Request) {
   if (!user && typeof meta.idaevia_user_id === "string") user = await db.user.findUnique({ where: { id: meta.idaevia_user_id } });
   if (!user && whopUserId) user = await db.user.findUnique({ where: { whopUserId } });
   if (!user && email) user = await db.user.findUnique({ where: { email: email.toLowerCase() } });
-  if (!user && email) {
-    // Pre-create the account so the plan is ready when they sign in with Whop.
-    user = await db.user.create({
-      data: { email: email.toLowerCase(), whopUserId: whopUserId ?? undefined, plan: "FREE", credits: PLANS.FREE.credits },
-    });
+  // Never create accounts from webhook data: every purchase starts from a signed-in user's checkout.
+  if (!user) {
+    console.warn(`[whop] ${event.type} could not be matched to a user (checkout=${checkoutId ?? "-"}, membership=${membershipId ?? "-"})`);
+    return Response.json({ ok: true, ignored: "no user match" });
   }
-  if (!user) return Response.json({ ok: true, ignored: "no user match" });
   if (whopUserId && !user.whopUserId) {
     user = await db.user.update({ where: { id: user.id }, data: { whopUserId } });
   }
@@ -90,7 +99,12 @@ export async function POST(req: Request) {
   const deactivated = /membership\.(deactivated|went_invalid|canceled|expired)/.test(type) || (type.startsWith("membership.") && valid === false);
 
   if (activated && membershipId) {
-    const plan = mapped && isPlanId(mapped) ? mapped : "STARTER";
+    // Only memberships we can map to one of our plans grant anything; unknown Whop products are ignored.
+    if (!mapped || !isPlanId(mapped) || mapped === "FREE") {
+      console.warn(`[whop] membership ${membershipId} activated with unknown plan (${planId ?? "-"}); ignored`);
+      return Response.json({ ok: true, ignored: "unknown plan" });
+    }
+    const plan = mapped;
     await db.membership.upsert({
       where: { whopMembershipId: membershipId },
       create: { userId: user.id, whopMembershipId: membershipId, whopPlanId: planId ?? "", plan, status: "active", raw },
@@ -107,10 +121,15 @@ export async function POST(req: Request) {
     await db.user.update({ where: { id: user.id }, data: { plan: stillActive?.plan ?? "FREE" } });
   } else if (type === "payment.succeeded") {
     const credits = Number(checkout?.credits ?? meta.credits ?? 0);
-    if (credits > 0) await grantCredits(user.id, credits, "credit_pack", { purchased: true });
+    const pack = CREDIT_PACKS.find((c) => c.credits === credits);
+    if (credits > 0 && !pack) return Response.json({ ok: true, ignored: "unknown pack" });
+    if (pack && paidCents && paidCents + 1 < pack.price * 100) {
+      console.warn(`[whop] pack payment ${d.id} was ${paidCents}c, expected ${pack.price * 100}c; not granting`);
+      return Response.json({ ok: true, ignored: "underpaid" });
+    }
+    if (pack) await grantCredits(user.id, pack.credits, "credit_pack", { purchased: true });
     // Plan payments (subscriptions, renewals) earn affiliate commission and the referral paid bonus.
-    const paid = Number(d.total ?? d.subtotal ?? d.final_amount ?? d.amount_after_fees ?? d.amount ?? 0);
-    if (credits === 0 && paid > 0) await onPaidConversion(user.id, { amountCents: Math.round(paid * 100), reason: `payment:${d.id ?? eventId}` });
+    if (credits === 0 && paidCents) await onPaidConversion(user.id, { amountCents: paidCents, reason: `payment:${d.id ?? eventId}` });
   }
 
   return Response.json({ ok: true });

@@ -51,7 +51,7 @@ export function MarketplacePanel({ plan, feePct }: { plan: PlanId; feePct: numbe
     if (!params.get("purchase")) return;
     const simulated = Boolean(params.get("simulated"));
     const t = setTimeout(() => {
-      setMsg({ ok: true, text: simulated ? "Simulated payment complete (dev mode). The item is unlocked." : "Payment received. The item is unlocked." });
+      setMsg({ ok: true, text: simulated && process.env.NODE_ENV !== "production" ? "Test payment complete (local dev). The item is unlocked." : "Payment received. The item is unlocked." });
       router.replace("/app/marketplace");
     }, 0);
     return () => clearTimeout(t);
@@ -214,7 +214,7 @@ export function MarketplacePanel({ plan, feePct }: { plan: PlanId; feePct: numbe
               {me.purchases.length === 0 && <tr><td className="p-4 text-ash">You have not bought anything yet.</td></tr>}
             </tbody></table>
           </div>
-          <p className="text-[11px] text-ash">Payouts: your balance is transferred by IDÆVIA through Whop. Contact support to request a payout once your balance is above $25.</p>
+          <p className="text-[11px] text-ash">Payouts: your balance is transferred by IDÆVIA through Whop. Email <a href="mailto:support@idaevia.app" className="underline hover:text-paper">support@idaevia.app</a> to request a payout once your balance is above $10.</p>
         </div>
       ) : <div className="text-sm text-ash">Loading…</div>)}
 

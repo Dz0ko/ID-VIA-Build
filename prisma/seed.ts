@@ -5,7 +5,10 @@ const db = new PrismaClient();
 
 async function main() {
   const email = (process.env.ADMIN_EMAIL ?? "admin@idaevia.app").toLowerCase();
-  const password = process.env.ADMIN_PASSWORD ?? "admin12345";
+  const password = process.env.ADMIN_PASSWORD;
+  if (!password || password.length < 12) {
+    throw new Error("Set ADMIN_PASSWORD (12+ characters) in the environment before seeding. No default password is used.");
+  }
   const existing = await db.user.findUnique({ where: { email } });
   if (!existing) {
     await db.user.create({
@@ -18,7 +21,7 @@ async function main() {
         credits: 15000,
       },
     });
-    console.log(`Created admin ${email} / ${password}`);
+    console.log(`Created admin ${email}`);
   } else {
     console.log(`Admin ${email} already exists`);
   }

@@ -27,7 +27,7 @@ export async function POST(req: Request, ctx: RouteContext<"/api/marketplace/[id
     if (!whopPaymentsConfigured()) {
       if (!simulatedPaymentsEnabled()) {
         await db.purchase.delete({ where: { id: purchase.id } });
-        return error("Payments are not configured yet. Set WHOP_API_KEY and WHOP_COMPANY_ID.", 503);
+        return error("Purchases are temporarily unavailable. Please try again later.", 503);
       }
       return json({ purchaseId: purchase.id, url: `/api/marketplace/purchases/${purchase.id}/dev-pay`, simulated: true });
     }

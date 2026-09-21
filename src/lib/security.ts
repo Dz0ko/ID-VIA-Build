@@ -3,33 +3,54 @@ import { headers } from "next/headers";
 import { db } from "./db";
 import { error } from "./api";
 
-/** Best-effort client IP (Vercel sets x-forwarded-for / x-real-ip). */
+/**
+ * Client IP. On Vercel the platform overwrites `x-vercel-forwarded-for` and `x-real-ip`
+ * with the true client address, so clients cannot spoof them; `x-forwarded-for` is the
+ * last resort for other hosts.
+ */
 export async function clientIp() {
   const h = await headers();
-  return (h.get("x-real-ip") ?? h.get("x-forwarded-for")?.split(",")[0] ?? "unknown").trim();
+  const v = h.get("x-vercel-forwarded-for") ?? h.get("x-real-ip") ?? h.get("x-forwarded-for")?.split(",")[0] ?? "unknown";
+  return v.trim().slice(0, 64);
 }
 
 /**
- * Fixed-window rate limiter backed by the database, so it works across
- * serverless instances. Returns null when allowed, or a 429 response.
+ * Fixed-window rate limiter backed by the database, so it works across serverless
+ * instances. One atomic upsert per call: concurrent requests cannot slip past the limit.
+ * Returns null when allowed, or a 429 response.
  */
 export async function rateLimit(key: string, limit: number, windowSeconds: number) {
   const now = new Date();
-  const row = await db.rateLimit.findUnique({ where: { key } });
-  if (!row || row.resetAt <= now) {
-    await db.rateLimit.upsert({
-      where: { key },
-      create: { key, count: 1, resetAt: new Date(now.getTime() + windowSeconds * 1000) },
-      update: { count: 1, resetAt: new Date(now.getTime() + windowSeconds * 1000) },
-    });
-    return null;
-  }
-  if (row.count >= limit) {
-    const retry = Math.max(1, Math.ceil((row.resetAt.getTime() - now.getTime()) / 1000));
+  const reset = new Date(now.getTime() + windowSeconds * 1000);
+  const rows = await db.$queryRaw<{ count: number; resetAt: Date }[]>`
+    INSERT INTO "RateLimit" ("key", "count", "resetAt") VALUES (${key}, 1, ${reset})
+    ON CONFLICT ("key") DO UPDATE SET
+      "count" = CASE WHEN "RateLimit"."resetAt" <= ${now} THEN 1 ELSE "RateLimit"."count" + 1 END,
+      "resetAt" = CASE WHEN "RateLimit"."resetAt" <= ${now} THEN ${reset} ELSE "RateLimit"."resetAt" END
+    RETURNING "count", "resetAt"`;
+  const row = rows[0];
+  if (row && row.count > limit) {
+    const retry = Math.max(1, Math.ceil((new Date(row.resetAt).getTime() - now.getTime()) / 1000));
     return error("Too many requests. Please slow down.", 429, { retryAfter: retry });
   }
-  await db.rateLimit.update({ where: { key }, data: { count: { increment: 1 } } });
   return null;
+}
+
+/**
+ * Only allow same-site relative paths for redirects: "/app", never "//evil.com",
+ * "/\evil.com", "javascript:" or absolute URLs.
+ */
+export function safePath(input: string | null | undefined, fallback = "/app") {
+  if (!input) return fallback;
+  const s = input.trim();
+  if (!s.startsWith("/") || s.startsWith("//") || s.startsWith("/\\") || /[\r\n]/.test(s)) return fallback;
+  try {
+    const u = new URL(s, "https://idaevia.app");
+    if (u.origin !== "https://idaevia.app") return fallback;
+    return u.pathname + u.search + u.hash;
+  } catch {
+    return fallback;
+  }
 }
 
 /** Constant-time string comparison for secrets / passwords stored in plain form (portal links). */

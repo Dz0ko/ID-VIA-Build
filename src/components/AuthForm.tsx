@@ -11,8 +11,8 @@ const ERRORS: Record<string, string> = {
   github_failed: "GitHub sign-in failed. Please try again.",
   google_state: "Google sign-in expired. Please try again.",
   github_state: "GitHub sign-in expired. Please try again.",
-  google_not_configured: "Google sign-in is not configured yet. Add GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET to .env, then restart the server.",
-  github_not_configured: "GitHub sign-in is not configured yet. Add GITHUB_CLIENT_ID and GITHUB_CLIENT_SECRET to .env, then restart the server.",
+  google_not_configured: "Google sign-in is currently unavailable. Please use email and password.",
+  github_not_configured: "GitHub sign-in is currently unavailable. Please use email and password.",
 };
 
 function GoogleIcon() {
@@ -37,7 +37,9 @@ function GitHubIcon() {
 export function AuthForm({ mode, providers }: { mode: "login" | "signup"; providers: Providers }) {
   const router = useRouter();
   const params = useSearchParams();
-  const next = params.get("next") ?? "/app";
+  const rawNext = params.get("next") ?? "/app";
+  // Same-site paths only (no "//evil.com" or absolute URLs).
+  const next = rawNext.startsWith("/") && !rawNext.startsWith("//") && !rawNext.startsWith("/\\") ? rawNext : "/app";
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [name, setName] = useState("");
@@ -71,18 +73,23 @@ export function AuthForm({ mode, providers }: { mode: "login" | "signup"; provid
         <p className="text-sm text-ash mt-1">{mode === "login" ? "Log in to your workspace." : "Free plan. No card required."}</p>
       </div>
 
-      <div className="grid gap-2">
-        <a href={`/api/auth/google?next=${encodeURIComponent(next)}`} className="btn btn-outline w-full gap-2.5" title={providers.google ? undefined : "Set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET in .env"}>
-          <GoogleIcon />{verb} with Google
-        </a>
-        <a href={`/api/auth/github?next=${encodeURIComponent(next)}`} className="btn btn-outline w-full gap-2.5" title={providers.github ? undefined : "Set GITHUB_CLIENT_ID and GITHUB_CLIENT_SECRET in .env"}>
-          <GitHubIcon />{verb} with GitHub
-        </a>
-      </div>
-      {!providers.google && !providers.github && (
-        <p className="text-[11px] text-ash text-center">Social sign-in activates once the Google / GitHub OAuth keys are added to <code className="font-mono">.env</code>.</p>
+      {(providers.google || providers.github) && (
+        <>
+          <div className="grid gap-2">
+            {providers.google && (
+              <a href={`/api/auth/google?next=${encodeURIComponent(next)}`} className="btn btn-outline w-full gap-2.5">
+                <GoogleIcon />{verb} with Google
+              </a>
+            )}
+            {providers.github && (
+              <a href={`/api/auth/github?next=${encodeURIComponent(next)}`} className="btn btn-outline w-full gap-2.5">
+                <GitHubIcon />{verb} with GitHub
+              </a>
+            )}
+          </div>
+          <div className="flex items-center gap-3 text-xs text-ash"><span className="h-px flex-1 bg-graphite" />or with email<span className="h-px flex-1 bg-graphite" /></div>
+        </>
       )}
-      <div className="flex items-center gap-3 text-xs text-ash"><span className="h-px flex-1 bg-graphite" />or with email<span className="h-px flex-1 bg-graphite" /></div>
 
       {mode === "signup" && (
         <label className="block text-sm"><span className="label">Name</span><input className="input mt-1" value={name} onChange={(e) => setName(e.target.value)} placeholder="Your name" /></label>
@@ -91,6 +98,9 @@ export function AuthForm({ mode, providers }: { mode: "login" | "signup"; provid
       <label className="block text-sm"><span className="label">Password</span><input required type="password" minLength={8} className="input mt-1" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="8+ characters" autoComplete={mode === "login" ? "current-password" : "new-password"} /></label>
       {error && <div className="text-sm text-error">{error}</div>}
       <button disabled={loading} className="btn btn-primary w-full">{loading ? "…" : mode === "login" ? "Log in" : "Create account"}</button>
+      {mode === "signup" && (
+        <p className="text-[11px] text-ash text-center">By creating an account you agree to the <Link href="/terms" className="underline hover:text-paper">Terms of Service</Link> and <Link href="/privacy" className="underline hover:text-paper">Privacy Policy</Link>.</p>
+      )}
       <p className="text-xs text-ash text-center">
         {mode === "login" ? (
           <>No account? <Link href="/signup" className="text-paper underline">Sign up</Link></>

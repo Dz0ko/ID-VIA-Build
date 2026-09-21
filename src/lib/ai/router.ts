@@ -75,7 +75,7 @@ const PAUSE_MS = 10 * 60 * 1000;
 function isAccountOrCapacityError(e: unknown) {
   const err = e as { status?: number; message?: string };
   const msg = (err?.message ?? "").toLowerCase();
-  return err?.status === 401 || err?.status === 402 || err?.status === 403 || err?.status === 429 || err?.status === 529 ||
+  return err?.status === 401 || err?.status === 402 || err?.status === 403 || err?.status === 429 || err?.status === 503 || err?.status === 529 ||
     (err?.status === 400 && /credit balance|billing|quota/.test(msg));
 }
 
@@ -85,6 +85,10 @@ function isAccountOrCapacityError(e: unknown) {
  * model mapped to the same tier. The caller gets one result either way.
  */
 export async function generateWithFallback(resolved: ResolvedModel, input: GenerateInput): Promise<GenerateResult & { fellBack?: boolean }> {
+  // The template engine is a local-dev stand-in only; paying users never receive placeholder output.
+  if (resolved.provider.id === "mock" && process.env.NODE_ENV === "production") {
+    throw Object.assign(new Error("No AI provider is available."), { status: 503 });
+  }
   try {
     return await resolved.provider.generate(resolved.config.model, input);
   } catch (e) {

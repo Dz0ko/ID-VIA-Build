@@ -38,7 +38,7 @@ export default async function Settings({ searchParams }: PageProps<"/app/setting
         <section>
           <div className="flex items-center justify-between mb-3">
             <h2 className="text-sm font-medium">Plan</h2>
-            <span className="text-xs text-ash">{whop ? "Billing by Whop" : "Dev mode: plan switching enabled (admins / local only)"}</span>
+            <span className="text-xs text-ash">{whop ? "Secure billing by Whop" : "Local dev: plan switching enabled"}</span>
           </div>
           <PlanSwitcher current={user.plan} whopEnabled={whop} checkout={{ STARTER: planPurchasable("STARTER"), PRO: planPurchasable("PRO"), MAX: planPurchasable("MAX"), AGENCY: planPurchasable("AGENCY") }} />
         </section>
@@ -68,7 +68,6 @@ export default async function Settings({ searchParams }: PageProps<"/app/setting
             <ul className="mt-2 text-sm space-y-1">
               <li className="flex justify-between"><span>Anthropic (Claude)</span><span className={providers.anthropic ? "text-success" : "text-ash"}>{providers.anthropic ? "connected" : "no key"}</span></li>
               <li className="flex justify-between"><span>OpenAI</span><span className={providers.openai ? "text-success" : "text-ash"}>{providers.openai ? "connected" : "no key"}</span></li>
-              <li className="flex justify-between"><span>Offline engine</span><span className="text-success">always</span></li>
             </ul>
             <p className="text-[11px] text-ash mt-3">Model tiers: {plan.maxTier} and below on {plan.name}. Admins map tiers to concrete models in the admin panel.</p>
           </div>

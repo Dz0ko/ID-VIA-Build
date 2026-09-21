@@ -148,8 +148,12 @@ export async function runAgent(opts: RunOptions) {
   } catch (err) {
     const message = friendlyAiError(err);
     console.error("[agent run failed]", err instanceof Error ? err.message : err);
-    await refundCredits(opts.userId, credits, `refund:${agent.id}`, project.id);
-    await db.agentRun.update({ where: { id: run.id }, data: { status: "FAILED", finishedAt: new Date(), output: message, creditsUsed: 0 } });
+    // Provider failures are refunded in full. When the model answered but not in the required
+    // format, the tokens were still paid for, so only half is refunded (prevents "free" runs).
+    const malformed = err instanceof Error && /did not return/.test(err.message);
+    const refund = malformed ? Math.floor(credits / 2) : credits;
+    await refundCredits(opts.userId, refund, `refund:${agent.id}`, project.id);
+    await db.agentRun.update({ where: { id: run.id }, data: { status: "FAILED", finishedAt: new Date(), output: message, creditsUsed: credits - refund } });
     opts.onEvent?.({ type: "error", message });
     throw err;
   }

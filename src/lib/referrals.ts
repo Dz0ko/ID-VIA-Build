@@ -59,6 +59,8 @@ async function readAttribution() {
   return k === "a" ? { kind: "affiliate" as const, id } : k === "u" ? { kind: "user" as const, id } : null;
 }
 
+const REFERRAL_SIGNUP_CAP = 10;
+
 /**
  * Called right after a new account is created (email or social). Links the
  * account to the referrer/affiliate and pays the signup credits.
@@ -82,7 +84,13 @@ export async function applyReferralOnSignup(newUserId: string) {
   if (!referrer) return;
   await db.user.update({ where: { id: newUserId }, data: { referredById: referrer.id } });
   if (s.referredSignupCredits > 0) await grantCredits(newUserId, s.referredSignupCredits, "referral_welcome", { purchased: true });
-  if (s.referrerSignupCredits > 0) await grantCredits(referrer.id, s.referrerSignupCredits, "referral_signup", { purchased: true });
+  // Anti-farming: a referrer earns signup credits for at most REFERRAL_SIGNUP_CAP referrals per 30 days.
+  // Paid-conversion rewards (onPaidConversion) are uncapped, since they require a real payment.
+  if (s.referrerSignupCredits > 0) {
+    const since = new Date(Date.now() - 30 * 86400000);
+    const recent = await db.creditLedger.count({ where: { userId: referrer.id, reason: "referral_signup", createdAt: { gte: since } } });
+    if (recent < REFERRAL_SIGNUP_CAP) await grantCredits(referrer.id, s.referrerSignupCredits, "referral_signup", { purchased: true });
+  }
 }
 
 /**

@@ -2,6 +2,7 @@ import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { createSession } from "@/lib/auth";
 import { fetchProfile, isOAuthProvider, upsertOAuthUser } from "@/lib/oauth";
+import { safePath } from "@/lib/security";
 
 export async function GET(req: Request, ctx: RouteContext<"/api/auth/[provider]/callback">) {
   const { provider } = await ctx.params;
@@ -12,7 +13,7 @@ export async function GET(req: Request, ctx: RouteContext<"/api/auth/[provider]/
   const state = url.searchParams.get("state");
   const store = await cookies();
   const expectedState = store.get("oauth_state")?.value;
-  const next = store.get("oauth_next")?.value ?? "/app";
+  const next = safePath(store.get("oauth_next")?.value, "/app");
   store.delete("oauth_state");
   store.delete("oauth_next");
 

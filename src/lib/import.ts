@@ -3,16 +3,53 @@ import JSZip from "jszip";
 
 const UA = "Mozilla/5.0 (compatible; IDAEVIA-Build/1.0; +https://idaevia.app)";
 
-function isPublicHttpUrl(u: string) {
-  try {
-    const url = new URL(u);
-    if (!/^https?:$/.test(url.protocol)) return false;
-    const h = url.hostname;
-    if (/^(localhost|127\.|10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.|0\.0\.0\.0|\[::1\])/.test(h)) return false;
-    return true;
-  } catch {
-    return false;
+/** Is this IP (v4 or v6) private, loopback, link-local (cloud metadata) or otherwise not public? */
+function isPrivateIp(ip: string) {
+  const v4 = ip.match(/^(\d+)\.(\d+)\.(\d+)\.(\d+)$/);
+  if (v4) {
+    const [a, b] = [Number(v4[1]), Number(v4[2])];
+    return a === 0 || a === 10 || a === 127 || (a === 100 && b >= 64 && b <= 127) || (a === 169 && b === 254) ||
+      (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168) || (a === 192 && b === 0) || (a === 198 && (b === 18 || b === 19)) || a >= 224;
   }
+  const v6 = ip.toLowerCase().replace(/^\[|\]$/g, "");
+  if (v6 === "::" || v6 === "::1") return true;
+  if (v6.startsWith("::ffff:")) return isPrivateIp(v6.slice(7));
+  return /^(fc|fd|fe[89ab])/.test(v6) || v6.startsWith("64:ff9b") || v6.startsWith("2001:db8");
+}
+
+/**
+ * SSRF guard: only http(s), only a hostname that resolves exclusively to public
+ * addresses (so DNS names for internal services and cloud metadata are rejected too).
+ */
+async function assertPublicHttpUrl(u: string) {
+  const url = new URL(u);
+  if (!/^https?:$/.test(url.protocol)) throw new Error("Only public http(s) URLs can be imported.");
+  if (url.username || url.password) throw new Error("URLs with credentials are not allowed.");
+  const host = url.hostname.replace(/^\[|\]$/g, "");
+  if (host === "localhost" || host.endsWith(".localhost") || host.endsWith(".internal") || host.endsWith(".local")) throw new Error("Only public http(s) URLs can be imported.");
+  if (/^[\d.]+$/.test(host) || host.includes(":")) {
+    if (isPrivateIp(host)) throw new Error("Only public http(s) URLs can be imported.");
+    return url;
+  }
+  const { lookup } = await import("node:dns/promises");
+  const addrs = await lookup(host, { all: true }).catch(() => []);
+  if (!addrs.length || addrs.some((a) => isPrivateIp(a.address))) throw new Error("Only public http(s) URLs can be imported.");
+  return url;
+}
+
+/** fetch() that re-validates every redirect hop against the SSRF guard. */
+async function fetchPublic(input: string, init: RequestInit, maxHops = 4): Promise<Response> {
+  let current = input;
+  for (let hop = 0; hop <= maxHops; hop++) {
+    await assertPublicHttpUrl(current);
+    const res = await fetch(current, { ...init, redirect: "manual" });
+    if (res.status >= 300 && res.status < 400 && res.headers.get("location")) {
+      current = new URL(res.headers.get("location")!, current).toString();
+      continue;
+    }
+    return res;
+  }
+  throw new Error("Too many redirects.");
 }
 
 const strip = (s: string) => s.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
@@ -39,8 +76,7 @@ export interface UrlOutline {
 }
 
 export async function fetchUrlOutline(input: string): Promise<UrlOutline> {
-  if (!isPublicHttpUrl(input)) throw new Error("Only public http(s) URLs can be imported.");
-  const res = await fetch(input, { headers: { "User-Agent": UA, Accept: "text/html" }, redirect: "follow", signal: AbortSignal.timeout(15000) });
+  const res = await fetchPublic(input, { headers: { "User-Agent": UA, Accept: "text/html" }, signal: AbortSignal.timeout(15000) });
   if (!res.ok) throw new Error(`Fetch failed (${res.status})`);
   const ct = res.headers.get("content-type") ?? "";
   if (!ct.includes("html")) throw new Error("URL did not return an HTML page.");

@@ -28,7 +28,9 @@ export default async function Dashboard() {
       <div className="flex-1 overflow-y-auto p-6 space-y-8">
         {offline && (
           <div className="rounded-lg border border-warning/40 bg-warning/10 px-4 py-3 text-sm text-warning">
-            Offline mode: no AI provider key is configured, so generation uses the IDÆVIA deterministic template engine. Add <code className="font-mono">ANTHROPIC_API_KEY</code> (or <code className="font-mono">OPENAI_API_KEY</code>) to <code className="font-mono">.env</code> and restart for real AI agents.
+            {process.env.NODE_ENV === "production"
+              ? "AI generation is temporarily unavailable. Your credits are not charged for failed runs; please try again shortly."
+              : "Local dev: no AI provider key is configured, so generation uses the built-in template engine. Add ANTHROPIC_API_KEY or OPENAI_API_KEY to .env for real agents."}
           </div>
         )}
         <div className="grid sm:grid-cols-4 gap-4">

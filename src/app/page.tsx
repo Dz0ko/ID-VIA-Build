@@ -103,16 +103,16 @@ export default async function Home() {
               <div className="glass rounded-2xl p-5 float card-shine md:mt-10" data-tilt="10" style={{ animationDelay: "0.7s" }}>
                 <div className="text-[10px] font-mono uppercase tracking-[0.14em] text-ash">Prompt</div>
                 <div className="mt-2 text-sm text-fog">“Build a premium SaaS landing page for an AI CRM. Dark, gold accents, pricing and FAQ.”</div>
-                <div className="mt-3 text-[11px] text-success">✓ v03 built · 7 sections · 30 credits</div>
+                <div className="mt-3 text-[11px] text-success">✓ Full page · about 10 credits on Standard</div>
               </div>
               <div className="glass rounded-2xl p-5 float-delay card-shine md:mt-4" data-tilt="10">
-                <div className="flex items-center justify-between text-[10px] font-mono uppercase tracking-[0.14em] text-ash"><span>Client portal</span><span className="w-6 h-6 rounded-full bg-paper text-void grid place-items-center">↗</span></div>
+                <div className="flex items-center justify-between text-[10px] font-mono uppercase tracking-[0.14em] text-ash"><span>Publish</span><span className="w-6 h-6 rounded-full bg-paper text-void grid place-items-center">↗</span></div>
                 <div className="mt-3 flex items-center gap-2">
-                  <span className="w-7 h-7 rounded-full bg-gradient-to-br from-signal to-[#f5c04a] grid place-items-center text-[10px] font-medium text-void">MK</span>
-                  <div className="min-w-0"><div className="text-sm font-medium">Approved by the client</div><div className="text-[11px] text-ash">Nova Studio · 2 min ago</div></div>
+                  <span className="w-7 h-7 rounded-full bg-gradient-to-br from-signal to-[#f5c04a] grid place-items-center text-[10px] font-medium text-void">v3</span>
+                  <div className="min-w-0"><div className="text-sm font-medium">Live on your domain</div><div className="text-[11px] text-ash">Versions, rollback, client portal</div></div>
                 </div>
                 <div className="mt-3 flex items-center justify-between text-[11px]">
-                  <span className="text-fog">3 change requests resolved</span>
+                  <span className="text-fog">Export code any time</span>
                   <span className="pill text-[10px] border-success/40 text-success">Ready to launch</span>
                 </div>
               </div>
@@ -292,7 +292,14 @@ export default async function Home() {
       <footer className="border-t border-graphite py-10">
         <div className="max-w-6xl mx-auto px-6 flex flex-col md:flex-row items-center justify-between gap-4 text-sm text-ash">
           <Logo size={22} />
-          <div>Build anything. Ship everything. © {new Date().getFullYear()} IDÆVIA</div>
+          <nav className="flex flex-wrap justify-center gap-4 text-xs">
+            <Link href="/pricing" className="hover:text-paper">Pricing</Link>
+            <Link href="/privacy" className="hover:text-paper">Privacy</Link>
+            <Link href="/terms" className="hover:text-paper">Terms</Link>
+            <Link href="/cookies" className="hover:text-paper">Cookies</Link>
+            <a href="mailto:support@idaevia.app" className="hover:text-paper">support@idaevia.app</a>
+          </nav>
+          <div>© {new Date().getFullYear()} IDÆVIA</div>
         </div>
       </footer>
     </div>

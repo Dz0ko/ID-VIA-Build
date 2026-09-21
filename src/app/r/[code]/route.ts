@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { resolveCode, setAttributionCookie } from "@/lib/referrals";
+import { safePath } from "@/lib/security";
 
 /**
  * Referral / affiliate landing: /r/<code>?to=/pricing. Sets the attribution cookie and
@@ -10,7 +11,7 @@ export async function GET(req: Request, ctx: RouteContext<"/r/[code]">) {
   const { code } = await ctx.params;
   const url = new URL(req.url);
   const to = url.searchParams.get("to");
-  const target = to && to.startsWith("/") ? to : "/login";
+  const target = safePath(to, "/login");
   const ref = await resolveCode(code);
   if (ref) await setAttributionCookie(ref);
   return NextResponse.redirect(new URL(ref ? target : "/", url.origin));

@@ -56,7 +56,9 @@ export function whopPaymentsConfigured() {
  */
 export function simulatedPaymentsEnabled() {
   if (whopPaymentsConfigured()) return false;
-  return process.env.NODE_ENV !== "production" || process.env.MARKETPLACE_DEV_PAYMENTS === "1";
+  // Never on production: a missing Whop key must fail closed, not hand out free items.
+  if (process.env.NODE_ENV === "production") return false;
+  return true;
 }
 
 /**
@@ -94,16 +96,36 @@ function priceCentsToUsd(cents: number) {
   return Math.round(cents) / 100;
 }
 
-/** Mark a purchase paid: unlock for the buyer, credit the seller, count the sale. Idempotent. */
-export async function markPurchasePaid(purchaseId: string, whopPaymentId?: string | null) {
+/**
+ * Mark a purchase paid: unlock for the buyer, credit the seller, count the sale. Idempotent.
+ * When the paid amount is known it must cover the item price, so partial/test charges never unlock.
+ */
+export async function markPurchasePaid(purchaseId: string, whopPaymentId?: string | null, paidCents?: number | null) {
   const purchase = await db.purchase.findUnique({ where: { id: purchaseId } });
   if (!purchase) return null;
   if (purchase.status === "PAID") return purchase;
+  if (typeof paidCents === "number" && paidCents > 0 && paidCents + 1 < purchase.priceCents) {
+    console.warn(`[marketplace] payment ${whopPaymentId} for ${purchaseId} was ${paidCents}c, expected ${purchase.priceCents}c; not unlocking`);
+    return null;
+  }
   const [updated] = await db.$transaction([
     db.purchase.update({ where: { id: purchaseId }, data: { status: "PAID", paidAt: new Date(), whopPaymentId: whopPaymentId ?? purchase.whopPaymentId } }),
     db.marketItem.update({ where: { id: purchase.itemId }, data: { sales: { increment: 1 }, installs: { increment: 1 } } }),
     db.user.update({ where: { id: purchase.sellerId }, data: { sellerBalanceCents: { increment: purchase.sellerCents } } }),
   ]);
+  return updated;
+}
+
+/** Reverse a paid purchase after a refund or chargeback: lock the item again and take the seller share back. Idempotent. */
+export async function reversePurchase(whopPaymentId: string, reason: string) {
+  const purchase = await db.purchase.findFirst({ where: { whopPaymentId, status: "PAID" } });
+  if (!purchase) return null;
+  const [updated] = await db.$transaction([
+    db.purchase.update({ where: { id: purchase.id }, data: { status: "REFUNDED" } }),
+    db.marketItem.update({ where: { id: purchase.itemId }, data: { sales: { decrement: 1 } } }),
+    db.user.update({ where: { id: purchase.sellerId }, data: { sellerBalanceCents: { decrement: purchase.sellerCents } } }),
+  ]);
+  console.warn(`[marketplace] purchase ${purchase.id} reversed (${reason})`);
   return updated;
 }
 

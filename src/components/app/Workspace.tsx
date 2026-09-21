@@ -151,7 +151,7 @@ export function Workspace(p: WorkspaceProps) {
           if (ev.type === "picked") { log(`Auto-selected agent: ${ev.agent}`); setBusy(ev.agent); busyRef.current = ev.agent; }
           else if (ev.type === "meta") {
             usedCredits = ev.credits; setCredits((c) => c - ev.credits);
-            log(`Routed → ${ev.tier} tier · ${ev.provider}/${ev.model} · task=${ev.taskClass} · ${ev.credits} credits${ev.fallback ? " · OFFLINE MOCK" : ""}`);
+            log(`Routed → ${ev.tier} tier · ${ev.provider}/${ev.model} · task=${ev.taskClass} · ${ev.credits} credits${ev.fallback ? " · template engine" : ""}`);
           } else if (ev.type === "delta") { acc += ev.text; setStream(acc); }
           else if (ev.type === "done") {
             if (ev.mode === "rewrite") {
@@ -375,7 +375,8 @@ export function Workspace(p: WorkspaceProps) {
                 </div>
               ) : (
                 <div className="h-full mx-auto bg-white rounded-lg overflow-hidden border border-graphite transition-all" style={{ width, maxWidth: "100%" }}>
-                  <iframe title="preview" srcDoc={previewSrc} className="w-full h-full" sandbox="allow-scripts allow-same-origin allow-forms allow-popups" />
+                  {/* No allow-same-origin: generated HTML runs in an opaque origin and cannot touch the app or its cookies. */}
+                  <iframe title="preview" srcDoc={previewSrc} className="w-full h-full" sandbox="allow-scripts allow-forms allow-popups allow-modals" />
                 </div>
               )
             ) : (
