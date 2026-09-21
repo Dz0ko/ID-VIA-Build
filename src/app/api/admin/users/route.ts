@@ -10,7 +10,7 @@ export async function GET() {
     const users = await db.user.findMany({
       orderBy: { createdAt: "desc" },
       take: 500,
-      select: { id: true, email: true, name: true, plan: true, credits: true, role: true, createdAt: true, whopUserId: true, googleId: true, githubId: true, _count: { select: { projects: true } } },
+      select: { id: true, email: true, name: true, plan: true, credits: true, role: true, createdAt: true, whopUserId: true, googleId: true, githubId: true, sellerBalanceCents: true, _count: { select: { projects: true, referrals: true } } },
     });
     return json({ users });
   });

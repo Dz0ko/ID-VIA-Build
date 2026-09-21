@@ -3,19 +3,16 @@
 import { useEffect, useState } from "react";
 import type { AppSettings } from "@/lib/settings";
 import type { ModelTier } from "@/lib/plans";
-import { MODEL_TIERS, PLAN_ORDER } from "@/lib/plans";
+import { MODEL_TIERS } from "@/lib/plans";
 
-type UserRow = { id: string; email: string; name: string | null; plan: string; credits: number; role: string; createdAt: string; whopUserId: string | null; googleId: string | null; githubId: string | null; _count: { projects: number } };
-
+/** Platform configuration: model tiers, credit costs, referral rewards. */
 export function AdminPanel() {
   const [settings, setSettings] = useState<AppSettings | null>(null);
-  const [users, setUsers] = useState<UserRow[]>([]);
-  const [filter, setFilter] = useState("");
   const [msg, setMsg] = useState<string | null>(null);
 
   async function load() {
-    const [s, u] = await Promise.all([fetch("/api/admin/settings").then((r) => r.json()), fetch("/api/admin/users").then((r) => r.json())]);
-    setSettings(s.settings); setUsers(u.users ?? []);
+    const s = await fetch("/api/admin/settings").then((r) => r.json());
+    setSettings(s.settings);
   }
   useEffect(() => {
     const id = setTimeout(load, 0);
@@ -27,15 +24,8 @@ export function AdminPanel() {
     setMsg(res.ok ? "Settings saved: takes effect immediately, no redeploy." : "Failed to save.");
     setTimeout(() => setMsg(null), 3000);
   }
-  async function patchUser(id: string, data: Record<string, unknown>) {
-    await fetch("/api/admin/users", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id, ...data }) });
-    load();
-  }
-
-  if (!settings) return <div className="p-6 text-sm text-ash">Loading…</div>;
+  if (!settings) return <div className="text-sm text-ash">Loading…</div>;
   const tiers: ModelTier[] = [...MODEL_TIERS];
-
-  const visible = users.filter((u) => !filter || u.email.includes(filter.toLowerCase()) || (u.name ?? "").toLowerCase().includes(filter.toLowerCase()));
 
   return (
     <div className="space-y-8">
@@ -76,37 +66,6 @@ export function AdminPanel() {
             ))}
           </div>
         </div>
-      </section>
-
-      <section className="card overflow-hidden">
-        <div className="px-4 py-3 border-b border-graphite flex items-center justify-between gap-3">
-          <div className="text-sm font-medium">Users <span className="text-ash font-normal">({users.length})</span></div>
-          <input className="input py-1 text-xs w-56" placeholder="Search email or name…" value={filter} onChange={(e) => setFilter(e.target.value)} />
-        </div>
-        <table className="w-full text-xs">
-          <thead className="text-ash border-b border-graphite"><tr><th className="text-left p-3 font-medium">User</th><th className="text-left p-3 font-medium">Plan</th><th className="text-left p-3 font-medium">Credits</th><th className="text-left p-3 font-medium">Projects</th><th className="text-left p-3 font-medium">Role</th><th className="text-left p-3 font-medium">Joined</th><th className="p-3" /></tr></thead>
-          <tbody>
-            {visible.map((u) => (
-              <tr key={u.id} className="border-b border-graphite/60">
-                <td className="p-3">
-                  <div>{u.name ?? u.email}</div>
-                  <div className="text-ash">{u.email}
-                    {u.googleId && <span className="ml-1 pill text-[9px]">google</span>}
-                    {u.githubId && <span className="ml-1 pill text-[9px]">github</span>}
-                    {u.whopUserId && <span className="ml-1 pill text-[9px]">whop billing</span>}
-                  </div>
-                </td>
-                <td className="p-3"><select className="input py-1 w-28" value={u.plan} onChange={(e) => patchUser(u.id, { plan: e.target.value })}>{PLAN_ORDER.map((p) => <option key={p}>{p}</option>)}</select></td>
-                <td className="p-3 font-mono">{u.credits}</td>
-                <td className="p-3">{u._count.projects}</td>
-                <td className="p-3"><select className="input py-1 w-24" value={u.role} onChange={(e) => patchUser(u.id, { role: e.target.value })}><option>USER</option><option>ADMIN</option></select></td>
-                <td className="p-3 text-ash whitespace-nowrap">{new Date(u.createdAt).toLocaleDateString()}</td>
-                <td className="p-3 text-right"><button onClick={() => patchUser(u.id, { addCredits: 500 })} className="btn btn-outline btn-sm">+500 cr</button></td>
-              </tr>
-            ))}
-            {visible.length === 0 && <tr><td colSpan={7} className="p-4 text-ash">No users match.</td></tr>}
-          </tbody>
-        </table>
       </section>
     </div>
   );

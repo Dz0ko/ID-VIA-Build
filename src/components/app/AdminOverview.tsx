@@ -169,7 +169,7 @@ export function AdminOverview({ s }: { s: AdminStats }) {
         </div>
       </section>
 
-      <p className="text-[11px] text-ash">MRR counts each paying user at the list price of their plan; Whop is the source of truth for actual charges. Snapshot {new Date(s.generatedAt).toLocaleString()} · <Link href="/admin" className="underline">refresh</Link></p>
+      <p className="text-[11px] text-ash">MRR counts each paying user at the list price of their plan; Whop is the source of truth for actual charges. Snapshot {new Date(s.generatedAt).toLocaleString()} · <Link href="/admin" className="underline">refresh</Link> · details in <Link href="/admin/users" className="underline">Users</Link>, <Link href="/admin/payments" className="underline">Payments</Link>, <Link href="/admin/payouts" className="underline">Payouts</Link>, <Link href="/admin/marketplace" className="underline">Marketplace</Link></p>
     </div>
   );
 }

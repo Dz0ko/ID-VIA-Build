@@ -55,7 +55,7 @@ export function Shell({ user, children }: { user: SessionUser; children: React.R
           })}
           {user.role === "ADMIN" && (
             <Link href="/admin" className={`flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition ${pathname.startsWith("/admin") ? "bg-graphite text-paper" : "text-fog hover:bg-ink hover:text-paper"}`}>
-              <ShieldCheck size={16} className="text-ash" />Admin
+              <ShieldCheck size={16} className="text-ash" />Admin console
             </Link>
           )}
         </nav>

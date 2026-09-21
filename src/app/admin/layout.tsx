@@ -1,0 +1,13 @@
+import { redirect } from "next/navigation";
+import { getCurrentUser } from "@/lib/auth";
+import { AdminShell } from "@/components/admin/AdminShell";
+
+export const dynamic = "force-dynamic";
+
+/** Standalone admin console: its own shell, only for ADMIN accounts. */
+export default async function AdminLayout({ children }: LayoutProps<"/admin">) {
+  const user = await getCurrentUser();
+  if (!user) redirect("/login?next=/admin");
+  if (user.role !== "ADMIN") redirect("/app");
+  return <AdminShell user={user}>{children}</AdminShell>;
+}
