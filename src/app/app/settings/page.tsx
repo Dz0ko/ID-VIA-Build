@@ -11,7 +11,8 @@ export default async function Settings({ searchParams }: PageProps<"/app/setting
   const sp = await searchParams;
   const ledger = await db.creditLedger.findMany({ where: { userId: user.id }, orderBy: { createdAt: "desc" }, take: 20 });
   const memberships = await db.membership.findMany({ where: { userId: user.id }, orderBy: { updatedAt: "desc" } });
-  const whop = whopConfigured();
+  // In production, regular users must see the checkout flow even before Whop is configured.
+  const whop = whopConfigured() || (process.env.NODE_ENV === "production" && user.role !== "ADMIN");
   const providers = providerStatus();
   const plan = PLANS[user.plan];
 
@@ -25,7 +26,7 @@ export default async function Settings({ searchParams }: PageProps<"/app/setting
         <section>
           <div className="flex items-center justify-between mb-3">
             <h2 className="text-sm font-medium">Plan</h2>
-            <span className="text-xs text-ash">{whop ? "Billing by Whop" : "Whop not configured: dev switching enabled"}</span>
+            <span className="text-xs text-ash">{whop ? "Billing by Whop" : "Dev mode: plan switching enabled (admins / local only)"}</span>
           </div>
           <PlanSwitcher current={user.plan} whopEnabled={whop} checkout={{ STARTER: checkoutUrl("STARTER"), PRO: checkoutUrl("PRO"), MAX: checkoutUrl("MAX"), AGENCY: checkoutUrl("AGENCY") }} />
         </section>

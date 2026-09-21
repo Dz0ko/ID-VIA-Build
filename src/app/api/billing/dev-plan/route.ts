@@ -7,12 +7,13 @@ import { whopConfigured } from "@/lib/whop";
 import { onPaidConversion } from "@/lib/referrals";
 
 /**
- * Development helper: switch the current user's plan without Whop.
- * Only enabled when Whop is NOT configured (local/demo mode) or for admins.
+ * Development helper: switch the current user's plan without paying.
+ * Allowed only outside production, or for admins. Real users always go through Whop.
  */
 export async function POST(req: Request) {
   return withUser(async (user) => {
-    if (whopConfigured() && user.role !== "ADMIN") return error("Plan changes are handled by Whop.", 403);
+    const devMode = process.env.NODE_ENV !== "production" && !whopConfigured();
+    if (!devMode && user.role !== "ADMIN") return error("Plan changes are handled by Whop checkout.", 403);
     const body = z.object({ plan: z.string() }).safeParse(await req.json().catch(() => null));
     if (!body.success || !isPlanId(body.data.plan)) return error("Invalid plan.");
     const plan = body.data.plan;
