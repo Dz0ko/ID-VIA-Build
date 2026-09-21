@@ -68,7 +68,7 @@ export function AffiliatesPanel() {
               </td>
             </tr>
           ))}
-          {rows.length === 0 && <tr><td colSpan={9} className="p-4 text-ash">No affiliates yet. Create one to get a shareable /r/ link; the partner earns the set percentage of every plan payment from users who signed up through it.</td></tr>}
+          {rows.length === 0 && <tr><td colSpan={9} className="p-4 text-ash">No affiliates yet. Create one to get a shareable /r/ link; it opens the login page, remembers the partner for 30 days, and attributes whoever signs up or logs in (if not already attributed). The partner earns the set percentage of every plan payment by those users.</td></tr>}
         </tbody>
       </table>
     </section>

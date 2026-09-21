@@ -86,6 +86,25 @@ export async function applyReferralOnSignup(newUserId: string) {
 }
 
 /**
+ * Called after an existing account logs in. If the browser carries an affiliate
+ * cookie and the account is not attributed yet, the affiliate gets this customer
+ * (so a partner's link works for people who already had an account). Friend
+ * referrals are sign-up only: no credits are paid here.
+ */
+export async function applyAttributionOnLogin(userId: string) {
+  const ref = await readAttribution();
+  if (!ref) return;
+  const store = await cookies();
+  store.delete(COOKIE);
+  if (ref.kind !== "affiliate" || ref.id === userId) return;
+  const user = await db.user.findUnique({ where: { id: userId }, select: { affiliateId: true } });
+  if (!user || user.affiliateId) return;
+  const aff = await db.affiliate.findFirst({ where: { id: ref.id, active: true }, select: { id: true } });
+  if (!aff) return;
+  await db.user.update({ where: { id: userId }, data: { affiliateId: aff.id } });
+}
+
+/**
  * Called whenever a user pays for a plan (Whop webhook, or the dev plan switcher).
  * Records the affiliate commission and pays the referrer's one-time paid bonus.
  */
