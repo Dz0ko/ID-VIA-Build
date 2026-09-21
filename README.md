@@ -9,8 +9,8 @@ Web app + desktop app (Tauri) that lets anyone create websites, landing pages an
 | Layer | Choice |
 |---|---|
 | Frontend / API | Next.js 16 (App Router), React 19, TypeScript, Tailwind v4 |
-| Database | Prisma 6 — SQLite by default (`file:./dev.db`), switch to Postgres/Supabase for production |
-| Auth | Email + password (JWT cookie) and **Sign in with Whop** (OAuth 2 + PKCE) |
+| Database | Prisma 6 on Supabase Postgres (pooler for runtime, direct URL for schema pushes) |
+| Auth | Email + password (JWT cookie), Google and GitHub OAuth |
 | Billing | **Whop** — checkout links, membership webhooks (Standard Webhooks HMAC), credit packs |
 | AI | Multi-provider router: Anthropic (Claude), OpenAI, offline mock engine. Tiers (fast / standard / advanced / premium) are mapped to concrete models in the admin panel |
 | Editor | Monaco |
@@ -21,7 +21,7 @@ Web app + desktop app (Tauri) that lets anyone create websites, landing pages an
 ```bash
 npm install
 cp .env.example .env        # then edit .env
-npm run setup               # prisma generate + db push + seed admin
+npm run setup               # prisma generate + db push (to Supabase) + seed admin
 npm run dev                 # http://localhost:3737
 ```
 
@@ -90,8 +90,16 @@ The production desktop build loads `https://idaevia.app` (set in `src-tauri/taur
 
 `dev`, `build`, `start`, `lint`, `typecheck`, `db:push`, `db:seed`, `setup`, `tauri`.
 
+## Deploy to Vercel (idaevia.app)
+
+1. Push `main` to GitHub. Import the repo in Vercel (framework: Next.js, root: repo root).
+2. Add every variable from `.env.example` under Settings → Environment Variables. `DATABASE_URL`/`DIRECT_URL` must be the Supabase Postgres URLs; Vercel has no disk, SQLite does not work there.
+3. The build runs `vercel-build`: `prisma generate && prisma db push && next build`, so the schema is applied to Supabase on every deploy.
+4. Seed the admin once from your machine with the production `.env`: `npm run db:seed`.
+5. Domains: add `idaevia.app` and `www.idaevia.app` in Vercel; at GoDaddy set `A @ → 76.76.21.21` and `CNAME www → cname.vercel-dns.com`. SSL is automatic (`.app` requires HTTPS).
+6. After the first deploy set the OAuth redirect URIs and the Whop webhook to `https://idaevia.app/...`.
+
 ## Production notes
 
-- Switch Prisma to Postgres: change `provider = "postgresql"` in `prisma/schema.prisma`, set `DATABASE_URL`, run `prisma migrate deploy`.
 - Set a strong `AUTH_SECRET`, `APP_URL` to the public URL.
 - Generated sites are single-file HTML served from the database — no arbitrary server-side code execution.

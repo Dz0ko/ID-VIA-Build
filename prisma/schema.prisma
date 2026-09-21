@@ -1,17 +1,16 @@
 // IDÆVIA Build — data model
-// Default: SQLite for local dev. Switch `provider` to "postgresql" and set
-// DATABASE_URL to a Supabase/Postgres URL for production.
+// Database: Supabase Postgres (production and local dev). See .env.example.
 
 generator client {
   provider = "prisma-client-js"
 }
 
 datasource db {
-  // Local dev: SQLite. Production (Supabase): change provider to "postgresql" and
-  // uncomment directUrl; DATABASE_URL = pooler (6543), DIRECT_URL = direct (5432).
-  provider = "sqlite"
-  url      = env("DATABASE_URL")
-  // directUrl = env("DIRECT_URL")
+  // Supabase Postgres. DATABASE_URL = transaction pooler (6543, pgbouncer),
+  // DIRECT_URL = direct connection (5432) used by `prisma db push` / migrations.
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
 }
 
 model User {

@@ -12,7 +12,9 @@
     "db:push": "prisma db push --skip-generate",
     "db:seed": "tsx prisma/seed.ts",
     "setup": "prisma db push --skip-generate && tsx prisma/seed.ts",
-    "tauri": "tauri"
+    "tauri": "tauri",
+    "vercel-build": "prisma generate && prisma db push --skip-generate && next build",
+    "db:migrate": "prisma db push --skip-generate"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.127.0",
