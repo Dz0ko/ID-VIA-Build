@@ -175,7 +175,7 @@ export default async function Home() {
         {/* DOWNLOAD CTA */}
         <section className="py-20 md:py-32 border-t border-graphite/70 relative overflow-hidden stars snap-section lg:min-h-[70vh] flex flex-col justify-center">
           <div className="relative max-w-3xl mx-auto px-6 text-center reveal-up">
-            <h2 className="display !text-[clamp(34px,6vw,64px)]">Build your first product tonight.</h2>
+            <h2 className="display !text-[clamp(34px,6vw,64px)]">Build your first product today.</h2>
             <p className="mt-5 text-lg text-fog">Desktop app for macOS and Windows, or the web app in any browser. Same account, same projects, same team.</p>
             <div className="mt-10 flex flex-col items-center gap-3"><DownloadButton loggedIn={Boolean(user)} /></div>
           </div>

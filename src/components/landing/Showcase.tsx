@@ -92,12 +92,14 @@ function useStepScroll(count: number, allowTallPanel = false) {
 }
 /* ---------- Product frames (pure HTML/CSS mock-ups of the real product) ---------- */
 
-function Frame({ children, tone }: { children: ReactNode; tone: "gold" | "coral" | "violet" | "mint" }) {
-  const bg = { gold: "from-[#f6c453] via-[#f2a95c] to-[#e9895c]", coral: "from-[#ff8a7a] via-[#f57ea7] to-[#a08cff]", violet: "from-[#b69cff] via-[#8d7bff] to-[#d9a5ff]", mint: "from-[#5be0b3] via-[#7fd6ff] to-[#f3d27a]" }[tone];
+function Frame({ children, title = "idaevia.app" }: { children: ReactNode; title?: string }) {
   return (
-    <div className={`rounded-[28px] p-3 sm:p-6 md:p-8 bg-gradient-to-br ${bg} shadow-[0_40px_120px_-40px_rgba(0,0,0,.8)]`}>
-      <div className="rounded-2xl bg-[#0d0d10] border border-white/10 overflow-hidden text-left text-[12px] leading-relaxed">
-        <div className="flex items-center gap-1.5 px-4 h-9 border-b border-white/10 bg-[#111114]"><span className="w-2.5 h-2.5 rounded-full bg-white/15" /><span className="w-2.5 h-2.5 rounded-full bg-white/15" /><span className="w-2.5 h-2.5 rounded-full bg-white/15" /><span className="ml-3 text-[11px] text-white/40 font-mono">idaevia.app</span></div>
+    <div className="product-window">
+      <div className="product-window-surface text-left text-[12px] leading-relaxed">
+        <div className="flex items-center gap-1.5 px-4 h-10 border-b border-white/10 bg-white/[.025]">
+          <span className="w-2 h-2 rounded-full bg-white/20" /><span className="w-2 h-2 rounded-full bg-white/15" /><span className="w-2 h-2 rounded-full bg-white/10" />
+          <span className="ml-3 text-[11px] text-white/45 font-mono truncate">{title}</span>
+        </div>
         {children}
       </div>
     </div>
@@ -110,7 +112,7 @@ const Bubble = ({ who, role, children }: { who: string; role: string; children: 
 
 export function WorkspaceFrame() {
   return (
-    <Frame tone="gold">
+    <Frame>
       <div className="grid md:grid-cols-[220px_1fr] min-h-[420px]">
         <aside className="hidden md:block border-r border-white/10 p-3 space-y-1 text-white/60">
           <div className="text-[10px] font-mono uppercase tracking-[.14em] text-white/35 px-2 mb-2">Workspace</div>
@@ -129,9 +131,66 @@ export function WorkspaceFrame() {
   );
 }
 
+function BuilderFrame() {
+  return (
+    <Frame title="idaevia.app / builder">
+      <div className="grid grid-cols-[100px_1fr] sm:grid-cols-[140px_1fr] min-h-[420px]">
+        <aside className="border-r border-white/10 p-3 text-white/45 font-mono text-[10px]">
+          <div className="uppercase tracking-widest text-white/30 mb-5">Explorer</div>
+          <div className="mb-3 text-white/70">⌄ nimbus</div>
+          <div className="space-y-3 pl-2"><div>⌄ src</div><div className="rounded-md bg-white/10 text-white px-2 py-1.5 -ml-2">App.tsx</div><div>Hero.tsx</div><div>Pricing.tsx</div><div>styles.css</div></div>
+          <div className="mt-8 text-emerald-300/80">✓ 4 files saved</div>
+        </aside>
+        <div className="min-w-0 flex flex-col">
+          <div className="px-4 py-3 border-b border-white/10 flex items-center justify-between"><span className="text-white/80">App.tsx</span><span className="text-[10px] text-white/35">React · TSX</span></div>
+          <div className="p-4 flex-1 font-mono text-[11px] leading-7 overflow-x-auto">
+            <div className="text-white/30">01 <span className="text-violet-300">import</span> <span className="text-white/75">Hero</span> <span className="text-violet-300">from</span> <span className="text-emerald-200">&quot;./Hero&quot;</span></div>
+            <div className="text-white/30">02 <span className="text-violet-300">import</span> <span className="text-white/75">Pricing</span> <span className="text-violet-300">from</span> <span className="text-emerald-200">&quot;./Pricing&quot;</span></div>
+            <div className="text-white/30">03</div>
+            <div className="text-white/30">04 <span className="text-violet-300">export default function</span> <span className="text-white/85">App() {'{'}</span></div>
+            <div className="text-white/30">05 <span className="text-violet-300">  return</span> <span className="text-white/75">(</span></div>
+            <div className="text-white/30">06 <span className="text-sky-200">    &lt;main&gt;</span></div>
+            <div className="text-white/30">07 <span className="text-sky-200">      &lt;Hero /&gt;</span></div>
+            <div className="text-white/30">08 <span className="text-sky-200">      &lt;Pricing /&gt;</span></div>
+            <div className="text-white/30">09 <span className="text-sky-200">    &lt;/main&gt;</span></div>
+            <div className="text-white/30">10 <span className="text-white/75">  ); {'}'}</span></div>
+          </div>
+          <div className="border-t border-white/10 bg-white/[.025] px-4 py-3"><div className="text-emerald-300 text-[11px]">✓ Build successful</div><div className="mt-1 text-[10px] text-white/40">Builder · components connected, preview ready</div></div>
+        </div>
+      </div>
+    </Frame>
+  );
+}
+
+function DesignerFrame() {
+  return (
+    <Frame title="idaevia.app / designer">
+      <div className="grid grid-cols-[1fr_110px] sm:grid-cols-[1fr_150px] min-h-[420px]">
+        <div className="p-4 sm:p-5 bg-white/[.015] min-w-0">
+          <div className="flex items-center justify-between text-[10px] text-white/40"><span>Canvas / Desktop</span><span>100%</span></div>
+          <div className="mt-5 rounded-lg border border-white/15 bg-[#111116] p-4 sm:p-5 shadow-xl">
+            <div className="flex justify-between items-center border-b border-white/10 pb-3"><span className="text-white/80 font-medium">nimbus.</span><span className="text-[8px] text-white/40">Product · Pricing</span></div>
+            <div className="relative mt-6 border border-violet-400/60 p-3"><span className="absolute -top-4 left-0 text-[8px] font-mono text-violet-300">Hero / Heading</span><h4 className="text-[clamp(18px,2vw,28px)] leading-tight tracking-tight text-white">Less busywork.<br />More possibility.</h4><span className="absolute -bottom-1 -right-1 size-1.5 bg-violet-300" /></div>
+            <p className="mt-3 text-[10px] leading-relaxed text-white/45">A calmer place for your team to do its best work.</p>
+            <div className="inline-block mt-4 rounded-md bg-violet-400 px-3 py-1.5 text-[9px] font-medium text-[#111116]">Start building →</div>
+            <div className="grid grid-cols-3 gap-2 mt-6">{["Plan", "Build", "Launch"].map((label) => <div key={label} className="rounded-md border border-white/10 py-3 text-center text-[9px] text-white/50">{label}</div>)}</div>
+          </div>
+        </div>
+        <aside className="border-l border-white/10 p-3 sm:p-4 text-[10px] text-white/45">
+          <div className="uppercase tracking-widest text-white/30">Design</div>
+          <div className="mt-6 text-white/75">Typography</div><div className="mt-2 text-2xl text-white/90 tracking-tight">Aa</div><div className="mt-1">Space Grotesk</div><div className="mt-2 font-mono text-white/30">48 / 52 · 600</div>
+          <div className="mt-6 text-white/75">Palette</div><div className="mt-3 flex gap-1.5"><span className="size-5 rounded-full border border-white/20 bg-[#111116]" /><span className="size-5 rounded-full bg-violet-400" /><span className="size-5 rounded-full bg-white/90" /></div>
+          <div className="mt-6 text-white/75">Spacing</div><div className="mt-2 font-mono">8 · 16 · 24 · 32</div>
+          <div className="mt-7 pt-3 border-t border-white/10 text-violet-300">✓ Styles applied</div>
+        </aside>
+      </div>
+    </Frame>
+  );
+}
+
 export function TerminalFrame() {
   return (
-    <Frame tone="coral">
+    <Frame>
       <div className="p-4 font-mono text-[12px] text-white/75 min-h-[380px] space-y-1.5">
         <div><span className="text-[#8d8dff]">$</span> git push</div>
         <div className="text-white/50">→ Repository gorge/nimbus-landing</div>
@@ -153,7 +212,7 @@ export function TerminalFrame() {
 
 export function PortalFrame() {
   return (
-    <Frame tone="violet">
+    <Frame>
       <div className="grid md:grid-cols-[1fr_260px] min-h-[380px]">
         <div className="p-4 border-r border-white/10">
           <div className="flex items-center justify-between"><span className="text-white font-medium">Client portal · Fjord Studio</span><span className="px-2 py-0.5 rounded-full text-[10px] bg-emerald-400/15 text-emerald-300">Ready to approve</span></div>
@@ -172,7 +231,7 @@ export function PortalFrame() {
 
 export function TemplatesFrame() {
   return (
-    <Frame tone="mint">
+    <Frame>
       <div className="p-4 min-h-[380px]">
         <div className="flex gap-2 text-[11px] text-white/60">{["All", "SaaS", "Agency", "Restaurant", "Interactive", "Web3"].map((c, i) => <span key={c} className={`px-2.5 py-1 rounded-full border ${i === 0 ? "border-white/40 text-white" : "border-white/10"}`}>{c}</span>)}</div>
         <div className="mt-4 grid grid-cols-2 sm:grid-cols-3 gap-3">
@@ -234,7 +293,7 @@ export function AgentAccordion({ open, onOpen }: { open: number; onOpen: (i: num
   );
 }
 
-const TEAM_FRAMES: ReactNode[] = [<WorkspaceFrame key="w" />, <WorkspaceFrame key="d" />, <TerminalFrame key="t" />, <TerminalFrame key="dep" />, <PortalFrame key="q" />];
+const TEAM_FRAMES: ReactNode[] = [<BuilderFrame key="w" />, <DesignerFrame key="d" />, <TerminalFrame key="t" />, <TerminalFrame key="dep" />, <PortalFrame key="q" />];
 
 /** Sticky, scroll-driven "Your team" section: scrolling advances Builder → Designer → … */
 export function AgentTeamSection({ heading, intro, catalogHref, count }: { heading: ReactNode; intro: string; catalogHref: string; count: number }) {
@@ -250,7 +309,7 @@ export function AgentTeamSection({ heading, intro, catalogHref, count }: { headi
           <div className="mt-6 flex items-center justify-between gap-4"><a href={catalogHref} className="text-sm text-signal-soft hover:underline">See all {count} agents in the catalog →</a><span className="hidden lg:inline text-[11px] text-ash">Explore the team · {index + 1}/{TEAM.length}</span></div>
         </div>
         <div key={index} className="hidden lg:block pop-in">{TEAM_FRAMES[index]}</div>
-        <div className="lg:hidden"><WorkspaceFrame /></div>
+        <div key={`mobile-${index}`} className="lg:hidden pop-in">{TEAM_FRAMES[index]}</div>
       </div>
     </div>
   );
