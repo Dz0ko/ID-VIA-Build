@@ -1,6 +1,33 @@
 "use client";
 
-import { useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
+
+/**
+ * Maps scroll progress through a tall sticky section to an index (0..n-1). While the section
+ * is pinned, scrolling advances the active item; a click still works and wins until the next scroll.
+ */
+function useScrollIndex(count: number, enabled = true) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [index, setIndex] = useState(0);
+  const manual = useRef(false);
+  useEffect(() => {
+    if (!enabled) return;
+    const onScroll = () => {
+      const el = ref.current; if (!el) return;
+      const rect = el.getBoundingClientRect();
+      const total = rect.height - window.innerHeight;
+      if (total <= 0) return;
+      const p = Math.min(1, Math.max(0, -rect.top / total));
+      if (rect.top > 0 || rect.bottom < window.innerHeight) return; // not pinned
+      manual.current = false;
+      setIndex(Math.min(count - 1, Math.floor(p * count)));
+    };
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
+  }, [count, enabled]);
+  const set = (i: number) => { manual.current = true; setIndex(i); };
+  return { ref, index, set };
+}
 import { BrandIcon, type BrandIconName } from "@/components/BrandIcon";
 
 /* ---------- Product frames (pure HTML/CSS mock-ups of the real product) ---------- */
@@ -133,17 +160,38 @@ const TEAM: { name: string; role: string; text: string; icon: BrandIconName }[] 
   { name: "QA & Security", role: "Engineers", text: "Test every section, link and form, audit for leaked secrets and unsafe patterns, and hand fixes to the Debugger.", icon: "security" },
 ];
 
-export function AgentAccordion() {
-  const [open, setOpen] = useState(0);
+export function AgentAccordion({ open, onOpen }: { open: number; onOpen: (i: number) => void }) {
   return (
     <div className="space-y-3" data-stagger>
       {TEAM.map((t, i) => (
-        <button key={t.name} onClick={() => setOpen(i)} className={`w-full text-left rounded-2xl border px-5 py-4 transition ${open === i ? "border-white/15 bg-[#141416]" : "border-graphite bg-[#0f0f11] hover:border-white/15"}`}>
+        <button key={t.name} onClick={() => onOpen(i)} className={`w-full text-left rounded-2xl border px-5 py-4 transition ${open === i ? "border-white/15 bg-[#141416]" : "border-graphite bg-[#0f0f11] hover:border-white/15"}`}>
           <div className="flex items-center gap-3"><span className={`w-9 h-9 rounded-full grid place-items-center ${open === i ? "bg-signal/20 text-signal-soft" : "bg-white/5 text-fog"}`}><BrandIcon name={t.icon} size={16} strokeWidth={1.7} /></span><span className="text-lg font-medium">{t.name}</span><span className="text-xs text-ash">· {t.role}</span></div>
           {open === i && <p className="mt-3 text-sm text-fog/90 leading-relaxed pop-in">{t.text}</p>}
-          {open === i && <div className="mt-4 h-0.5 rounded-full bg-white/10 overflow-hidden"><div className="h-full w-2/3 bg-paper" /></div>}
+          {open === i && <div className="mt-4 h-0.5 rounded-full bg-white/10 overflow-hidden"><div className="h-full bg-paper transition-[width] duration-700" style={{ width: `${((i + 1) / TEAM.length) * 100}%` }} /></div>}
         </button>
       ))}
+    </div>
+  );
+}
+
+const TEAM_FRAMES: ReactNode[] = [<WorkspaceFrame key="w" />, <WorkspaceFrame key="d" />, <TerminalFrame key="t" />, <TerminalFrame key="dep" />, <PortalFrame key="q" />];
+
+/** Sticky, scroll-driven "Your team" section: scrolling advances Builder → Designer → … */
+export function AgentTeamSection({ heading, intro, catalogHref, count }: { heading: ReactNode; intro: string; catalogHref: string; count: number }) {
+  const { ref, index, set } = useScrollIndex(TEAM.length);
+  return (
+    <div ref={ref} className="lg:min-h-[260vh]">
+      <div className="lg:sticky lg:top-20 grid lg:grid-cols-[1fr_1.15fr] gap-10 lg:gap-16 items-start lg:min-h-[calc(100vh-5rem)] py-4">
+        <div>
+          <p className="label reveal">Your team</p>
+          <h2 className="heading mt-3 reveal-text">{heading}</h2>
+          <p className="mt-5 text-lg text-fog/90 max-w-xl reveal" style={{ transitionDelay: "120ms" }}>{intro}</p>
+          <div className="mt-8"><AgentAccordion open={index} onOpen={set} /></div>
+          <a href={catalogHref} className="inline-flex mt-6 text-sm text-signal-soft hover:underline">See all {count} agents in the catalog →</a>
+        </div>
+        <div key={index} className="hidden lg:block pop-in">{TEAM_FRAMES[index]}</div>
+        <div className="lg:hidden"><WorkspaceFrame /></div>
+      </div>
     </div>
   );
 }
@@ -157,23 +205,25 @@ const ROLES: { id: string; label: string; title: string; text: string; frame: Re
 ];
 
 export function RoleTabs() {
-  const [active, setActive] = useState("founders");
-  const r = ROLES.find((x) => x.id === active)!;
+  const { ref, index, set } = useScrollIndex(ROLES.length);
+  const r = ROLES[index];
   return (
-    <div className="grid lg:grid-cols-[260px_1fr] gap-8 lg:gap-14">
-      <div className="flex lg:flex-col gap-2 lg:gap-6 lg:pt-12 overflow-x-auto">
-        {ROLES.map((x) => (
-          <button key={x.id} onClick={() => setActive(x.id)} className={`relative flex items-center gap-3 whitespace-nowrap text-left text-xl font-medium transition ${active === x.id ? "text-paper" : "text-ash hover:text-fog"}`}>
-            {active === x.id && <span className="hidden lg:block absolute -left-8 text-signal-soft">✦</span>}{x.label}
-          </button>
-        ))}
-      </div>
-      <div key={r.id} className="pop-in">
-        <div className="rounded-3xl bg-[#111114] border border-white/5 p-8 md:p-10">
-          <h3 className="text-3xl md:text-4xl font-semibold tracking-tight">{r.title}</h3>
-          <p className="mt-4 text-lg text-fog/90 leading-relaxed max-w-3xl">{r.text}</p>
+    <div ref={ref} className="lg:min-h-[220vh]">
+      <div className="lg:sticky lg:top-20 grid lg:grid-cols-[260px_1fr] gap-8 lg:gap-14 lg:min-h-[calc(100vh-5rem)] py-4">
+        <div className="flex lg:flex-col gap-4 lg:gap-6 lg:pt-12 overflow-x-auto">
+          {ROLES.map((x, i) => (
+            <button key={x.id} onClick={() => set(i)} className={`relative flex items-center gap-3 whitespace-nowrap text-left text-xl font-medium transition ${index === i ? "text-paper" : "text-ash hover:text-fog"}`}>
+              {index === i && <span className="hidden lg:block absolute -left-8 text-signal-soft">✦</span>}{x.label}
+            </button>
+          ))}
         </div>
-        <div className="mt-6">{r.frame}</div>
+        <div key={r.id} className="pop-in min-w-0">
+          <div className="rounded-3xl bg-[#111114] border border-white/5 p-6 md:p-10">
+            <h3 className="text-2xl md:text-4xl font-semibold tracking-tight">{r.title}</h3>
+            <p className="mt-4 text-base md:text-lg text-fog/90 leading-relaxed max-w-3xl">{r.text}</p>
+          </div>
+          <div className="mt-6">{r.frame}</div>
+        </div>
       </div>
     </div>
   );

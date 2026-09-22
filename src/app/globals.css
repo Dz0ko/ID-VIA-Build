@@ -587,13 +587,33 @@ body {
 .guides::before, .guides::after {
   content: ""; position: absolute; top: 0; bottom: 0; width: 0; border-left: 1px dashed rgba(255,255,255,.10); pointer-events: none;
 }
-.guides::before { left: max(24px, calc((100% - 1400px) / 2 + 24px)); }
-.guides::after { right: max(24px, calc((100% - 1400px) / 2 + 24px)); }
+.guides::before { left: max(8px, calc((100% - 1400px) / 2)); }
+.guides::after { right: max(8px, calc((100% - 1400px) / 2)); }
 .guide-x { position: absolute; left: 0; right: 0; top: 0; height: 0; border-top: 1px dashed rgba(255,255,255,.10); pointer-events: none; }
 .guide-x.bottom { top: auto; bottom: 0; }
 .guide-x::before, .guide-x::after { content: ""; position: absolute; top: -4px; width: 7px; height: 7px; background: #0a0a0b; border: 1px solid rgba(255,255,255,.35); }
-.guide-x::before { left: max(20px, calc((100% - 1400px) / 2 + 20px)); }
-.guide-x::after { right: max(20px, calc((100% - 1400px) / 2 + 20px)); }
+.guide-x::before { left: max(4px, calc((100% - 1400px) / 2 - 4px)); }
+.guide-x::after { right: max(4px, calc((100% - 1400px) / 2 - 4px)); }
 .pop-in { animation: pop-in .35s cubic-bezier(.2,.8,.2,1) both; }
 @keyframes pop-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
 @media (prefers-reduced-motion: reduce) { .pop-in { animation: none; } }
+
+
+/* Hero headline: one line on wide screens, chip sits on the text baseline */
+.display-hero {
+  font-size: clamp(34px, 6.2vw, 78px);
+  line-height: 1.08;
+  letter-spacing: -0.035em;
+  font-weight: 600;
+  text-wrap: balance;
+}
+.agents-chip {
+  display: inline-flex; align-items: center; gap: 0.32em; vertical-align: baseline;
+  padding: 0.04em 0.42em 0.06em; border-radius: 0.32em; line-height: 1;
+  background: color-mix(in oklab, var(--signal) 18%, transparent);
+  border: 1px solid color-mix(in oklab, var(--signal) 40%, transparent);
+  color: var(--signal-soft, #8d8dff);
+  box-shadow: 0 0 40px -10px color-mix(in oklab, var(--signal) 60%, transparent);
+}
+.agents-chip-icon { width: 0.75em; height: 0.75em; flex: none; }
+@media (max-width: 640px) { .agents-chip-icon { display: none; } }

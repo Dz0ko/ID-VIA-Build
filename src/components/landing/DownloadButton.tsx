@@ -2,28 +2,48 @@
 
 import { useEffect, useRef, useState } from "react";
 
-const DOWNLOADS = [
-  { id: "mac", label: "Download for macOS", short: "macOS", href: "/download?os=mac" },
-  { id: "win", label: "Download for Windows", short: "Windows", href: "/download?os=win" },
-  { id: "web", label: "Use in the browser", short: "Web app", href: "/signup" },
-];
+type Os = "mac" | "win" | "linux" | "mobile" | "unknown";
 
-/** Tempo-style primary download button with an OS dropdown; detects the visitor's OS. */
-export function DownloadButton({ size = "lg" }: { size?: "lg" | "sm" }) {
+const OPTIONS = [
+  { id: "mac", label: "Download for macOS", href: "/download?os=mac" },
+  { id: "win", label: "Download for Windows", href: "/download?os=win" },
+  { id: "web", label: "Open the web app", href: "/signup" },
+] as const;
+
+function detect(): Os {
+  const ua = navigator.userAgent;
+  if (/iPhone|iPad|iPod|Android|Mobile/i.test(ua) || (navigator.maxTouchPoints > 1 && /Macintosh/.test(ua) && window.innerWidth < 1024)) return "mobile";
+  if (/Mac/.test(ua)) return "mac";
+  if (/Win/.test(ua)) return "win";
+  if (/Linux|X11|CrOS/.test(ua)) return "linux";
+  return "unknown";
+}
+
+export function useDevice() {
+  const [os, setOs] = useState<Os | null>(null);
+  useEffect(() => { const t = setTimeout(() => setOs(detect()), 0); return () => clearTimeout(t); }, []);
+  return os;
+}
+
+/**
+ * Device-aware primary action: macOS / Windows get their installer, Linux and unknown
+ * get the web app, phones and tablets get a notice (the product is desktop-only).
+ */
+export function DownloadButton({ size = "lg", loggedIn = false }: { size?: "lg" | "sm"; loggedIn?: boolean }) {
+  const os = useDevice();
   const [open, setOpen] = useState(false);
-  const [os, setOs] = useState<"mac" | "win" | "web">("mac");
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    const t = setTimeout(() => {
-      const ua = navigator.userAgent;
-      setOs(/Mac|iPhone|iPad/.test(ua) ? "mac" : /Win/.test(ua) ? "win" : "web");
-    }, 0);
     const onDoc = (e: MouseEvent) => { if (!ref.current?.contains(e.target as Node)) setOpen(false); };
     document.addEventListener("click", onDoc);
-    return () => { clearTimeout(t); document.removeEventListener("click", onDoc); };
+    return () => document.removeEventListener("click", onDoc);
   }, []);
-  const main = DOWNLOADS.find((d) => d.id === os)!;
+
   const pad = size === "lg" ? "px-5 py-3.5 text-[15px]" : "px-4 py-2 text-sm";
+  if (os === null) return <span className={`inline-flex rounded-xl bg-paper/10 ${pad} min-w-[200px] h-[46px]`} aria-hidden />;
+  if (os === "mobile") return <MobileNotice size={size} />;
+
+  const main = os === "mac" ? OPTIONS[0] : os === "win" ? OPTIONS[1] : { id: "web" as const, label: loggedIn ? "Open your workspace" : "Start free in the browser", href: loggedIn ? "/app" : "/signup" };
   return (
     <div ref={ref} className="relative inline-flex">
       <a href={main.href} className={`inline-flex items-center gap-2.5 rounded-l-xl bg-paper text-void font-semibold ${pad} hover:bg-white transition`}>
@@ -35,12 +55,24 @@ export function DownloadButton({ size = "lg" }: { size?: "lg" | "sm" }) {
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" aria-hidden><path d="m6 9 6 6 6-6" /></svg>
       </button>
       {open && (
-        <div className="absolute right-0 top-full mt-2 min-w-[220px] rounded-xl border border-graphite bg-ink p-1.5 shadow-2xl z-50 pop-in">
-          {DOWNLOADS.map((d) => (
-            <a key={d.id} href={d.href} className="flex items-center justify-between gap-3 rounded-lg px-3 py-2 text-sm text-fog hover:bg-graphite hover:text-paper">{d.label}{d.id === os && <span className="text-[10px] text-ash">detected</span>}</a>
+        <div className="absolute right-0 top-full mt-2 min-w-[230px] rounded-xl border border-graphite bg-ink p-1.5 shadow-2xl z-50 pop-in">
+          {OPTIONS.map((d) => (
+            <a key={d.id} href={d.id === "web" && loggedIn ? "/app" : d.href} className="flex items-center justify-between gap-3 rounded-lg px-3 py-2 text-sm text-fog hover:bg-graphite hover:text-paper">{d.label}{d.id === os && <span className="text-[10px] text-ash">your device</span>}</a>
           ))}
         </div>
       )}
+    </div>
+  );
+}
+
+/** Shown instead of a download on phones and tablets. */
+export function MobileNotice({ size = "lg" }: { size?: "lg" | "sm" }) {
+  if (size === "sm") return <a href="/signup" className="btn btn-primary btn-sm">Create account</a>;
+  return (
+    <div className="rounded-2xl border border-graphite bg-ink/70 px-5 py-4 text-left max-w-sm mx-auto">
+      <div className="text-sm font-medium">IDÆVIA Build is a desktop tool</div>
+      <p className="mt-1 text-xs text-ash leading-relaxed">Use it in a browser on your computer, or download the app for macOS or Windows. You can create your account now and pick up on desktop.</p>
+      <a href="/signup" className="btn btn-primary btn-sm mt-3">Create account</a>
     </div>
   );
 }
