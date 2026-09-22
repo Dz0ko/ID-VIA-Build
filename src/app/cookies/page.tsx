@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { LEGAL_CONTACT, LegalPage, Section } from "@/components/LegalPage";
 
-export const metadata: Metadata = { title: "Cookie Policy · IDÆVIA Build", description: "Which cookies IDÆVIA Build uses and why." };
+export const metadata: Metadata = { title: "Cookie Policy", description: "Which cookies IDÆVIA Build uses and why." };
 
 const COOKIES = [
   { name: "idaevia_session", purpose: "Keeps you signed in. A signed, HTTP-only token that identifies your session.", duration: "30 days", type: "Strictly necessary" },

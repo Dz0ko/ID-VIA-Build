@@ -26,7 +26,7 @@ export const viewport: Viewport = {
 };
 
 export const metadata: Metadata = {
-  title: "IDÆVIA Build: Build anything. Ship everything.",
+  title: { default: "IDÆVIA Build", template: "%s · IDÆVIA Build" },
   description:
     "AI software creation platform. Describe it, build it, launch it: websites, SaaS, dashboards and full-stack apps with an AI agent team.",
   icons: { icon: "/brand/monogram/symbol-dark.png" },

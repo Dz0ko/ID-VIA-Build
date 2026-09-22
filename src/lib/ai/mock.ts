@@ -12,10 +12,10 @@ const KEYWORDS: { re: RegExp; id: string }[] = [
   { re: /portfolio|freelanc|designer|photograph/i, id: "portfolio" },
   { re: /restaurant|cafe|café|bistro|pizz|food|bar\b/i, id: "restaurant" },
   { re: /hotel|villa|resort|apartment|booking/i, id: "hotel" },
-  { re: /real ?estate|property|realty|недвижн/i, id: "realestate" },
+  { re: /real ?estate|property|realty/i, id: "realestate" },
   { re: /gym|fitness|trainer|yoga|crossfit/i, id: "fitness" },
   { re: /clinic|dental|dentist|medical|doctor|health/i, id: "medical" },
-  { re: /law|legal|attorney|lawyer|адвокат/i, id: "legal" },
+  { re: /law|legal|attorney|lawyer/i, id: "legal" },
   { re: /car|auto|garage|mechanic|dealership/i, id: "automotive" },
   { re: /event|conference|festival|wedding/i, id: "events" },
   { re: /course|school|academy|education|learn/i, id: "education" },
@@ -41,7 +41,7 @@ function pickTemplate(prompt: string): SiteConfig {
 
 function brandFromPrompt(prompt: string): string | null {
   const m =
-    prompt.match(/(?:called|named|name(?:d)? is|за)\s+["“']?([A-Z][\w&'-]*(?:\s+[A-Z][\w&'-]*){0,3})["”']?/) ||
+    prompt.match(/(?:called|named|name(?:d)? is)\s+["“']?([A-Z][\w&'-]*(?:\s+[A-Z][\w&'-]*){0,3})["”']?/) ||
     prompt.match(/["“']([^"”']{2,30})["”']/);
   if (!m) return null;
   return m[1].replace(/\s+(with|for|that|and|in|on|targeting|about)\b.*$/i, "").trim() || null;
@@ -70,7 +70,7 @@ function applyEdit(html: string, prompt: string): string {
   if (/\blight\b/.test(p) && !/\bdark\b/.test(p)) {
     out = out.replace(/--bg:#[0-9a-fA-F]{3,8}/, `--bg:${PALETTES.light.bg}`).replace(/--text:#[0-9a-fA-F]{3,8}/, `--text:${PALETTES.light.text}`).replace(/--surface:#[0-9a-fA-F]{3,8}/, `--surface:${PALETTES.light.surface}`).replace(/--muted:#[0-9a-fA-F]{3,8}/, `--muted:${PALETTES.light.muted}`).replace(/--border:#[0-9a-fA-F]{3,8}/, `--border:${PALETTES.light.border}`);
   }
-  const title = prompt.match(/(?:headline|title|heading|наслов)\s*(?:to|:|=)?\s*["“']([^"”']{3,120})["”']/i);
+  const title = prompt.match(/(?:headline|title|heading)\s*(?:to|:|=)?\s*["“']([^"”']{3,120})["”']/i);
   if (title) out = out.replace(/(<h1[^>]*>)([\s\S]*?)(<\/h1>)/, `$1${title[1]}$3`);
   const cta = prompt.match(/(?:cta|button)\s*(?:text|label)?\s*(?:to|:|=)?\s*["“']([^"”']{2,40})["”']/i);
   if (cta) out = out.replace(/(glow"[^>]*>)([^<]*)(<\/a>)/, `$1${cta[1]}$3`);
@@ -139,6 +139,6 @@ No AI provider key is configured, so this is a deterministic placeholder generat
   if (accent) cfg.palette.accent = accent;
   if (/\bdark\b/i.test(request)) cfg.palette = { ...PALETTES.dark, accent: cfg.palette.accent };
   if (/\blight\b/i.test(request)) cfg.palette = { ...PALETTES.light, accent: cfg.palette.accent };
-  if (/македон|macedonian|\bmk\b/i.test(request)) cfg.lang = "mk";
+  if (/macedonian|\bmk\b/i.test(request)) cfg.lang = "mk";
   return renderSite(cfg);
 }

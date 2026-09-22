@@ -21,7 +21,7 @@ export default async function Settings({ searchParams }: PageProps<"/app/setting
       <PageHeader title="Settings & billing" subtitle={user.email} />
       <div className="flex-1 overflow-y-auto p-6 space-y-8">
         {sp.error === "checkout_not_configured" && (
-          <div className="rounded-lg border border-warning/40 bg-warning/10 px-4 py-3 text-sm text-warning">Payments are not configured yet. Set <code className="font-mono">WHOP_API_KEY</code> and <code className="font-mono">WHOP_COMPANY_ID</code> in the environment.</div>
+          <div className="rounded-lg border border-warning/40 bg-warning/10 px-4 py-3 text-sm text-warning">Checkout is temporarily unavailable. Please try again later or contact support@idaevia.app.</div>
         )}
         {sp.error === "checkout_failed" && (
           <div className="rounded-lg border border-error/40 bg-error/10 px-4 py-3 text-sm text-error">We could not open the checkout. Please try again in a minute.</div>
@@ -61,7 +61,7 @@ export default async function Settings({ searchParams }: PageProps<"/app/setting
                 ),
               )}
             </div>
-            <p className="text-[11px] text-ash mt-2">{user.plan === "FREE" ? "Top-ups are available on paid plans." : "One-time top-ups paid via Whop. Credits are added automatically after payment."}</p>
+            <p className="text-[11px] text-ash mt-2">{user.plan === "FREE" ? "Top-ups are available on paid plans." : "One-time top-ups paid via Whop (card, PayPal or crypto). Credits are added automatically after payment."}</p>
           </div>
           <div className="card p-5">
             <div className="label">AI providers</div>

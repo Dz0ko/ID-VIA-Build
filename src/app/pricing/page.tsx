@@ -77,6 +77,7 @@ export default async function Pricing() {
                     <li>≈ {Math.max(1, Math.round(c.credits / CREDIT_GUIDE.fullstack))} full-stack features</li>
                   </ul>
                   <Link href={`/api/billing/pack?credits=${c.credits}`} className={`btn btn-sm mt-4 ${i === 2 ? "btn-primary" : "btn-outline"}`}>Buy {c.credits.toLocaleString()} credits</Link>
+                  <div className="mt-2 text-[10px] text-ash text-center">Card, PayPal or crypto via Whop</div>
                 </div>
               );
             })}

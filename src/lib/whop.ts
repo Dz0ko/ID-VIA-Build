@@ -41,7 +41,12 @@ export interface WhopCheckoutInput {
   };
   metadata: Record<string, string | number>;
   redirect_url: string;
+  /** Extra payment methods on top of Whop's defaults (card, PayPal, …). */
+  extraPaymentMethods?: string[];
 }
+
+/** Crypto rails Whop can settle one-time payments in (packs, marketplace). Subscriptions stay on card/PayPal. */
+export const CRYPTO_PAYMENT_METHODS = ["crypto", "coinbase", "eth", "btc", "usdt"];
 
 /** Low-level: create a hosted Whop checkout and return its URL. */
 export async function createWhopCheckoutSession(input: WhopCheckoutInput): Promise<{ checkoutId: string; url: string }> {
@@ -54,6 +59,9 @@ export async function createWhopCheckoutSession(input: WhopCheckoutInput): Promi
       plan: { company_id: process.env.WHOP_COMPANY_ID, currency: "usd", ...input.plan },
       metadata: input.metadata,
       redirect_url: input.redirect_url,
+      ...(input.extraPaymentMethods?.length
+        ? { payment_method_configuration: { enabled: input.extraPaymentMethods, disabled: [], include_platform_defaults: true } }
+        : {}),
     }),
   });
   if (!res.ok) throw new Error(`Whop checkout failed (${res.status}): ${await res.text()}`);
@@ -119,6 +127,7 @@ export async function createPackCheckout(opts: { credits: number; userId: string
     },
     metadata: { idaevia_user_id: opts.userId, credits: pack.credits, email: opts.email },
     redirect_url: `${opts.appUrl}/app/settings?checkout=pack&credits=${pack.credits}`,
+    extraPaymentMethods: CRYPTO_PAYMENT_METHODS,
   });
   await rememberCheckout({ id: session.checkoutId, userId: opts.userId, kind: "pack", credits: pack.credits });
   return session;

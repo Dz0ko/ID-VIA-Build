@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { LEGAL_CONTACT, LegalPage, Section } from "@/components/LegalPage";
 
-export const metadata: Metadata = { title: "Privacy Policy · IDÆVIA Build", description: "How IDÆVIA Build collects, uses and protects your personal data." };
+export const metadata: Metadata = { title: "Privacy Policy", description: "How IDÆVIA Build collects, uses and protects your personal data." };
 
 export default function Privacy() {
   return (

@@ -40,11 +40,8 @@ ${catalogSummary()}`;
 /** Offline fallback when no AI key is configured. */
 export function mockAssistantReply(userText: string): string {
   const t = userText.toLowerCase();
-  const wantsMk = /[а-шѓќџ]/i.test(userText);
-  if (/design|дизајн|colou?r|боја|font|фонт|palette|палета/.test(t)) {
-    return wantsMk
-      ? `## Дизајн насока\n\n- **Палета:** Void #0A0A0B, Ink #121214, акцент Signal #5B5CFF, топло злато #F5C04A за highlight.\n- **Типографија:** Space Grotesk за наслови, Inter за текст, JetBrains Mono за етикети.\n- **Layout:** hero со 3D елемент во позадина, лебдечки стаклени картички со статистики, features grid 3×2, pricing со истакнат план, FAQ, CTA банер.\n- **Ефекти:** Cursor glow, 3D tilt на картички, Text reveal на насловот, Animated gradient позадина (сите се во мојата Effects библиотека).\n- **Почни од:** шаблонот „SaaS · Dark Signal“ или „AI · Platform“.\n\n<<<ACTION {"type":"create_project","name":"Dark premium landing","kind":"website","prompt":"Build a premium dark landing page: hero with a large glossy 3D liquid sphere behind the headline, floating glass stat cards, features grid 3x2, pricing with a highlighted plan, testimonials, FAQ and a CTA banner. Palette: #0A0A0B background, #121214 cards, #5B5CFF accent, #F5C04A gold highlights. Fonts: Space Grotesk headings, Inter body. Add cursor glow, 3D tilt on cards, text reveal on the headline and an animated gradient background."}>>>`
-      : `## Design direction\n\n- **Palette:** Void #0A0A0B, Ink #121214, Signal #5B5CFF accent, warm gold #F5C04A highlight.\n- **Typography:** Space Grotesk for headings, Inter for body, JetBrains Mono for labels.\n- **Layout:** hero with a 3D element behind the headline, floating glass stat cards, 3×2 features grid, pricing with a highlighted plan, FAQ, CTA banner.\n- **Effects:** Cursor glow, 3D tilt on cards, Text reveal on the headline, Animated gradient background (all from my Effects library).\n- **Start from:** the “SaaS · Dark Signal” or “AI · Platform” template.\n\n<<<ACTION {"type":"create_project","name":"Dark premium landing","kind":"website","prompt":"Build a premium dark landing page: hero with a large glossy 3D liquid sphere behind the headline, floating glass stat cards, features grid 3x2, pricing with a highlighted plan, testimonials, FAQ and a CTA banner. Palette: #0A0A0B background, #121214 cards, #5B5CFF accent, #F5C04A gold highlights. Fonts: Space Grotesk headings, Inter body. Add cursor glow, 3D tilt on cards, text reveal on the headline and an animated gradient background."}>>>`;
+  if (/design|colou?r|font|palette/.test(t)) {
+    return `## Design direction\n\n- **Palette:** Void #0A0A0B, Ink #121214, Signal #5B5CFF accent, warm gold #F5C04A highlight.\n- **Typography:** Space Grotesk for headings, Inter for body, JetBrains Mono for labels.\n- **Layout:** hero with a 3D element behind the headline, floating glass stat cards, 3×2 features grid, pricing with a highlighted plan, FAQ, CTA banner.\n- **Effects:** Cursor glow, 3D tilt on cards, Text reveal on the headline, Animated gradient background (all from my Effects library).\n- **Start from:** the “SaaS · Dark Signal” or “AI · Platform” template.\n\n<<<ACTION {"type":"create_project","name":"Dark premium landing","kind":"website","prompt":"Build a premium dark landing page: hero with a large glossy 3D liquid sphere behind the headline, floating glass stat cards, features grid 3x2, pricing with a highlighted plan, testimonials, FAQ and a CTA banner. Palette: #0A0A0B background, #121214 cards, #5B5CFF accent, #F5C04A gold highlights. Fonts: Space Grotesk headings, Inter body. Add cursor glow, 3D tilt on cards, text reveal on the headline and an animated gradient background."}>>>`;
   }
   const ideas = [
     { name: "Bookly", kind: "website", pitch: "online booking site for salons and clinics", prompt: "Build a modern booking website for a hair salon: services with prices, team, gallery, an appointment form with date and time, opening hours and location. Warm palette, rounded cards, subtle reveal animations." },
@@ -52,13 +49,13 @@ export function mockAssistantReply(userText: string): string {
     { name: "Signal Conf", kind: "website", pitch: "conference landing with tickets", prompt: "Build a conference landing page: dates and venue, speakers grid, schedule tabs, three ticket tiers, sponsors and FAQ. Purple neon style with animated gradient background." },
     { name: "Metrix", kind: "app", pitch: "product analytics SaaS UI", prompt: "Build a product analytics dashboard: sidebar, date range picker, funnel chart, retention table, top events list and an alerts panel. Light theme, slate palette." },
   ];
-  const head = wantsMk ? "## Идеи за проекти\n\nЕве четири идеи што можам да ги изградам веднаш. Кликни на некоја за да се креира проектот:\n\n" : "## Project ideas\n\nHere are four ideas I can build right away. Click one to create the project:\n\n";
+  const head = "## Project ideas\n\nHere are four ideas I can build right away. Click one to create the project:\n\n";
   return (
     head +
     ideas.map((i) => `- **${i.name}**: ${i.pitch}`).join("\n") +
     "\n\n" +
     ideas.map((i) => `<<<ACTION ${JSON.stringify({ type: "create_project", name: i.name, kind: i.kind, prompt: i.prompt })}>>>`).join("\n") +
-    (wantsMk ? "\n\n(Offline режим: додади API клуч за вистински одговори.)" : "\n\n(Offline mode: add an API key for real answers.)")
+    "\n\n(Offline mode: add an API key for real answers.)"
   );
 }
 

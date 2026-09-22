@@ -1,5 +1,5 @@
 import { db } from "./db";
-import { createWhopCheckoutSession, rememberCheckout } from "./whop";
+import { CRYPTO_PAYMENT_METHODS, createWhopCheckoutSession, rememberCheckout } from "./whop";
 
 /** Platform commission on every marketplace sale, in percent. */
 export const MARKETPLACE_FEE_PCT = 10;
@@ -87,6 +87,7 @@ export async function createWhopCheckout(opts: {
     },
     metadata: { purchase_id: opts.purchaseId, market_item_id: opts.itemId, idaevia_user_id: opts.buyerId, email: opts.buyerEmail },
     redirect_url: `${opts.appUrl}/app/marketplace?purchase=${opts.purchaseId}`,
+    extraPaymentMethods: CRYPTO_PAYMENT_METHODS,
   });
   await rememberCheckout({ id: session.checkoutId, userId: opts.buyerId, kind: "market", purchaseId: opts.purchaseId });
   return session;

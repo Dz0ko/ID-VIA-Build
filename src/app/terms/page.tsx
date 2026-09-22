@@ -4,7 +4,7 @@ import { LEGAL_CONTACT, LegalPage, Section } from "@/components/LegalPage";
 import { CREDIT_PACKS, PLANS } from "@/lib/plans";
 import { MARKETPLACE_FEE_PCT } from "@/lib/marketplace";
 
-export const metadata: Metadata = { title: "Terms of Service · IDÆVIA Build", description: "The terms that govern your use of IDÆVIA Build." };
+export const metadata: Metadata = { title: "Terms of Service", description: "The terms that govern your use of IDÆVIA Build." };
 
 export default function Terms() {
   return (

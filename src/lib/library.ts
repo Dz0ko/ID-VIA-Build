@@ -27,7 +27,7 @@ export const PROMPT_LIBRARY: PromptItem[] = [
   { id: "creator", category: "Creator", title: "Link in bio", prompt: "Build a creator link-in-bio page: avatar, bio, link buttons with icons, latest videos, membership tiers." },
   { id: "web3", category: "Web3", title: "Token landing", prompt: "Create a Web3 protocol landing page: hero with animated gradient, TVL stats, features, tokenomics chart placeholder, roadmap, FAQ." },
   { id: "dashboard", category: "SaaS", title: "Admin dashboard UI", prompt: "Build an admin dashboard UI (not a landing page): sidebar navigation, top bar, KPI cards, a line chart placeholder, recent orders table and activity feed. Dark theme." },
-  { id: "mk-local", category: "Local", title: "Македонски локален бизнис", prompt: "Направи модерен веб-сајт на македонски јазик за фризерски салон во Скопје: услуги со цени, галерија, тим, закажување термин, работно време и контакт." },
+  { id: "local-salon", category: "Local", title: "Local business", prompt: "Build a modern website for a hair salon: services with prices, gallery, team, appointment booking, opening hours and contact." },
 ];
 
 export interface PromptPack {
