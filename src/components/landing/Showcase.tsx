@@ -2,66 +2,84 @@
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
 
-/**
- * Step-through on scroll. While the enclosing <section> fills the screen the page is held in
- * place and every scroll gesture moves exactly one step: wheel / trackpad / arrow / PageDown.
- * After a step there is a ~1s freeze and the gesture must stop before the next step counts, so a
- * single flick can never skip items. Entering from above starts at the first step, entering from
- * below at the last one. Only past the last step (or before the first) does the page scroll on to
- * the next section. Disabled under 1024px.
- */
+import { BrandIcon, type BrandIconName } from "@/components/BrandIcon";
+
+/** Native scrolling drives the steps; wheel, touch and keyboard input stay with the browser. */
 function useStepScroll(count: number) {
   const ref = useRef<HTMLDivElement>(null);
   const [index, setIndex] = useState(0);
-  const idx = useRef(0);
+  const navigate = useRef<((i: number) => void) | null>(null);
+
   useEffect(() => {
-    const el = ref.current; if (!el) return;
-    const section = (el.closest("section") ?? el) as HTMLElement;
-    const FREEZE = 1000, QUIET = 180, ARRIVE = 600;
-    let steppedAt = 0, lastWheel = 0, arrivedAt = 0, wasIn = false, lastY = window.scrollY;
-    const go = (i: number) => { idx.current = i; setIndex(i); };
-    const pinned = () => {
-      if (window.innerWidth < 1024) return false;
-      const r = section.getBoundingClientRect();
-      const inside = r.top <= 120 && r.top >= -60;
-      if (inside && !wasIn) { arrivedAt = performance.now(); go(window.scrollY >= lastY ? 0 : count - 1); }
-      wasIn = inside;
-      return inside;
+    const track = ref.current;
+    const panel = track?.firstElementChild as HTMLElement | null;
+    if (!track || !panel) return;
+    const media = window.matchMedia("(min-width: 1024px) and (prefers-reduced-motion: no-preference)");
+    let frame = 0;
+    let enabled = false;
+    let distance = 0;
+    let current = 0;
+    let reservedHeight = 0;
+    const select = (next: number) => {
+      if (next !== current) { current = next; setIndex(next); }
     };
-    const onScroll = () => { pinned(); lastY = window.scrollY; };
-    const canRelease = (dir: 1 | -1) => (dir > 0 && idx.current >= count - 1) || (dir < 0 && idx.current <= 0);
-    const step = (dir: 1 | -1, now: number) => {
-      if (now - steppedAt < FREEZE || now - arrivedAt < ARRIVE) return;
-      steppedAt = now; go(idx.current + dir);
+    const update = () => {
+      frame = 0;
+      if (!enabled) return;
+      const progress = (64 - track.getBoundingClientRect().top) / distance;
+      select(Math.max(0, Math.min(count - 1, Math.floor(progress + 0.5))));
     };
-    const onWheel = (e: WheelEvent) => {
-      if (!pinned()) return;
-      const dir: 1 | -1 = e.deltaY > 0 ? 1 : -1;
-      const now = performance.now();
-      if (canRelease(dir) && now - steppedAt >= FREEZE && now - arrivedAt >= ARRIVE) return; // let the page move on
-      e.preventDefault();
-      const quiet = now - lastWheel >= QUIET; // a new gesture, not the tail of the previous one
-      lastWheel = now;
-      if (!quiet || Math.abs(e.deltaY) < 4) return;
-      step(dir, now);
+    const onScroll = () => { if (!frame) frame = requestAnimationFrame(update); };
+    const measure = () => {
+      // A panel taller than the available screen must remain freely scrollable.
+      const height = panel.getBoundingClientRect().height;
+      enabled = media.matches && height <= window.innerHeight - 64;
+      if (enabled) {
+        reservedHeight = Math.max(reservedHeight, height);
+        distance = Math.max(320, window.innerHeight * 0.6);
+        track.style.height = `${reservedHeight + (count - 1) * distance}px`;
+        panel.style.position = "sticky";
+        panel.style.top = "64px";
+        update();
+      } else {
+        reservedHeight = 0;
+        track.style.removeProperty("height");
+        panel.style.removeProperty("position");
+        panel.style.removeProperty("top");
+      }
     };
-    const onKey = (e: KeyboardEvent) => {
-      if (!pinned()) return;
-      const dir: 1 | -1 | 0 = e.key === "ArrowDown" || e.key === "PageDown" || e.key === " " ? 1 : e.key === "ArrowUp" || e.key === "PageUp" ? -1 : 0;
-      if (!dir || canRelease(dir)) return;
-      e.preventDefault(); step(dir, performance.now());
+    navigate.current = (next) => {
+      select(next);
+      if (enabled) {
+        const top = window.scrollY + track.getBoundingClientRect().top - 64 + next * distance;
+        window.scrollTo({ top, behavior: "instant" });
+      }
     };
-    pinned();
+    const observer = new ResizeObserver(measure);
+    observer.observe(panel);
+    media.addEventListener("change", measure);
+    window.addEventListener("resize", measure);
     window.addEventListener("scroll", onScroll, { passive: true });
-    window.addEventListener("wheel", onWheel, { passive: false });
-    window.addEventListener("keydown", onKey);
-    return () => { window.removeEventListener("scroll", onScroll); window.removeEventListener("wheel", onWheel); window.removeEventListener("keydown", onKey); };
+    measure();
+    return () => {
+      observer.disconnect();
+      media.removeEventListener("change", measure);
+      window.removeEventListener("resize", measure);
+      window.removeEventListener("scroll", onScroll);
+      cancelAnimationFrame(frame);
+      navigate.current = null;
+      track.style.removeProperty("height");
+      panel.style.removeProperty("position");
+      panel.style.removeProperty("top");
+    };
   }, [count]);
-  const set = (i: number) => { idx.current = i; setIndex(i); };
+
+  const set = (i: number) => {
+    if (navigate.current) navigate.current(i);
+    else setIndex(i);
+  };
   return { ref, index, set };
 }
-import { BrandIcon, type BrandIconName } from "@/components/BrandIcon";
-
 /* ---------- Product frames (pure HTML/CSS mock-ups of the real product) ---------- */
 
 function Frame({ children, tone }: { children: ReactNode; tone: "gold" | "coral" | "violet" | "mint" }) {
@@ -219,7 +237,7 @@ export function AgentTeamSection({ heading, intro, catalogHref, count }: { headi
           <h2 className="heading mt-3 reveal-text">{heading}</h2>
           <p className="mt-5 text-lg text-fog/90 max-w-xl reveal" style={{ transitionDelay: "120ms" }}>{intro}</p>
           <div className="mt-8"><AgentAccordion open={index} onOpen={set} /></div>
-          <div className="mt-6 flex items-center justify-between gap-4"><a href={catalogHref} className="text-sm text-signal-soft hover:underline">See all {count} agents in the catalog →</a><span className="hidden lg:inline text-[11px] text-ash">Scroll to step through · {index + 1}/{TEAM.length}</span></div>
+          <div className="mt-6 flex items-center justify-between gap-4"><a href={catalogHref} className="text-sm text-signal-soft hover:underline">See all {count} agents in the catalog →</a><span className="hidden lg:inline text-[11px] text-ash">Explore the team · {index + 1}/{TEAM.length}</span></div>
         </div>
         <div key={index} className="hidden lg:block pop-in">{TEAM_FRAMES[index]}</div>
         <div className="lg:hidden"><WorkspaceFrame /></div>
