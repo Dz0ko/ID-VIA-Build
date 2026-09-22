@@ -166,45 +166,55 @@ export default async function Home() {
           <div className="max-w-6xl mx-auto px-6">
             <p className="label reveal">The whole workflow</p>
             <h2 className="heading mt-3 max-w-2xl reveal">Not just prompt to code. Idea to production.</h2>
-            <div className="mt-14 grid md:grid-cols-2 lg:grid-cols-3 gap-5" style={{ perspective: "1200px" }}>
-              {FEATURES.map(([t, d, icon], i) => (
-                <div key={t} className="glass-card rounded-3xl p-7 reveal-up" style={{ transitionDelay: `${i * 80}ms` }} data-tilt="12">
-                  <div className="card-grid" />
-                  <div className="card-body">
-                    <div className="icon-orb"><BrandIcon name={icon} size={22} strokeWidth={1.6} /></div>
-                    <h3 className="card-title mt-6 font-medium text-lg">{t}</h3>
-                    <p className="mt-3 text-sm text-fog/90 leading-relaxed">{d}</p>
+            <div className="mt-14 glass-card rounded-[28px] p-2 reveal-up">
+              <div className="card-grid" />
+              <div className="card-body grid sm:grid-cols-2 lg:grid-cols-3 gap-px bg-graphite/60 rounded-[22px] overflow-hidden">
+                {FEATURES.map(([t, d, icon]) => (
+                  <div key={t} className="group flex gap-4 p-7 md:p-8 bg-[#0b0b0d] transition-colors hover:bg-[#101013]">
+                    <div className="step-num !w-10 !h-10 !rounded-xl shrink-0"><BrandIcon name={icon} size={17} strokeWidth={1.7} /></div>
+                    <div className="min-w-0">
+                      <h3 className="text-base font-medium">{t}</h3>
+                      <p className="mt-2 text-sm text-fog/90 leading-relaxed">{d}</p>
+                    </div>
                   </div>
-                </div>
-              ))}
+                ))}
+              </div>
             </div>
           </div>
         </section>
 
-        {/* AGENTS */}
         <section id="agents" className="py-16 md:py-28 border-t border-graphite">
           <div className="max-w-6xl mx-auto px-6">
             <p className="label reveal">AI agent catalog</p>
             <h2 className="heading mt-3 reveal">{AGENTS.length} specialised agents. One team.</h2>
             <p className="mt-4 text-fog max-w-2xl reveal">You never have to pick. Describe the change and IDÆVIA routes it to the right specialist, or pick one yourself.</p>
-            <div className="mt-12 space-y-10">
-              {AGENT_GROUPS.map(([group, ids]) => (
-                <div key={group}>
-                  <div className="label mb-4 reveal">{group}</div>
-                  <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-3">
-                    {ids.map((id, i) => { const a = agentById.get(id); if (!a) return null; return (
-                      <div key={id} className="agent-card glass-card rounded-2xl p-4 reveal-up" style={{ transitionDelay: `${i * 50}ms` }} data-tilt="8">
-                        <div className="card-grid" />
-                        <div className="card-body flex items-center gap-3">
-                          <span className="agent-num w-9 h-9 rounded-xl grid place-items-center bg-gradient-to-br from-signal/40 to-[#f5c04a]/20 text-paper border border-paper/10 shadow-[inset_0_1px_0_rgba(255,255,255,.2)]"><BrandIcon name={agentIcon(id)} size={17} strokeWidth={1.7} /></span>
-                          <div className="min-w-0"><div className="text-sm font-medium">{a.name}</div><div className="text-[11px] text-ash truncate">{a.short}</div></div>
-                        </div>
-                        <div className="mt-3 flex gap-1.5"><span className="pill text-[10px]">{a.tier} tier</span><span className="pill text-[10px]">{a.mode === "rewrite" ? "edits" : "report"}</span></div>
-                      </div>
-                    ); })}
+            <div className="mt-12 glass-card rounded-[28px] p-2 reveal-up">
+              <div className="card-grid" />
+              <div className="card-body grid md:grid-cols-2 xl:grid-cols-4 gap-px bg-graphite/60 rounded-t-[22px] overflow-hidden">
+                {AGENT_GROUPS.map(([group, ids]) => (
+                  <div key={group} className="p-6 md:p-7 bg-[#0b0b0d]">
+                    <div className="flex items-center justify-between mb-4">
+                      <div className="text-[11px] font-mono uppercase tracking-[0.14em] text-ash">{group}</div>
+                      <span className="text-[11px] text-ash">{ids.filter((id) => agentById.has(id)).length}</span>
+                    </div>
+                    <ul className="space-y-1">
+                      {ids.map((id) => { const a = agentById.get(id); if (!a) return null; return (
+                        <li key={id} className="group flex items-center gap-3 rounded-xl px-2 py-2 -mx-2 transition-colors hover:bg-white/[0.035]">
+                          <span className="w-8 h-8 shrink-0 rounded-lg grid place-items-center bg-ink border border-graphite text-paper group-hover:border-signal/50 transition-colors"><BrandIcon name={agentIcon(id)} size={15} strokeWidth={1.7} /></span>
+                          <div className="min-w-0 flex-1"><div className="text-sm font-medium leading-tight">{a.name}</div><div className="text-[11px] text-ash truncate">{a.short}</div></div>
+                          <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${a.tier === "premium" || a.tier === "frontier" ? "bg-[#f5c04a]" : a.tier === "advanced" ? "bg-signal" : "bg-ash/60"}`} title={`${a.tier} tier`} />
+                        </li>
+                      ); })}
+                    </ul>
                   </div>
-                </div>
-              ))}
+                ))}
+              </div>
+              <div className="card-body flex flex-wrap items-center gap-x-5 gap-y-2 px-7 py-4 bg-[#0b0b0d] rounded-b-[22px] border-t border-graphite/60 text-[11px] text-ash">
+                <span className="flex items-center gap-2"><span className="w-1.5 h-1.5 rounded-full bg-ash/60" />Fast / standard tier</span>
+                <span className="flex items-center gap-2"><span className="w-1.5 h-1.5 rounded-full bg-signal" />Advanced tier</span>
+                <span className="flex items-center gap-2"><span className="w-1.5 h-1.5 rounded-full bg-[#f5c04a]" />Premium / frontier tier</span>
+                <span className="ml-auto">Auto-routing picks the specialist for every request.</span>
+              </div>
             </div>
           </div>
         </section>
