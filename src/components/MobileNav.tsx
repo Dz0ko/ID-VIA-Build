@@ -5,11 +5,11 @@ import Link from "next/link";
 import { Menu, X } from "@/components/icons";
 
 const LINKS = [
-  { href: "#how", label: "How it works" },
-  { href: "#product", label: "Product" },
+  { href: "#features", label: "Features" },
   { href: "#agents", label: "Agents" },
   { href: "#templates", label: "Templates" },
   { href: "#pricing", label: "Pricing" },
+  { href: "/download", label: "Download app" },
 ];
 
 /** Hamburger menu for the landing header on screens below md. */
