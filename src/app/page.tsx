@@ -34,7 +34,9 @@ const AGENT_GROUPS: [string, string[]][] = [
   ["Full-stack and launch", ["database", "api", "auth", "payments", "git", "deploy", "analytics", "conversion", "documentation", "pm"]],
 ];
 
-const words = "Build anything. Ship everything.".split(" ");
+const HEADLINE = "One sentence in. A live product out.";
+const words = HEADLINE.split(" ");
+const SHIMMER_INDEX = words.indexOf("live");
 
 
 
@@ -74,24 +76,25 @@ export default async function Home() {
           <div className="hidden md:block absolute inset-0 -z-0"><HeroBlob className="absolute inset-0 [&>canvas]:w-full [&>canvas]:h-full" /></div>
           <div className="absolute inset-0 bg-[radial-gradient(70%_60%_at_50%_100%,rgba(245,185,66,0.10),transparent_60%),radial-gradient(60%_50%_at_50%_0%,rgba(91,92,255,0.14),transparent_70%)] pointer-events-none" />
           <div className="relative max-w-6xl mx-auto px-5 sm:px-6 pt-16 sm:pt-24 md:pt-32 pb-14 md:pb-24 text-center w-full">
-            <h1 className="display max-w-4xl mx-auto" aria-label="Build anything. Ship everything.">
+            <h1 className="display max-w-4xl mx-auto" aria-label={HEADLINE}>
               {words.map((w, i) => (
                 <span key={i} className="word mr-[0.22em]" style={{ animationDelay: `${120 + i * 110}ms` }}>
-                  {i === 3 ? <span className="text-shimmer">{w}</span> : w}
+                  {i === SHIMMER_INDEX ? <span className="text-shimmer">{w}</span> : w}
                 </span>
               ))}
             </h1>
             <p className="reveal in mt-6 md:mt-8 text-base sm:text-lg md:text-xl text-fog max-w-2xl mx-auto" style={{ transitionDelay: "500ms" }}>
-              <span className="md:hidden">Describe it in one sentence. 30 AI agents design, build and launch your website or app.</span>
-              <span className="hidden md:inline">Type one sentence. A team of 30 AI agents plans, designs and builds your website, SaaS or app, then tests it, optimises it and walks you to launch. Your first version is live in under a minute.</span>
+              <span className="md:hidden">Describe your website or app. 30 AI agents build it while you watch, then help you launch it.</span>
+              <span className="hidden md:inline">Describe the website or app you want. A team of 30 AI agents designs it, builds it and tests it while you watch, then walks you to launch. No code, no templates to fight, no waiting on anyone.</span>
             </p>
             <div className="reveal in mt-8 md:mt-10 flex flex-col sm:flex-row items-stretch sm:items-center justify-center gap-3 max-w-sm sm:max-w-none mx-auto" style={{ transitionDelay: "650ms" }}>
               <Link href={user ? "/app" : "/signup"} className="btn btn-signal btn-glow px-8 py-4 text-base" data-magnetic>
-                {user ? "Open your workspace" : "Build your first project free"}
+                {user ? "Open your workspace" : "Build mine for free"}
               </Link>
-              <a href="#how" className="hidden sm:inline-flex btn btn-outline px-7 py-4 text-base bg-void/50 backdrop-blur" data-magnetic>See how it works</a>
-              <a href="#how" className="sm:hidden text-sm text-fog underline underline-offset-4 py-2">See how it works ↓</a>
+              <a href="#how" className="hidden sm:inline-flex btn btn-outline px-7 py-4 text-base bg-void/50 backdrop-blur" data-magnetic>See it in action</a>
+              <a href="#how" className="sm:hidden text-sm text-fog underline underline-offset-4 py-2">See it in action ↓</a>
             </div>
+            {!user && <p className="reveal in mt-4 text-xs text-ash" style={{ transitionDelay: "800ms" }}>Free plan · no card needed · your first version in under a minute</p>}
 
             {/* Floating glass cards */}
             <div className="hidden md:grid mt-24 md:grid-cols-3 gap-5 max-w-5xl mx-auto text-left items-start">
