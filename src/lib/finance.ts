@@ -11,14 +11,16 @@ export async function requireAdmin() {
 export async function getFinanceStats(period: "all" | "30d" = "all") {
   await requireAdmin();
   const since = period === "30d" ? new Date(Date.now() - 30 * 86400000) : undefined;
+  const adminIds = await db.user.findMany({ where: { role: "ADMIN" }, select: { id: true } });
+  const adminIdSet = new Set(adminIds.map(a => a.id));
   const [payments, runs, expense, expenses, users, legacyEvents, first] = await Promise.all([
-    db.payment.findMany({ where: { paidAt: since ? { gte: since } : undefined } }),
-    db.agentRun.groupBy({ by: ["userId"], _sum: { costUsd: true, creditsUsed: true }, _count: true, where: { startedAt: since ? { gte: since } : undefined } }),
+    db.payment.findMany({ where: { paidAt: since ? { gte: since } : undefined, userId: { notIn: Array.from(adminIdSet) } } }),
+    db.agentRun.groupBy({ by: ["userId"], _sum: { costUsd: true, creditsUsed: true }, _count: true, where: { startedAt: since ? { gte: since } : undefined, userId: { notIn: Array.from(adminIdSet) } } }),
     db.financialExpense.aggregate({ _sum: { amountCents: true }, where: { incurredAt: since ? { gte: since } : undefined } }),
     db.financialExpense.findMany({ where: { incurredAt: since ? { gte: since } : undefined }, orderBy: { incurredAt: "desc" }, take: 20 }),
-    db.user.findMany({ select: { id: true, email: true, name: true } }),
+    db.user.findMany({ where: { role: { not: "ADMIN" } }, select: { id: true, email: true, name: true } }),
     db.webhookEvent.count({ where: { type: "payment.succeeded", NOT: { payload: { contains: '"processed":true' } } } }),
-    db.payment.findFirst({ orderBy: { paidAt: "asc" }, select: { paidAt: true } }),
+    db.payment.findFirst({ where: { userId: { notIn: Array.from(adminIdSet) } }, orderBy: { paidAt: "asc" }, select: { paidAt: true } }),
   ]);
   const empty = () => ({ grossCents: 0, returnedCents: 0, feeCents: 0, sellerCents: 0, referralCents: 0, affiliateCents: 0, aiCostCents: 0, expensesCents: 0 });
   const totals = empty();
