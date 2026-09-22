@@ -30,7 +30,6 @@ export const metadata: Metadata = {
   title: { default: "IDÆVIA Build", template: "%s · IDÆVIA Build" },
   description:
     "AI software creation platform. Describe it, build it, launch it: websites, SaaS, dashboards and full-stack apps with an AI agent team.",
-  icons: { icon: "/brand/monogram/symbol-dark.png" },
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {

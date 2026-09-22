@@ -7,6 +7,7 @@ import Link from "next/link";
 import {
   ArrowLeft, Rocket, Download, Monitor, Tablet, Smartphone, Code2, Eye, History, MessageSquare, TerminalSquare, AlertTriangle, Lock, Play, RotateCcw, Save, Activity, ExternalLink, Users, FileCode2, Folder, ChevronRight, Image as ImageIcon, X, Share2, Link2, Trash2, CheckCircle2,
 } from "@/components/icons";
+import { WorkspaceMenuButton } from "./Shell";
 import type { AgentDef } from "@/lib/agents";
 import type { PlanId, ModelTier } from "@/lib/plans";
 import { MODEL_TIERS } from "@/lib/plans";
@@ -74,6 +75,10 @@ export function Workspace(p: WorkspaceProps) {
   const [status, setStatus] = useState(p.project.status);
   const [clientStatus, setClientStatus] = useState(p.project.clientStatus);
   const [credits, setCredits] = useState(p.credits);
+  const [showFiles, setShowFiles] = useState(false);
+  const [showTeam, setShowTeam] = useState(false);
+  const [expandedPanel, setExpandedPanel] = useState(false);
+  const [fileQuery, setFileQuery] = useState("");
   const [view, setView] = useState<"preview" | "code">("preview");
   const [device, setDevice] = useState<"desktop" | "tablet" | "mobile">("desktop");
   const [bottom, setBottom] = useState<"chat" | "changes" | "logs" | "problems" | "terminal" | "share">("chat");
@@ -96,6 +101,7 @@ export function Workspace(p: WorkspaceProps) {
   const [links, setLinks] = useState<ShareLink[]>([]);
   const [comments, setComments] = useState<Comment[]>([]);
   const [linkForm, setLinkForm] = useState({ label: "", password: "" });
+  const terminalEnd = useRef<HTMLDivElement>(null);
   const chatEnd = useRef<HTMLDivElement>(null);
   const autoRan = useRef(false);
   const abortRef = useRef<AbortController | null>(null);
@@ -113,7 +119,8 @@ export function Workspace(p: WorkspaceProps) {
   const previewSrc = useMemo(() => html || `<!DOCTYPE html><html><body style="margin:0;height:100vh;display:grid;place-items:center;font-family:system-ui;background:#0a0a0b;color:#8a8a93">Describe what to build in the chat below.</body></html>`, [html]);
   const log = useCallback((text: string, kind: LogLine["kind"] = "info") => setLogs((l) => [...l, { t: now(), text, kind }]), []);
 
-  useEffect(() => { chatEnd.current?.scrollIntoView({ behavior: "smooth" }); }, [messages, stream]);
+  useEffect(() => { const el = chatEnd.current?.parentElement; if (el) el.scrollTop = el.scrollHeight; }, [messages, stream, bottom]);
+  useEffect(() => { const el = terminalEnd.current?.parentElement; if (el) el.scrollTop = el.scrollHeight; }, [termLines, bottom]);
   useEffect(() => {
     const desktop = typeof window !== "undefined" && Boolean(window.__TAURI__);
     const t = setTimeout(async () => {
@@ -150,6 +157,7 @@ export function Workspace(p: WorkspaceProps) {
       let buf = "";
       let acc = "";
       let usedCredits = 0;
+      let completed = false;
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
@@ -167,6 +175,7 @@ export function Workspace(p: WorkspaceProps) {
             log(`Routed → ${ev.tier} tier · ${ev.provider}/${ev.model} · task=${ev.taskClass} · ${ev.credits} credits${ev.fallback ? " · template engine" : ""}`);
           } else if (ev.type === "delta") { acc += ev.text; setStream(acc); }
           else if (ev.type === "done") {
+            completed = true;
             if (ev.mode === "rewrite") {
               if (ev.files) { setFiles(ev.files); setSavedFiles(ev.files); setActiveFile((f) => (ev.files.some((x: ProjFile) => x.path === f) ? f : "/App.tsx")); }
               else { setHtml(ev.html); setSavedHtml(ev.html); }
@@ -182,6 +191,7 @@ export function Workspace(p: WorkspaceProps) {
           } else if (ev.type === "error") { setCredits((c) => c + usedCredits); throw new Error(ev.message); }
         }
       }
+      if (!completed) throw new Error("The connection ended before the agent finished. Please try again.");
       setStream("");
       return true;
     } catch (e) {
@@ -191,13 +201,14 @@ export function Workspace(p: WorkspaceProps) {
     } finally {
       busyRef.current = null; setBusy(null); abortRef.current = null; router.refresh();
     }
-  }, [isApp, log, p.project.id, router, tier]);
+  }, [allAgents, isApp, log, p.project.id, provider, router, tier]);
 
   const run = useCallback(async (request: string, agentToRun: string = agentId, chain: string[] = []) => {
+    if (!request.trim() || busyRef.current) return;
     const imgs = images; setImages([]);
     for (const [i, id] of [agentToRun, ...chain].entries()) {
       const ok = await runOne(request, id, i === 0 ? imgs : []);
-      if (!ok) break;
+      if (!ok) { setInput((current) => current || request); if (i === 0) setImages(imgs); break; }
     }
   }, [agentId, images, runOne]);
 
@@ -224,72 +235,92 @@ export function Workspace(p: WorkspaceProps) {
     if (next.length && !input) setInput("Recreate the attached reference design as a complete, original website with the same layout, typography, colours and spacing.");
   }
 
-  async function saveCode(asVersion: boolean) {
+  async function perform(task: () => Promise<unknown>) {
+    setError(null);
+    try { await task(); } catch (e) {
+      const message = e instanceof Error ? e.message : "Request failed. Please try again.";
+      setError(message); log(message, "err");
+    }
+  }
+  const saveCode = (asVersion: boolean) => perform(() => persistCode(asVersion));
+  async function persistCode(asVersion: boolean) {
     if (isApp) {
       const res = await fetch(`/api/projects/${p.project.id}/files`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ files, saveVersion: asVersion }) });
       const d = await res.json();
-      if (res.ok) { setSavedFiles(files); if (d.versionNumber) setVersions((v) => [{ id: `v${d.versionNumber}`, number: d.versionNumber, message: "Manual edit", createdAt: new Date().toISOString() }, ...v]); log(asVersion ? `✓ Saved as v${d.versionNumber}` : "✓ Saved", "ok"); } else setError(d.error);
+      if (res.ok) { setSavedFiles(files); if (d.versionNumber) setVersions((v) => [{ id: `v${d.versionNumber}`, number: d.versionNumber, message: "Manual edit", createdAt: new Date().toISOString() }, ...v]); log(asVersion ? `✓ Saved as v${d.versionNumber}` : "✓ Saved", "ok"); } else throw new Error(d.error ?? "Request failed");
       return;
     }
     const res = await fetch(`/api/projects/${p.project.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ html, saveVersion: asVersion }) });
     const d = await res.json();
-    if (res.ok) { setSavedHtml(html); if (d.versionNumber) setVersions((v) => [{ id: `v${d.versionNumber}`, number: d.versionNumber, message: "Manual edit", createdAt: new Date().toISOString() }, ...v]); log(asVersion ? `✓ Saved as v${d.versionNumber}` : "✓ Saved", "ok"); } else setError(d.error);
+    if (res.ok) { setSavedHtml(html); if (d.versionNumber) setVersions((v) => [{ id: `v${d.versionNumber}`, number: d.versionNumber, message: "Manual edit", createdAt: new Date().toISOString() }, ...v]); log(asVersion ? `✓ Saved as v${d.versionNumber}` : "✓ Saved", "ok"); } else throw new Error(d.error ?? "Request failed");
   }
-  async function restore(n: number) {
+  const restore = (n: number) => perform(() => restoreRequest(n));
+  async function restoreRequest(n: number) {
     const res = await fetch(`/api/projects/${p.project.id}/versions/${n}`, { method: "POST" });
     const d = await res.json();
-    if (!res.ok) return setError(d.error);
-    if (d.files) { setFiles(d.files); setSavedFiles(d.files); } else { setHtml(d.html); setSavedHtml(d.html); }
+    if (!res.ok) throw new Error(d.error ?? "Request failed");
+    if (d.files) { setFiles(d.files); setSavedFiles(d.files); setActiveFile((current) => d.files.some((f: ProjFile) => f.path === current) ? current : d.files[0]?.path ?? "/App.tsx"); } else { setHtml(d.html); setSavedHtml(d.html); }
     setVersions((v) => [{ id: `v${d.versionNumber}`, number: d.versionNumber, message: `Restored v${n}`, createdAt: new Date().toISOString() }, ...v]); log(`↺ Restored v${n} as v${d.versionNumber}`, "ok");
   }
-  async function previewVersion(n: number) {
+  const previewVersion = (n: number) => perform(() => previewVersionRequest(n));
+  async function previewVersionRequest(n: number) {
     const res = await fetch(`/api/projects/${p.project.id}/versions/${n}`);
     const d = await res.json();
-    if (!res.ok) return;
-    if (d.version.files) setFiles(d.version.files); else setHtml(d.version.html);
+    if (!res.ok) throw new Error(d.error ?? "Request failed");
+    if (d.version.files) { setFiles(d.version.files); setActiveFile((current) => d.version.files.some((f: ProjFile) => f.path === current) ? current : d.version.files[0]?.path ?? "/App.tsx"); } else setHtml(d.version.html);
     setView("preview"); log(`Previewing v${n} (unsaved: Save or Restore to keep)`);
   }
-  async function publish() {
+  const publish = () => perform(async () => { try { await publishRequest(); } finally { setPublishing(false); } });
+  async function publishRequest() {
     setPublishing(true);
-    if (dirty) await saveCode(false);
+    if (dirty) await persistCode(false);
     const res = await fetch(`/api/projects/${p.project.id}/publish`, { method: "POST" });
     const d = await res.json(); setPublishing(false);
-    if (res.ok) { setStatus("PUBLISHED"); log(`🚀 Published → ${d.url}`, "ok"); setBottom("logs"); } else setError(d.error);
+    if (res.ok) { setStatus("PUBLISHED"); log(`🚀 Published → ${d.url}`, "ok"); setBottom("logs"); } else throw new Error(d.error ?? "Request failed");
   }
-  async function runAudit() {
+  const runAudit = () => perform(() => runAuditRequest());
+  async function runAuditRequest() {
     if (isApp) { setError("Production audit currently covers website projects; run the QA / Security agents for apps."); return; }
-    if (dirty) await saveCode(false);
+    if (dirty) await persistCode(false);
     const res = await fetch(`/api/projects/${p.project.id}/audit`, { method: "POST" });
     const d = await res.json();
-    if (res.ok) { setAudit(d.audit); setBottom("problems"); log(`Audit: overall ${d.audit.overall}/100, ${d.audit.issues.length} issues`); }
+    if (res.ok) { setAudit(d.audit); setBottom("problems"); log(`Audit: overall ${d.audit.overall}/100, ${d.audit.issues.length} issues`); } else throw new Error(d.error ?? "Audit failed");
   }
-  async function exportZip() {
-    if (dirty) await saveCode(false);
+  const exportZip = () => perform(() => exportZipRequest());
+  async function exportZipRequest() {
+    if (dirty) await persistCode(false);
     const res = await fetch(`/api/projects/${p.project.id}/export`);
     if (!res.ok) { const d = await res.json(); setError(d.error); return; }
     const blob = await res.blob();
-    const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = `${p.project.slug}.zip`; a.click();
+    const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = `${p.project.slug}.zip`; a.click(); URL.revokeObjectURL(a.href);
     log("⬇ Exported ZIP", "ok");
   }
-  async function loadShare() {
-    const d = await fetch(`/api/projects/${p.project.id}/share`).then((r) => r.json());
+  const loadShare = () => perform(() => loadShareRequest());
+  async function loadShareRequest() {
+    const res = await fetch(`/api/projects/${p.project.id}/share`);
+    const d = await res.json();
+    if (!res.ok) throw new Error(d.error ?? "Could not load share links");
     setLinks(d.links ?? []); setComments(d.comments ?? []); if (d.clientStatus) setClientStatus(d.clientStatus);
   }
-  async function createLink() {
+  const createLink = () => perform(() => createLinkRequest());
+  async function createLinkRequest() {
     const res = await fetch(`/api/projects/${p.project.id}/share`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ label: linkForm.label || undefined, password: linkForm.password || undefined }) });
     const d = await res.json();
-    if (!res.ok) return setError(d.error);
-    setLinkForm({ label: "", password: "" }); loadShare(); log(`🔗 Client portal link created: ${d.url}`, "ok");
+    if (!res.ok) throw new Error(d.error ?? "Request failed");
+    setLinkForm({ label: "", password: "" }); await loadShareRequest(); log(`🔗 Client portal link created: ${d.url}`, "ok");
   }
-  async function shareAction(body: Record<string, unknown>) {
-    await fetch(`/api/projects/${p.project.id}/share`, { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }); loadShare();
+  const shareAction = (body: Record<string, unknown>) => perform(() => shareActionRequest(body));
+  async function shareActionRequest(body: Record<string, unknown>) {
+    const res = await fetch(`/api/projects/${p.project.id}/share`, { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    if (!res.ok) throw new Error((await res.json()).error ?? "Could not update share link");
+    await loadShareRequest();
   }
 
   async function term(cmdRaw: string) {
     const cmd = cmdRaw.trim();
     const out: string[] = [`$ ${cmd}`];
     const push = (...l: string[]) => setTermLines((x) => [...x, ...l]);
-    if (!cmd) return;
+    if (!cmd || termBusy) return;
     if (cmd === "clear") { setTermLines([]); return; }
     if (cmd === "help" && isDesktop) { push(...out, "IDÆVIA: versions, git log, git checkout v<N>, agents, run <agent> <task>, audit, deploy, export, clear", "Shell: any command runs in the real shell (cwd shown in prompt). `cd <dir>` changes directory."); return; }
     if (cmd === "versions" || cmd === "git log") { push(...out, ...versions.map((v) => `v${String(v.number).padStart(2, "0")}  ${new Date(v.createdAt).toLocaleString()}  ${v.message}`)); return; }
@@ -297,11 +328,13 @@ export function Workspace(p: WorkspaceProps) {
     if (cmd === "export") { exportZip(); push(...out, "Exporting…"); return; }
     if (cmd === "agents") { push(...out, ...allAgents.map((a) => `${isAllowed(a.id) ? "●" : "○"} ${a.id.padEnd(18)} ${a.short}`)); return; }
     if (cmd.startsWith("run ")) { const [id, ...rest] = cmd.slice(4).split(" "); run(rest.join(" ") || "Improve the project.", id); push(...out, `Running ${id}…`); return; }
-    if (!isDesktop) {
+    if (!isDesktop || /^(preview|publish|unpublish|audit|deploy|integrations|supabase)(?:\s|$)/.test(cmd)) {
+      // Project commands use the same authenticated server endpoint on web and desktop.
       // Web: real commands run on the server and stream their log lines (git push, deploy vercel, publish, env…).
       push(...out);
       setTermBusy(true);
       try {
+        if (dirty) await persistCode(false);
         const res = await fetch(`/api/projects/${p.project.id}/terminal`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ cmd }) });
         if (!res.ok || !res.body) { const d = await res.json().catch(() => ({})); push(`✗ ${d.error ?? `HTTP ${res.status}`}`); setTermBusy(false); return; }
         const reader = res.body.getReader(); const dec = new TextDecoder(); let buf = "";
@@ -319,58 +352,67 @@ export function Workspace(p: WorkspaceProps) {
       return;
     }
     if (isDesktop) {
-      if (/^cd\s+/.test(cmd)) {
-        const target = cmd.replace(/^cd\s+/, "").replace(/^"|"$/g, "");
+      setTermBusy(true);
+      try {
+        if (/^cd\s+/.test(cmd)) {
+          const target = cmd.replace(/^cd\s+/, "").replace(/^"|"$/g, "");
+          try {
+            const r = (await window.__TAURI__!.core.invoke("run_shell", { command: navigator.userAgent.includes("Windows") ? `cd /d "${target}" && cd` : `cd "${target}" && pwd`, cwd: termCwd })) as { code: number; stdout: string; stderr: string };
+            if (r.code === 0) { setTermCwd(r.stdout.trim()); push(...out); } else push(...out, r.stderr.trim() || "Directory not found");
+          } catch (e) { push(...out, String(e)); }
+          return;
+        }
+        push(...out);
         try {
-          const r = (await window.__TAURI__!.core.invoke("run_shell", { command: process.platform === "win32" || navigator.userAgent.includes("Windows") ? `cd /d "${target}" && cd` : `cd "${target}" && pwd`, cwd: termCwd })) as { code: number; stdout: string; stderr: string };
-          if (r.code === 0) { setTermCwd(r.stdout.trim()); push(...out); } else push(...out, r.stderr.trim() || "Directory not found");
-        } catch (e) { push(...out, String(e)); }
+          const r = (await window.__TAURI__!.core.invoke("run_shell", { command: cmd, cwd: termCwd })) as { code: number; stdout: string; stderr: string };
+          const lines = [...r.stdout.split(/\r?\n/), ...r.stderr.split(/\r?\n/)].filter((l) => l.length);
+          push(...lines.slice(-400), r.code === 0 ? "" : `exit code ${r.code}`);
+        } catch (e) { push(`error: ${String(e)}`); }
         return;
       }
-      push(...out);
-      try {
-        const r = (await window.__TAURI__!.core.invoke("run_shell", { command: cmd, cwd: termCwd })) as { code: number; stdout: string; stderr: string };
-        const lines = [...r.stdout.split(/\r?\n/), ...r.stderr.split(/\r?\n/)].filter((l) => l.length);
-        push(...lines.slice(-400), r.code === 0 ? "" : `exit code ${r.code}`);
-      } catch (e) { push(`error: ${String(e)}`); }
-      return;
+      finally { setTermBusy(false); }
     }
     push(...out, `command not found: ${cmd}. Try 'help'. (Real shell available in the desktop app.)`);
   }
 
   const width = device === "desktop" ? "100%" : device === "tablet" ? 820 : 390;
-  const fileTree = useMemo(() => [...files].sort((a, b) => a.path.localeCompare(b.path)), [files]);
+  const fileTree = useMemo(() => files.filter((f) => f.path.toLowerCase().includes(fileQuery.toLowerCase())).sort((a, b) => a.path.localeCompare(b.path)), [files, fileQuery]);
 
   return (
-    <div className="flex-1 flex flex-col min-h-0">
+    <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
       {/* Top bar */}
-      <div className="h-14 shrink-0 border-b border-graphite px-3 flex items-center gap-2">
-        <Link href="/app/projects" className="btn btn-ghost btn-sm"><ArrowLeft size={14} /></Link>
-        <div className="min-w-0">
+      <div className="min-h-14 shrink-0 border-b border-graphite px-3 py-2 flex flex-wrap items-center gap-2">
+        <WorkspaceMenuButton />
+        <Link aria-label="Back to projects" href="/app/projects" className="btn btn-ghost btn-sm"><ArrowLeft size={14} /></Link>
+        <div className="min-w-0 max-w-48">
           <div className="text-sm font-medium truncate">{p.project.name} {isApp && <span className="pill text-[10px] ml-1">React app</span>}</div>
           <div className="text-[11px] text-ash font-mono truncate">{status === "PUBLISHED" ? `live · /s/${p.project.slug}` : "draft"} · {credits.toLocaleString()} credits{clientStatus !== "NONE" && ` · client: ${clientStatus.toLowerCase().replace("_", " ")}`}</div>
         </div>
         <div className="mx-auto flex items-center gap-1 border border-graphite rounded-full p-0.5">
           <button onClick={() => setView("preview")} className={`btn btn-sm ${view === "preview" ? "btn-primary" : "btn-ghost"}`}><Eye size={13} />Preview</button>
-          <button onClick={() => setView("code")} className={`btn btn-sm ${view === "code" ? "btn-primary" : "btn-ghost"}`}><Code2 size={13} />Code</button>
+          <button onClick={() => { setView("code"); setShowFiles(true); }} className={`btn btn-sm ${view === "code" ? "btn-primary" : "btn-ghost"}`}><Code2 size={13} />Code</button>
         </div>
         {!isApp && <div className="hidden lg:flex items-center gap-0.5 border border-graphite rounded-full p-0.5">
           {([["desktop", Monitor], ["tablet", Tablet], ["mobile", Smartphone]] as const).map(([d, I]) => (
             <button key={d} onClick={() => setDevice(d)} className={`btn btn-sm ${device === d ? "bg-graphite" : "btn-ghost"}`} title={d}><I size={13} /></button>
           ))}
         </div>}
+        <button onClick={() => setShowFiles(!showFiles)} aria-expanded={showFiles} className="btn btn-ghost btn-sm" title="Toggle project files"><Folder size={14} />Files</button>
+        <button onClick={() => setShowTeam(!showTeam)} aria-expanded={showTeam} className="btn btn-ghost btn-sm" title="Toggle AI team"><Users size={14} />Agents</button>
         {audit && <button onClick={() => setBottom("problems")} className="pill text-xs gap-1.5" title="Project health"><Activity size={11} className={audit.overall >= 90 ? "text-success" : audit.overall >= 70 ? "text-warning" : "text-error"} />{audit.overall}</button>}
         <button onClick={() => { setBottom("share"); loadShare(); }} className="btn btn-outline btn-sm" title="Client portal & share"><Share2 size={13} /></button>
         {!isApp && <button onClick={runAudit} className="btn btn-outline btn-sm" title="Production audit"><AlertTriangle size={13} />Audit</button>}
         <button onClick={exportZip} className="btn btn-outline btn-sm" title="Export code"><Download size={13} /></button>
         {status === "PUBLISHED" && <a href={`/s/${p.project.slug}`} target="_blank" rel="noopener" className="btn btn-outline btn-sm"><ExternalLink size={13} /></a>}
-        <button onClick={publish} disabled={publishing || isApp || (!isApp && !html)} title={isApp ? "Export the ZIP and deploy the Vite project (Vercel/Netlify)" : ""} className="btn btn-signal btn-sm"><Rocket size={13} />{publishing ? "Deploying…" : status === "PUBLISHED" ? "Redeploy" : "Deploy"}</button>
+        <button onClick={() => { if (isApp) { setBottom("terminal"); term("deploy vercel"); } else publish(); }} disabled={publishing || termBusy || (isApp ? files.length === 0 : !html)} title={isApp ? "Deploy using your connected Vercel account" : "Publish this website"} className="btn btn-signal btn-sm"><Rocket size={13} />{publishing ? "Deploying…" : status === "PUBLISHED" ? "Redeploy" : "Deploy"}</button>
       </div>
 
-      <div className="flex-1 min-h-0 grid grid-cols-[200px_1fr_240px]">
+      {error && <div role="alert" className="shrink-0 px-4 py-2 border-b border-error/30 bg-void text-error text-xs flex items-center justify-between gap-3">{error}<button aria-label="Dismiss error" onClick={() => setError(null)}><X size={14} /></button></div>}
+      <div className="flex-1 min-h-0 flex overflow-hidden">
         {/* Explorer */}
-        <aside className="border-r border-graphite overflow-y-auto p-2 text-xs">
-          <div className="label px-2 py-1">Explorer</div>
+        {showFiles && <aside aria-label="Project files" className="w-56 shrink-0 border-r border-graphite overflow-y-auto p-3 text-xs">
+          <div className="label px-2 py-1">Files</div>
+          {isApp && <input aria-label="Search files" value={fileQuery} onChange={(e) => setFileQuery(e.target.value)} placeholder="Search files…" className="input my-2 text-xs" />}
           <div className="px-2 py-1 flex items-center gap-1.5 text-fog"><Folder size={12} className="text-ash" />{p.project.slug}</div>
           {isApp ? (
             <>
@@ -379,12 +421,12 @@ export function Workspace(p: WorkspaceProps) {
                 <button key={f.path} onClick={() => { setActiveFile(f.path); setView("code"); }} className={`w-full text-left px-2 py-1 pl-6 flex items-center gap-1.5 rounded ${view === "code" && activeFile === f.path ? "bg-graphite text-paper" : "text-fog hover:bg-ink"}`} title={f.path}><FileCode2 size={12} className="text-signal-soft shrink-0" /><span className="truncate">{f.path.slice(1)}</span></button>
               ))}
               {fileTree.length === 0 && <div className="px-2 pl-6 text-ash">No files yet: describe the app below.</div>}
-              <button onClick={() => { const path = prompt("New file path (e.g. /components/Card.tsx)"); if (path && /^\/[\w\-./]+$/.test(path) && !files.some((f) => f.path === path)) { setFiles((f) => [...f, { path, content: "" }]); setActiveFile(path); setView("code"); } }} className="w-full text-left px-2 py-1 pl-6 text-ash hover:text-paper">+ new file</button>
+              <button onClick={() => { const path = prompt("New file path (e.g. /components/Card.tsx)"); if (path && !path.split("/").includes("..") && /^\/[\w\-./]+$/.test(path) && !files.some((f) => f.path === path)) { setFiles((f) => [...f, { path, content: "" }]); setActiveFile(path); setView("code"); } }} className="w-full text-left px-2 py-1 pl-6 text-ash hover:text-paper">+ new file</button>
             </>
           ) : (
             <>
-              <button onClick={() => setView("code")} className={`w-full text-left px-2 py-1 pl-6 flex items-center gap-1.5 rounded ${view === "code" ? "bg-graphite text-paper" : "text-fog hover:bg-ink"}`}><FileCode2 size={12} className="text-signal-soft" />index.html{dirty && <span className="ml-auto w-1.5 h-1.5 rounded-full bg-warning" />}</button>
-              <div className="px-2 py-1 pl-6 text-ash flex items-center gap-1.5"><FileCode2 size={12} />README.md</div>
+              <button onClick={() => { setView("code"); setShowFiles(true); }} className={`w-full text-left px-2 py-1 pl-6 flex items-center gap-1.5 rounded ${view === "code" ? "bg-graphite text-paper" : "text-fog hover:bg-ink"}`}><FileCode2 size={12} className="text-signal-soft" />index.html{dirty && <span className="ml-auto w-1.5 h-1.5 rounded-full bg-warning" />}</button>
+
             </>
           )}
           <div className="label px-2 py-1 mt-4 flex items-center gap-1"><History size={11} />Versions</div>
@@ -395,10 +437,10 @@ export function Workspace(p: WorkspaceProps) {
               <button onClick={() => restore(v.number)} className="hidden group-hover:flex items-center gap-1 pl-5 text-[10px] text-ash hover:text-paper"><RotateCcw size={9} />restore</button>
             </div>
           ))}
-        </aside>
+        </aside>}
 
         {/* Center */}
-        <section className="min-w-0 flex flex-col">
+        <section className="min-w-0 min-h-0 flex-1 flex flex-col">
           <div className="flex-1 min-h-0 bg-[#050506] p-3 overflow-auto">
             {view === "preview" ? (
               isApp ? (
@@ -417,7 +459,7 @@ export function Workspace(p: WorkspaceProps) {
                   <span className="font-mono text-fog">{isApp ? activeFile : "index.html"}</span>
                   {dirty && <span className="text-warning">● unsaved</span>}
                   <div className="ml-auto flex gap-1">
-                    {isApp && <button onClick={() => { if (confirm(`Delete ${activeFile}?`)) { setFiles((f) => f.filter((x) => x.path !== activeFile)); setActiveFile("/App.tsx"); } }} className="btn btn-ghost btn-sm text-ash hover:text-error"><Trash2 size={12} /></button>}
+                    {isApp && <button onClick={() => { if (confirm(`Delete ${activeFile}?`)) { setFiles((f) => f.filter((x) => x.path !== activeFile)); setActiveFile(files.find((f) => f.path !== activeFile)?.path ?? "/App.tsx"); } }} className="btn btn-ghost btn-sm text-ash hover:text-error"><Trash2 size={12} /></button>}
                     <button onClick={() => saveCode(false)} disabled={!dirty} className="btn btn-ghost btn-sm"><Save size={12} />Save</button>
                     <button onClick={() => saveCode(true)} disabled={!dirty} className="btn btn-outline btn-sm">Save as version</button>
                   </div>
@@ -438,17 +480,18 @@ export function Workspace(p: WorkspaceProps) {
           </div>
 
           {/* Bottom panel */}
-          <div className="h-[280px] shrink-0 border-t border-graphite flex flex-col">
-            <div className="h-9 flex items-center gap-1 px-2 border-b border-graphite text-xs overflow-x-auto">
+          <div className="shrink-0 min-h-0 border-t border-graphite flex flex-col" style={{ height: expandedPanel ? "65%" : "40%", minHeight: 230 }}>
+            <div className="h-10 shrink-0 flex items-center gap-1 px-2 border-b border-graphite text-xs overflow-x-auto">
               {([["chat", "AI Chat", MessageSquare], ["changes", "Changes", History], ["terminal", "Terminal", TerminalSquare], ["logs", "Logs", Activity], ["problems", "Problems", AlertTriangle], ["share", "Share / Client portal", Share2]] as const).map(([id, label, I]) => (
                 <button key={id} onClick={() => { setBottom(id); if (id === "share") loadShare(); }} className={`btn btn-sm ${bottom === id ? "bg-graphite text-paper" : "btn-ghost"}`}><I size={12} />{label}{id === "problems" && audit?.issues.length ? <span className="ml-1 text-[10px] text-warning">{audit.issues.length}</span> : null}</button>
               ))}
+              <button onClick={() => setExpandedPanel(!expandedPanel)} aria-label={expandedPanel ? "Shrink panel" : "Expand panel"} aria-expanded={expandedPanel} className="btn btn-ghost btn-sm ml-auto">{expandedPanel ? "↓" : "↑"}</button>
               {busy && <span className="ml-auto flex items-center gap-2 text-signal-soft whitespace-nowrap"><span className="w-1.5 h-1.5 rounded-full bg-signal pulse-dot" />{busy} working…<button onClick={() => abortRef.current?.abort()} className="text-ash hover:text-paper">stop</button></span>}
             </div>
 
             {bottom === "chat" && (
               <div className="flex-1 min-h-0 flex flex-col">
-                <div className="flex-1 overflow-y-auto p-3 space-y-2 text-sm">
+                <div className="flex-1 min-h-0 overflow-y-auto p-3 space-y-2 text-sm">
                   {messages.length === 0 && !stream && <div className="text-ash text-xs">{isApp ? "Describe the app. Example: “Build a CRM dashboard with sidebar, KPI cards, revenue chart and a deals table.”" : "Describe what you want. Example: “Build a dark SaaS landing page for an AI CRM with pricing and FAQ.”"}</div>}
                   {messages.map((m) => (
                     <div key={m.id} className={`max-w-[85%] rounded-2xl px-3 py-2 ${m.role === "user" ? "ml-auto bg-graphite rounded-br-sm" : "border border-graphite rounded-bl-sm text-fog"}`}>
@@ -466,19 +509,19 @@ export function Workspace(p: WorkspaceProps) {
                     <span className="text-[10px] text-ash self-end">{images.length} reference image(s) → Builder (vision)</span>
                   </div>
                 )}
-                <form onSubmit={(e) => { e.preventDefault(); const r = input; setInput(""); run(r); }} className="p-2 border-t border-graphite flex gap-2 items-end">
-                  <div className="flex flex-col gap-1">
-                    <select value={agentId} onChange={(e) => setAgentId(e.target.value)} className="input py-1.5 text-xs w-40">
+                <form onSubmit={(e) => { e.preventDefault(); const r = input; if (!busyRef.current && r.trim()) { setInput(""); run(r); } }} className="workspace-composer shrink-0 p-3 border-t border-graphite grid grid-cols-[1fr_auto_auto] gap-2 items-end">
+                  <div className="col-span-3 flex gap-2 flex-wrap">
+                    <select aria-label="Agent" value={agentId} onChange={(e) => setAgentId(e.target.value)} className="input py-1.5 text-xs w-40">
                       <option value="auto">Auto: IDÆVIA picks the agent</option>
                       <optgroup label="Agents">{p.agents.map((a) => <option key={a.id} value={a.id} disabled={!isAllowed(a.id)}>{a.name}{isAllowed(a.id) ? "" : ` (${p.minPlanByAgent[a.id]})`}</option>)}</optgroup>
                       {p.customAgents.length > 0 && <optgroup label="Custom agents">{p.customAgents.map((c) => <option key={c.id} value={`custom:${c.id}`} disabled={!p.customAgentsAllowed}>{c.name}</option>)}</optgroup>}
                     </select>
-                    <select value={tier === "auto" ? "auto" : `${tier}:${provider ?? "anthropic"}`} onChange={(e) => { const [t, pv] = e.target.value.split(":"); setTier(t as ModelTier | "auto"); setProvider(pv === "openai" ? "openai" : pv === "anthropic" ? "anthropic" : undefined); }} className="input py-1.5 text-xs w-52">
+                    <select aria-label="Model" value={tier === "auto" ? "auto" : `${tier}:${provider ?? "anthropic"}`} onChange={(e) => { const [t, pv] = e.target.value.split(":"); setTier(t as ModelTier | "auto"); setProvider(pv === "openai" ? "openai" : pv === "anthropic" ? "anthropic" : undefined); }} className="input py-1.5 text-xs w-52">
                       <option value="auto">Auto routing</option>
                       {MODEL_CHOICES.map((c) => <option key={c.value} value={c.value} disabled={TIERS.indexOf(c.tier) > TIERS.indexOf(p.maxTier)}>{c.label}{TIERS.indexOf(c.tier) > TIERS.indexOf(p.maxTier) ? " (upgrade)" : ""}</option>)}
                     </select>
                   </div>
-                  <textarea value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); const r = input; setInput(""); run(r); } }} rows={2} className="input flex-1 resize-none" placeholder={isAuto ? "Describe what to build or change. IDÆVIA picks the right agent." : agent.mode === "rewrite" ? "What should the AI build or change?" : `Ask ${agent.name} for a report…`} />
+                  <textarea aria-label="Project prompt" value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); const r = input; if (!busyRef.current && r.trim()) { setInput(""); run(r); } } }} rows={2} className="input min-w-0 resize-none" placeholder={isAuto ? "Describe what to build or change. IDÆVIA picks the right agent." : agent.mode === "rewrite" ? "What should the AI build or change?" : `Ask ${agent.name} for a report…`} />
                   <input ref={fileInput} type="file" accept="image/png,image/jpeg,image/webp,image/gif" multiple hidden onChange={(e) => { attachImages(e.target.files); e.target.value = ""; }} />
                   <button type="button" onClick={() => (p.visionAllowed ? fileInput.current?.click() : setError("Screenshot → website (vision) is available from the Starter plan."))} title="Attach reference images (screenshot → website)" className={`btn btn-outline ${p.visionAllowed ? "" : "opacity-60"}`}><ImageIcon size={14} />{!p.visionAllowed && <Lock size={10} />}</button>
                   <button disabled={!!busy || !input.trim()} className="btn btn-primary"><Play size={14} />Run</button>
@@ -497,8 +540,8 @@ export function Workspace(p: WorkspaceProps) {
 
             {bottom === "terminal" && (
               <div className="flex-1 min-h-0 flex flex-col font-mono text-xs bg-[#050506]">
-                <div className="flex-1 overflow-y-auto p-3 space-y-0.5 text-fog">{termLines.map((l, i) => <div key={i} className={l.startsWith("$") ? "text-paper" : ""}>{l}</div>)}</div>
-                <form onSubmit={(e) => { e.preventDefault(); const c = termInput; setTermInput(""); term(c); }} className="flex items-center gap-2 px-3 py-2 border-t border-graphite"><span className="text-signal-soft truncate max-w-[40%]">{isDesktop && termCwd ? termCwd : ""}$</span><input value={termInput} disabled={termBusy} onChange={(e) => setTermInput(e.target.value)} className="flex-1 bg-transparent outline-none disabled:opacity-60" placeholder={termBusy ? "running…" : isDesktop ? "git status" : "help · git push · deploy vercel"} autoFocus /></form>
+                <div className="flex-1 overflow-y-auto p-3 space-y-0.5 text-fog whitespace-pre-wrap break-words">{termLines.map((l, i) => <div key={i} className={l.startsWith("$") ? "text-paper" : ""}>{l}</div>)}<div ref={terminalEnd} /></div>
+                <form onSubmit={(e) => { e.preventDefault(); const c = termInput; setTermInput(""); term(c); }} className="flex items-center gap-2 px-3 py-2 border-t border-graphite"><span className="text-signal-soft truncate max-w-[40%]">{isDesktop && termCwd ? termCwd : ""}$</span><input aria-label="Terminal command" value={termInput} disabled={termBusy} onChange={(e) => setTermInput(e.target.value)} className="flex-1 bg-transparent outline-none disabled:opacity-60" placeholder={termBusy ? "running…" : isDesktop ? "git status" : "help · git push · deploy vercel"} autoFocus /></form>
               </div>
             )}
 
@@ -528,7 +571,7 @@ export function Workspace(p: WorkspaceProps) {
                     <div key={l.id} className="flex items-center gap-2 border border-graphite rounded-lg px-2 py-1.5">
                       <a href={`/portal/${l.token}`} target="_blank" rel="noopener" className="font-mono text-signal-soft truncate flex-1 hover:underline">/portal/{l.token}</a>
                       {l.label && <span className="pill text-[10px]">{l.label}</span>}{l.hasPassword && <Lock size={10} className="text-ash" />}
-                      <button onClick={() => navigator.clipboard.writeText(`${location.origin}/portal/${l.token}`)} className="text-ash hover:text-paper">copy</button>
+                      <button onClick={() => perform(async () => { await navigator.clipboard.writeText(`${location.origin}/portal/${l.token}`); log("Share link copied", "ok"); })} className="text-ash hover:text-paper">copy</button>
                       <button onClick={() => shareAction({ linkId: l.id })} className="text-ash hover:text-error"><Trash2 size={11} /></button>
                     </div>
                   ))}
@@ -550,13 +593,14 @@ export function Workspace(p: WorkspaceProps) {
         </section>
 
         {/* AI team */}
-        <aside className="border-l border-graphite overflow-y-auto p-2 text-xs">
+        {showTeam && <aside aria-label="AI team" className="w-60 shrink-0 border-l border-graphite overflow-y-auto p-3 text-xs">
           <div className="label px-2 py-1 flex items-center gap-1"><Users size={11} />AI team</div>
           {p.offline && <div className="mx-2 mb-2 rounded border border-warning/40 bg-warning/10 p-2 text-[11px] text-warning">Offline mode: add an API key for real agents.</div>}
           <div className="label px-2 py-1 mt-1">One-click</div>
           <div className="px-2 grid gap-1 mb-2">
             {[["Make it Premium", "make-premium"], ["Improve Project", "optimize-landing"], ["Production Ready", "production-ready"]].map(([l, id]) => {
-              const team = p.teams.find((t) => t.id === id)!;
+              const team = p.teams.find((t) => t.id === id);
+              if (!team) return null;
               const locked = team.agents.some((a) => !isAllowed(a));
               return <button key={id} disabled={!!busy || locked} onClick={() => run(`${l}: improve the project for this goal.`, team.agents[0], team.agents.slice(1))} className="btn btn-outline btn-sm justify-between" title={team.description}>{l}{locked && <Lock size={10} />}</button>;
             })}
@@ -578,7 +622,7 @@ export function Workspace(p: WorkspaceProps) {
               </button>
             );
           })}
-        </aside>
+        </aside>}
       </div>
     </div>
   );

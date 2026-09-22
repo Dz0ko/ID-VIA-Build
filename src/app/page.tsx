@@ -194,7 +194,7 @@ export default async function Home() {
             <Link href="/cookies" className="hover:text-paper">Cookies</Link>
             <a href="mailto:support@idaevia.app" className="hover:text-paper">support@idaevia.app</a>
           </nav>
-          <div>© {new Date().getFullYear()} IDÆVIA</div>
+          <div className="text-center md:text-right text-xs leading-6">© {new Date().getFullYear()} IDÆVIA<br />A project by <a href="https://idaevia.com" className="text-signal-soft hover:underline" target="_blank" rel="noopener noreferrer">idaevia.com</a></div>
         </div>
       </footer>
     </div>

@@ -1,5 +1,7 @@
 "use client";
 
+import { createContext, useContext, useState } from "react";
+import { Menu } from "@/components/icons";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { Logo } from "@/components/Logo";
@@ -7,6 +9,12 @@ import { BrandIcon, type BrandIconName } from "@/components/BrandIcon";
 import type { SessionUser } from "@/lib/auth";
 import { PLANS } from "@/lib/plans";
 import { planAtLeast } from "@/lib/agents";
+
+const NavigationContext = createContext({ open: false, toggle: () => {} });
+export function WorkspaceMenuButton() {
+  const { open, toggle } = useContext(NavigationContext);
+  return <button onClick={toggle} aria-label="Toggle workspace menu" aria-expanded={open} aria-controls="workspace-navigation" className="btn btn-ghost btn-sm"><Menu size={17} /></button>;
+}
 
 type Item = { href: string; label: string; icon: BrandIconName; exact?: boolean; minPlan?: "STARTER" };
 const GROUPS: { title: string; items: Item[] }[] = [
@@ -32,9 +40,16 @@ const GROUPS: { title: string; items: Item[] }[] = [
   ] },
 ];
 
-export function Shell({ user, children }: { user: SessionUser; children: React.ReactNode }) {
+export function Shell(props: { user: SessionUser; children: React.ReactNode }) {
+  const pathname = usePathname();
+  return <ShellLayout key={pathname} {...props} />;
+}
+
+function ShellLayout({ user, children }: { user: SessionUser; children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
+  const isProject = /^\/app\/projects\/[^/]+$/.test(pathname);
+  const [menuOpen, setMenuOpen] = useState(!isProject);
   const plan = PLANS[user.plan];
   const pct = Math.min(100, Math.round((user.credits / plan.credits) * 100));
 
@@ -45,8 +60,9 @@ export function Shell({ user, children }: { user: SessionUser; children: React.R
   }
 
   return (
-    <div className="h-screen flex bg-void">
-      <aside className="w-[232px] shrink-0 border-r border-graphite flex flex-col bg-void">
+    <NavigationContext.Provider value={{ open: menuOpen, toggle: () => setMenuOpen((open) => !open) }}>
+    <div className="h-dvh flex bg-void">
+      {menuOpen && <aside id="workspace-navigation" className="w-[232px] shrink-0 border-r border-graphite flex flex-col bg-void">
         <div className="h-14 flex items-center px-4 border-b border-graphite"><Logo href="/app" size={24} /></div>
         <nav className="flex-1 px-2 py-3 space-y-4 overflow-y-auto">
           {GROUPS.map((g) => (
@@ -97,8 +113,9 @@ export function Shell({ user, children }: { user: SessionUser; children: React.R
             <button onClick={logout} title="Log out" className="w-7 h-7 grid place-items-center rounded-md text-ash hover:text-paper hover:bg-ink"><BrandIcon name="logout" size={15} /></button>
           </div>
         </div>
-      </aside>
+      </aside>}
       <div className="flex-1 min-w-0 flex flex-col overflow-hidden">{children}</div>
     </div>
+    </NavigationContext.Provider>
   );
 }

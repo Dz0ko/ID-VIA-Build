@@ -659,3 +659,15 @@ html.landing-html body { overflow-x: clip; }
 @media (prefers-reduced-motion: reduce) {
   .hero-sculpture-canvas { animation: none; }
 }
+
+/* Keep the project composer compact even when optional side panels are open. */
+.workspace-composer select.input {
+  width: min(260px, calc(50% - 4px));
+  min-width: 0;
+  padding: 7px 10px;
+  font-size: 12px;
+}
+.workspace-composer textarea.input {
+  min-width: 0;
+  font-size: 14px;
+}
