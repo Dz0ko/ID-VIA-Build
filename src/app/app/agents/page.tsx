@@ -38,6 +38,7 @@ export default async function Agents() {
                     <div className="flex items-center gap-2"><span className="w-7 h-7 rounded-lg grid place-items-center bg-signal/15 text-paper"><BrandIcon name={agentIcon(a.id)} size={15} /></span><span className="font-medium text-sm">{a.name}</span></div>
                     {ok ? <span className="pill text-[10px] text-success border-success/40">Unlocked</span> : <span className="pill text-[10px] flex items-center gap-1"><Lock size={9} />{PLANS[minPlanForAgent(a)].name}</span>}
                   </div>
+                  {a.profession && <p className="text-[11px] text-signal-soft mt-1">{a.profession}</p>}
                   <p className="text-xs text-ash mt-2">{a.description}</p>
                   <div className="mt-3 flex flex-wrap gap-1 text-[10px]">
                     <span className="pill">{a.tier} tier</span><span className="pill">{a.multiplier}× credits</span><span className="pill">{a.mode === "rewrite" ? "edits project" : "report"}</span>

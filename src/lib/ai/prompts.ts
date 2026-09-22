@@ -15,6 +15,7 @@ Rules:
 - When EDITING an existing document, preserve everything not related to the request and return the complete updated document.
 - When REFERENCE IMAGES are attached, recreate their layout, hierarchy, spacing, typography and colour system faithfully as an original implementation; do not copy logos or protected content, use placeholders.
 - Keep the document under ~1400 lines.
+- After </html>, add one line: <<<NOTE>>> one or two first-person sentences saying what you changed and why (no code) <<<END NOTE>>>
 
 ${designSkill("html")}`;
 
@@ -41,6 +42,7 @@ Rules:
 - Use TypeScript, functional components, hooks. No server code, no Node APIs, no fetch to private APIs; mock data lives in /lib/data.ts.
 - Design quality bar: premium, modern, responsive, accessible; real copy, no lorem ipsum.
 - When EDITING: you receive the current files; return the COMPLETE set of files that should exist after the change (unchanged files may be omitted ONLY if you add a line "<<<KEEP /path>>>" for each file you want to keep as-is).
+- After the last file block, add one line: <<<NOTE>>> one or two first-person sentences saying what you changed and why (no code) <<<END NOTE>>>
 
 ${designSkill("app")}`;
 
@@ -85,6 +87,13 @@ export function buildAppUserPrompt(opts: {
 }
 
 /** Strip code fences / stray prose around an HTML document. */
+/** The agent's first-person completion note, if the model wrote one. */
+export function extractNote(text: string): string | null {
+  const m = text.match(/<<<NOTE>>>\s*([\s\S]*?)\s*<<<END NOTE>>>/);
+  const note = m?.[1]?.replace(/\s+/g, " ").trim();
+  return note && note.length > 3 ? note.slice(0, 600) : null;
+}
+
 export function extractHtml(text: string): string {
   let t = text.trim();
   const fence = t.match(/```(?:html)?\s*([\s\S]*?)```/i);

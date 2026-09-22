@@ -149,7 +149,8 @@ export function Workspace(p: WorkspaceProps) {
           const line = part.split("\n").find((l) => l.startsWith("data: "));
           if (!line) continue;
           const ev = JSON.parse(line.slice(6));
-          if (ev.type === "picked") { log(`Auto-selected agent: ${ev.agent}`); setBusy(ev.agent); busyRef.current = ev.agent; }
+          if (ev.type === "picked") { const a = allAgents.find((x) => x.id === ev.agent); log(`Router → handing this to ${a?.name ?? ev.agent}${a?.profession ? ` (${a.profession})` : ""}`); setBusy(ev.agent); busyRef.current = ev.agent; }
+          else if (ev.type === "agent") { setMessages((m) => [...m, { id: `i-${Date.now()}`, role: "assistant", content: ev.text, agentId: ev.agent, creditsUsed: 0, model: null, createdAt: new Date().toISOString() }]); log(`${ev.name} (${ev.profession}) started`); }
           else if (ev.type === "meta") {
             usedCredits = ev.credits; setCredits((c) => c - ev.credits);
             log(`Routed → ${ev.tier} tier · ${ev.provider}/${ev.model} · task=${ev.taskClass} · ${ev.credits} credits${ev.fallback ? " · template engine" : ""}`);
@@ -159,11 +160,11 @@ export function Workspace(p: WorkspaceProps) {
               if (ev.files) { setFiles(ev.files); setSavedFiles(ev.files); setActiveFile((f) => (ev.files.some((x: ProjFile) => x.path === f) ? f : "/App.tsx")); }
               else { setHtml(ev.html); setSavedHtml(ev.html); }
               setVersions((v) => [{ id: `v${ev.versionNumber}`, number: ev.versionNumber, message: `${agentToRun}: ${request.slice(0, 120)}`, createdAt: new Date().toISOString() }, ...v]);
-              setMessages((m) => [...m, { id: `a-${Date.now()}`, role: "assistant", content: `Updated the ${isApp ? "app" : "project"} (v${ev.versionNumber}).`, agentId: agentToRun, creditsUsed: ev.creditsUsed, model: null, createdAt: new Date().toISOString() }]);
+              setMessages((m) => [...m, { id: `a-${Date.now()}`, role: "assistant", content: ev.note ?? `Updated the ${isApp ? "app" : "project"} (v${ev.versionNumber}).`, agentId: busyRef.current ?? agentToRun, creditsUsed: ev.creditsUsed, model: null, createdAt: new Date().toISOString() }]);
               setView("preview");
               log(`✓ v${ev.versionNumber} saved (${ev.creditsUsed} credits)`, "ok");
             } else {
-              setMessages((m) => [...m, { id: `a-${Date.now()}`, role: "assistant", content: ev.report, agentId: agentToRun, creditsUsed: ev.creditsUsed, model: null, createdAt: new Date().toISOString() }]);
+              setMessages((m) => [...m, { id: `a-${Date.now()}`, role: "assistant", content: ev.report, agentId: busyRef.current ?? agentToRun, creditsUsed: ev.creditsUsed, model: null, createdAt: new Date().toISOString() }]);
               log(`✓ ${agentToRun} report ready (${ev.creditsUsed} credits)`, "ok");
             }
             setRuns((r) => [{ id: `r-${Date.now()}`, agentId: agentToRun, status: "DONE", task: request, model: null, creditsUsed: ev.creditsUsed, startedAt: new Date().toISOString(), finishedAt: new Date().toISOString(), output: ev.mode === "rewrite" ? `v${ev.versionNumber}` : "report" }, ...r]);
@@ -440,11 +441,11 @@ export function Workspace(p: WorkspaceProps) {
                   {messages.length === 0 && !stream && <div className="text-ash text-xs">{isApp ? "Describe the app. Example: “Build a CRM dashboard with sidebar, KPI cards, revenue chart and a deals table.”" : "Describe what you want. Example: “Build a dark SaaS landing page for an AI CRM with pricing and FAQ.”"}</div>}
                   {messages.map((m) => (
                     <div key={m.id} className={`max-w-[85%] rounded-2xl px-3 py-2 ${m.role === "user" ? "ml-auto bg-graphite rounded-br-sm" : "border border-graphite rounded-bl-sm text-fog"}`}>
-                      {m.role !== "user" && <div className="font-mono text-[10px] text-signal-soft mb-1">{m.agentId ?? "assistant"}{m.creditsUsed ? ` · ${m.creditsUsed} cr` : ""}</div>}
+                      {m.role !== "user" && (() => { const a = allAgents.find((x) => x.id === m.agentId); return <div className="font-mono text-[10px] text-signal-soft mb-1">{a?.name ?? m.agentId ?? "IDÆVIA"}{a?.profession ? <span className="text-ash"> · {a.profession}</span> : null}{m.creditsUsed ? ` · ${m.creditsUsed} cr` : ""}</div>; })()}
                       <div className="whitespace-pre-wrap break-words">{m.content}</div>
                     </div>
                   ))}
-                  {stream && <div className="max-w-[85%] rounded-2xl px-3 py-2 border border-graphite rounded-bl-sm text-fog"><div className="font-mono text-[10px] text-signal-soft mb-1">{busy} · streaming</div><pre className="font-mono text-[11px] whitespace-pre-wrap break-words max-h-32 overflow-hidden text-ash">{stream.slice(-1200)}</pre></div>}
+                  {stream && <div className="max-w-[85%] rounded-2xl px-3 py-2 border border-graphite rounded-bl-sm text-fog"><div className="font-mono text-[10px] text-signal-soft mb-1">{allAgents.find((x) => x.id === busy)?.name ?? busy} · working</div><pre className="font-mono text-[11px] whitespace-pre-wrap break-words max-h-32 overflow-hidden text-ash">{stream.slice(-1200)}</pre></div>}
                   {error && <div className="text-error text-xs">{error}</div>}
                   <div ref={chatEnd} />
                 </div>

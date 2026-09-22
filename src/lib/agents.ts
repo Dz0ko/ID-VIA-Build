@@ -1,6 +1,7 @@
 import type { ModelTier, PlanId } from "./plans";
 import { PLANS, planRank } from "./plans";
 import { designSkill } from "./ai/design-skill";
+import { personaFor } from "./personas";
 
 export interface AgentDef {
   id: string;
@@ -15,12 +16,15 @@ export interface AgentDef {
   /** What this agent outputs when run against a project. */
   mode: "rewrite" | "report";
   tags: string[];
+  /** Job title shown in the UI (from personas). */
+  profession?: string;
 }
 
 const BASE_RULES = `You are part of the IDÆVIA Build AI team. You work on a single-file website project.
 The project is one self-contained HTML document that uses Tailwind CSS via the CDN script tag, Google Fonts, and inline <script> for interactions.
 When you output the website, output ONLY the complete HTML document, starting with <!DOCTYPE html> and ending with </html>. No markdown fences, no commentary.
 Never use external CSS or JS files other than CDNs. Keep everything responsive and accessible.
+After </html>, add one line: <<<NOTE>>> one or two first-person sentences saying what you changed and why (no code) <<<END NOTE>>>
 
 ${designSkill("html")}`;
 
@@ -407,6 +411,8 @@ You are the Refactoring agent. Clean up the HTML: remove duplication, consistent
     systemPrompt: `You are the QA agent. Produce a QA report for the website: each section, each link/anchor, each button and form, expected vs. actual behaviour based on the code, plus a list of failing items and fixes.`,
   },
 ];
+
+for (const a of AGENTS) a.profession = personaFor(a.id).profession;
 
 export const AGENT_MAP = new Map(AGENTS.map((a) => [a.id, a]));
 

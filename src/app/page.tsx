@@ -204,7 +204,7 @@ export default async function Home() {
                       {ids.map((id) => { const a = agentById.get(id); if (!a) return null; return (
                         <li key={id} className="group flex items-center gap-3 rounded-xl px-2 py-2 -mx-2 transition-colors hover:bg-white/[0.035]">
                           <span className="w-8 h-8 shrink-0 rounded-lg grid place-items-center bg-ink border border-graphite text-paper group-hover:border-signal/50 transition-colors"><BrandIcon name={agentIcon(id)} size={15} strokeWidth={1.7} /></span>
-                          <div className="min-w-0 flex-1"><div className="text-sm font-medium leading-tight">{a.name}</div><div className="text-[11px] text-ash truncate">{a.short}</div></div>
+                          <div className="min-w-0 flex-1"><div className="text-sm font-medium leading-tight">{a.name}</div><div className="text-[11px] text-ash truncate">{a.profession ?? a.short}</div></div>
                           <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${a.tier === "premium" || a.tier === "frontier" ? "bg-[#f5c04a]" : a.tier === "advanced" ? "bg-signal" : "bg-ash/60"}`} title={`${a.tier} tier`} />
                         </li>
                       ); })}

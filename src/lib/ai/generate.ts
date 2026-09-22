@@ -9,8 +9,10 @@ import {
   buildAppUserPrompt,
   buildUserPrompt,
   extractHtml,
+  extractNote,
   parseFileManifest,
 } from "./prompts";
+import { identityPrompt, personaFor } from "../personas";
 import { classifyTask, friendlyAiError, generateWithFallback, resolveModel, tierForTask, type TaskClass } from "./router";
 import type { InputImage } from "./provider";
 import { estimateUsd } from "./cost";
@@ -30,8 +32,9 @@ export interface RunOptions {
 export type RunEvent =
   | { type: "meta"; agent: string; tier: ModelTier; model: string; provider: string; credits: number; taskClass: TaskClass; fallback: boolean }
   | { type: "picked"; agent: string }
+  | { type: "agent"; agent: string; name: string; profession: string; text: string }
   | { type: "delta"; text: string }
-  | { type: "done"; mode: "rewrite" | "report"; versionNumber?: number; html?: string; files?: { path: string; content: string }[]; report?: string; creditsUsed: number }
+  | { type: "done"; mode: "rewrite" | "report"; versionNumber?: number; html?: string; files?: { path: string; content: string }[]; report?: string; creditsUsed: number; note?: string }
   | { type: "error"; message: string };
 
 const ORDER: ModelTier[] = ["fast", "standard", "advanced", "premium", "frontier"];
@@ -93,17 +96,18 @@ export async function runAgent(opts: RunOptions) {
 
   let system: string;
   let userPrompt: string;
+  const identity = identityPrompt(agent.id, agent.name);
   if (agent.mode === "report") {
-    system = agent.systemPrompt;
+    system = `${identity}\n\n${agent.systemPrompt}`;
     const current = isApp
       ? project.files.map((f) => `<<<FILE ${f.path}>>>\n${f.content}\n<<<END>>>`).join("\n")
       : `<<<HTML\n${project.html}\nHTML>>>`;
     userPrompt = `PROJECT: ${project.name}\n${project.description ?? ""}\n\nCURRENT ${isApp ? "FILES" : "DOCUMENT"}:\n${current}\n\nREQUEST:\n${opts.request}`;
   } else if (isApp) {
-    system = agent.id === "builder" ? APP_BUILDER_SYSTEM : `${APP_BUILDER_SYSTEM}\n\nSPECIALIST ROLE:\n${agent.systemPrompt}`;
+    system = `${identity}\n\n${agent.id === "builder" ? APP_BUILDER_SYSTEM : `${APP_BUILDER_SYSTEM}\n\nSPECIALIST ROLE:\n${agent.systemPrompt}`}`;
     userPrompt = buildAppUserPrompt({ request: opts.request, files: project.files, memory });
   } else {
-    system = agent.id === "builder" ? BUILDER_SYSTEM : agent.systemPrompt;
+    system = `${identity}\n\n${agent.id === "builder" ? BUILDER_SYSTEM : agent.systemPrompt}`;
     userPrompt = buildUserPrompt({ request: opts.request, html: project.html, memory });
   }
   if (opts.images?.length) userPrompt += `\n\n(${opts.images.length} reference image(s) attached, recreate their design faithfully.)`;
@@ -111,6 +115,11 @@ export async function runAgent(opts: RunOptions) {
   await db.message.create({
     data: { projectId: project.id, role: "user", content: opts.images?.length ? `${opts.request}\n[${opts.images.length} image(s) attached]` : opts.request, agentId: agent.id },
   });
+  // The specialist introduces itself and says what it is about to do.
+  const persona = personaFor(agent.id);
+  const intro = persona.intro(opts.request);
+  await db.message.create({ data: { projectId: project.id, role: "assistant", content: intro, agentId: agent.id } });
+  opts.onEvent?.({ type: "agent", agent: agent.id, name: agent.name, profession: persona.profession, text: intro });
 
   try {
     const result = await generateWithFallback(resolved, {
@@ -137,16 +146,18 @@ export async function runAgent(opts: RunOptions) {
     if (agent.mode === "rewrite" && isApp) {
       const files = parseFileManifest(result.text, project.files);
       if (!files.some((f) => f.path === "/App.tsx")) throw new Error("Model did not return /App.tsx.");
+      const lastApp = await db.version.findFirst({ where: { projectId: project.id }, orderBy: { number: "desc" }, select: { number: true } });
+      const noteApp = extractNote(result.text) ?? persona.done((lastApp?.number ?? 0) + 1);
       const last = await db.version.findFirst({ where: { projectId: project.id }, orderBy: { number: "desc" } });
       const number = (last?.number ?? 0) + 1;
       await db.$transaction([
         db.projectFile.deleteMany({ where: { projectId: project.id } }),
         ...files.map((f) => db.projectFile.create({ data: { projectId: project.id, path: f.path, content: f.content } })),
         db.version.create({ data: { projectId: project.id, number, html: JSON.stringify(files), message: `${agent.name}: ${opts.request.slice(0, 120)}` } }),
-        db.message.create({ data: { projectId: project.id, role: "assistant", content: `Updated the app (v${number}, ${files.length} files) using ${agent.name}.`, agentId: agent.id, model: result.model, creditsUsed: creditsCharged } }),
+        db.message.create({ data: { projectId: project.id, role: "assistant", content: noteApp, agentId: agent.id, model: result.model, creditsUsed: creditsCharged } }),
         db.agentRun.update({ where: { id: run.id }, data: { status: "DONE", finishedAt: new Date(), output: `v${number}`, ...usage } }),
       ]);
-      opts.onEvent?.({ type: "done", mode: "rewrite", versionNumber: number, files, creditsUsed: creditsCharged });
+      opts.onEvent?.({ type: "done", mode: "rewrite", versionNumber: number, files, creditsUsed: creditsCharged, note: noteApp });
       return { mode: "rewrite" as const, files, versionNumber: number, credits: creditsCharged };
     }
 
@@ -155,13 +166,14 @@ export async function runAgent(opts: RunOptions) {
       if (!/<html[\s>]/i.test(html)) throw new Error("Model did not return an HTML document.");
       const last = await db.version.findFirst({ where: { projectId: project.id }, orderBy: { number: "desc" } });
       const number = (last?.number ?? 0) + 1;
+      const noteHtml = extractNote(result.text) ?? persona.done(number);
       await db.$transaction([
         db.project.update({ where: { id: project.id }, data: { html } }),
         db.version.create({ data: { projectId: project.id, number, html, message: `${agent.name}: ${opts.request.slice(0, 120)}` } }),
-        db.message.create({ data: { projectId: project.id, role: "assistant", content: `Updated the project (v${number}) using ${agent.name}.`, agentId: agent.id, model: result.model, creditsUsed: creditsCharged } }),
+        db.message.create({ data: { projectId: project.id, role: "assistant", content: noteHtml, agentId: agent.id, model: result.model, creditsUsed: creditsCharged } }),
         db.agentRun.update({ where: { id: run.id }, data: { status: "DONE", finishedAt: new Date(), output: `v${number}`, ...usage } }),
       ]);
-      opts.onEvent?.({ type: "done", mode: "rewrite", versionNumber: number, html, creditsUsed: creditsCharged });
+      opts.onEvent?.({ type: "done", mode: "rewrite", versionNumber: number, html, creditsUsed: creditsCharged, note: noteHtml });
       return { mode: "rewrite" as const, html, versionNumber: number, credits: creditsCharged };
     }
 
