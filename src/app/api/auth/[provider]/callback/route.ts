@@ -25,7 +25,9 @@ export async function GET(req: Request, ctx: RouteContext<"/api/auth/[provider]/
     const profile = await fetchProfile(provider, code, url.origin);
     const user = await upsertOAuthUser(provider, profile);
     await createSession(user.id);
-    return NextResponse.redirect(new URL(next, url.origin));
+    const target = new URL(next, url.origin);
+    if (user.created) target.searchParams.set("welcome", "1");
+    return NextResponse.redirect(target);
   } catch (e) {
     console.error(`[oauth:${provider}]`, e instanceof Error ? e.message : e);
     return NextResponse.redirect(new URL(`/login?error=${provider}_failed`, url.origin));

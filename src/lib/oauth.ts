@@ -133,7 +133,9 @@ export async function upsertOAuthUser(p: OAuthProvider, profile: OAuthProfile) {
       user = byEmail;
     }
   }
+  let created = false;
   if (!user) {
+    created = true;
     user = await db.user.create({
       data: {
         email,
@@ -155,5 +157,5 @@ export async function upsertOAuthUser(p: OAuthProvider, profile: OAuthProfile) {
     }
     await applyAttributionOnLogin(user.id);
   }
-  return user;
+  return { ...user, created };
 }

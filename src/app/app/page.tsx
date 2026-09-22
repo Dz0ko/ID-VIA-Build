@@ -9,9 +9,11 @@ import { PageHeader } from "@/components/app/PageHeader";
 import { NewProject } from "@/components/app/NewProject";
 import { ProjectGrid } from "@/components/app/ProjectGrid";
 import { providerStatus } from "@/lib/ai/router";
+import { TrackEvent } from "@/components/TrackEvent";
 
-export default async function Dashboard() {
+export default async function Dashboard({ searchParams }: PageProps<"/app">) {
   const user = await requireUser();
+  const sp = await searchParams;
   const projects = await db.project.findMany({ where: { userId: user.id }, orderBy: { updatedAt: "desc" }, take: 6, select: { id: true, name: true, slug: true, status: true, kind: true, description: true, updatedAt: true, publishedAt: true } });
   const count = await db.project.count({ where: { userId: user.id } });
   const published = await db.project.count({ where: { userId: user.id, status: "PUBLISHED" } });
@@ -26,6 +28,7 @@ export default async function Dashboard() {
         <Suspense><NewProject templates={TEMPLATES.map((t) => ({ id: t.id, name: t.name, category: t.category }))} /></Suspense>
       </PageHeader>
       <div className="flex-1 overflow-y-auto p-6 space-y-8">
+        {sp.welcome === "1" && <TrackEvent event="complete_registration" props={{ method: "social" }} />}
         {offline && (
           <div className="rounded-lg border border-warning/40 bg-warning/10 px-4 py-3 text-sm text-warning">
             {process.env.NODE_ENV === "production"

@@ -3,6 +3,7 @@ import { Logo } from "@/components/Logo";
 import { getCurrentUser } from "@/lib/auth";
 import { CREDIT_GUIDE, CREDIT_PACKS, PLANS, PLAN_ORDER, packSavingsPct } from "@/lib/plans";
 import { agentsForPlan } from "@/lib/agents";
+import { TrackEvent } from "@/components/TrackEvent";
 
 export default async function Pricing() {
   const user = await getCurrentUser();
@@ -14,6 +15,7 @@ export default async function Pricing() {
           <Link href={user ? "/app" : "/signup"} className="btn btn-primary btn-sm">{user ? "Open workspace" : "Start free"}</Link>
         </div>
       </header>
+      <TrackEvent event="view_content" props={{ content: "pricing" }} />
       <main className="max-w-6xl mx-auto px-5 sm:px-6 py-12 md:py-20">
         <p className="label">Pricing</p>
         <h1 className="heading mt-3">Pick the plan that fits how you build.</h1>
