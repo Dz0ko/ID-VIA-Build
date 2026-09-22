@@ -7,6 +7,7 @@ import Link from "next/link";
 import {
   ArrowLeft, Rocket, Download, Monitor, Tablet, Smartphone, Code2, Eye, History, MessageSquare, TerminalSquare, AlertTriangle, Lock, Play, RotateCcw, Save, Activity, ExternalLink, Users, FileCode2, Folder, ChevronRight, Image as ImageIcon, X, Share2, Link2, Trash2, CheckCircle2,
 } from "@/components/icons";
+import { ComposerSelect } from "./ComposerSelect";
 import { WorkspaceMenuButton } from "./Shell";
 import type { AgentDef } from "@/lib/agents";
 import type { PlanId, ModelTier } from "@/lib/plans";
@@ -480,7 +481,7 @@ export function Workspace(p: WorkspaceProps) {
           </div>
 
           {/* Bottom panel */}
-          <div className="shrink-0 min-h-0 border-t border-graphite flex flex-col" style={{ height: expandedPanel ? "65%" : "40%", minHeight: 230 }}>
+          <div className="shrink-0 min-h-0 border-t border-graphite flex flex-col" style={{ height: expandedPanel ? "72%" : "46%", minHeight: "min(340px, 60dvh)" }}>
             <div className="h-10 shrink-0 flex items-center gap-1 px-2 border-b border-graphite text-xs overflow-x-auto">
               {([["chat", "AI Chat", MessageSquare], ["changes", "Changes", History], ["terminal", "Terminal", TerminalSquare], ["logs", "Logs", Activity], ["problems", "Problems", AlertTriangle], ["share", "Share / Client portal", Share2]] as const).map(([id, label, I]) => (
                 <button key={id} onClick={() => { setBottom(id); if (id === "share") loadShare(); }} className={`btn btn-sm ${bottom === id ? "bg-graphite text-paper" : "btn-ghost"}`}><I size={12} />{label}{id === "problems" && audit?.issues.length ? <span className="ml-1 text-[10px] text-warning">{audit.issues.length}</span> : null}</button>
@@ -511,17 +512,18 @@ export function Workspace(p: WorkspaceProps) {
                 )}
                 <form onSubmit={(e) => { e.preventDefault(); const r = input; if (!busyRef.current && r.trim()) { setInput(""); run(r); } }} className="workspace-composer shrink-0 p-3 border-t border-graphite grid grid-cols-[1fr_auto_auto] gap-2 items-end">
                   <div className="col-span-3 flex gap-2 flex-wrap">
-                    <select aria-label="Agent" value={agentId} onChange={(e) => setAgentId(e.target.value)} className="input py-1.5 text-xs w-40">
-                      <option value="auto">Auto: IDÆVIA picks the agent</option>
-                      <optgroup label="Agents">{p.agents.map((a) => <option key={a.id} value={a.id} disabled={!isAllowed(a.id)}>{a.name}{isAllowed(a.id) ? "" : ` (${p.minPlanByAgent[a.id]})`}</option>)}</optgroup>
-                      {p.customAgents.length > 0 && <optgroup label="Custom agents">{p.customAgents.map((c) => <option key={c.id} value={`custom:${c.id}`} disabled={!p.customAgentsAllowed}>{c.name}</option>)}</optgroup>}
-                    </select>
-                    <select aria-label="Model" value={tier === "auto" ? "auto" : `${tier}:${provider ?? "anthropic"}`} onChange={(e) => { const [t, pv] = e.target.value.split(":"); setTier(t as ModelTier | "auto"); setProvider(pv === "openai" ? "openai" : pv === "anthropic" ? "anthropic" : undefined); }} className="input py-1.5 text-xs w-52">
-                      <option value="auto">Auto routing</option>
-                      {MODEL_CHOICES.map((c) => <option key={c.value} value={c.value} disabled={TIERS.indexOf(c.tier) > TIERS.indexOf(p.maxTier)}>{c.label}{TIERS.indexOf(c.tier) > TIERS.indexOf(p.maxTier) ? " (upgrade)" : ""}</option>)}
-                    </select>
+                    <ComposerSelect label="Agent" value={agentId} onChange={setAgentId} options={[
+                      { value: "auto", label: "Auto agent", description: "IDÆVIA picks the right specialist for your task." },
+                      ...p.agents.map((a) => ({ value: a.id, label: a.name, description: isAllowed(a.id) ? a.short : `Available on ${p.minPlanByAgent[a.id]}`, group: "Agents", disabled: !isAllowed(a.id) })),
+                      ...p.customAgents.map((c) => ({ value: `custom:${c.id}`, label: c.name, description: p.customAgentsAllowed ? c.description : "Available on Agency", group: "Custom agents", disabled: !p.customAgentsAllowed })),
+                    ]} />
+                    <ComposerSelect label="Model" value={tier === "auto" ? "auto" : `${tier}:${provider ?? "anthropic"}`} onChange={(value) => { const [t, pv] = value.split(":"); setTier(t as ModelTier | "auto"); setProvider(pv === "openai" ? "openai" : pv === "anthropic" ? "anthropic" : undefined); }} options={[
+                      { value: "auto", label: "Auto routing", description: "Balances quality, speed and credits for your task." },
+                      ...MODEL_CHOICES.map((c) => ({ value: c.value, label: c.label, group: "Choose a model", description: TIERS.indexOf(c.tier) > TIERS.indexOf(p.maxTier) ? "Upgrade your plan to use this model" : undefined, disabled: TIERS.indexOf(c.tier) > TIERS.indexOf(p.maxTier) })),
+                    ]} />
                   </div>
-                  <textarea aria-label="Project prompt" value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); const r = input; if (!busyRef.current && r.trim()) { setInput(""); run(r); } } }} rows={2} className="input min-w-0 resize-none" placeholder={isAuto ? "Describe what to build or change. IDÆVIA picks the right agent." : agent.mode === "rewrite" ? "What should the AI build or change?" : `Ask ${agent.name} for a report…`} />
+                  <textarea aria-label="Project prompt" value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); const r = input; if (!busyRef.current && r.trim()) { setInput(""); run(r); } } }} rows={6} className="input col-span-3 min-w-0 resize-none" placeholder={isAuto ? "Describe what to build or change. IDÆVIA picks the right agent." : agent.mode === "rewrite" ? "What should the AI build or change?" : `Ask ${agent.name} for a report…`} />
+                  <span className="text-[11px] text-ash self-center">Enter to send · Shift + Enter for a new line</span>
                   <input ref={fileInput} type="file" accept="image/png,image/jpeg,image/webp,image/gif" multiple hidden onChange={(e) => { attachImages(e.target.files); e.target.value = ""; }} />
                   <button type="button" onClick={() => (p.visionAllowed ? fileInput.current?.click() : setError("Screenshot → website (vision) is available from the Starter plan."))} title="Attach reference images (screenshot → website)" className={`btn btn-outline ${p.visionAllowed ? "" : "opacity-60"}`}><ImageIcon size={14} />{!p.visionAllowed && <Lock size={10} />}</button>
                   <button disabled={!!busy || !input.trim()} className="btn btn-primary"><Play size={14} />Run</button>
