@@ -85,7 +85,7 @@ export default async function Home() {
             </h1>
             <p className="reveal in mt-6 md:mt-8 text-base sm:text-lg md:text-xl text-fog max-w-2xl mx-auto" style={{ transitionDelay: "500ms" }}>
               <span className="md:hidden">Describe your website or app. 30 AI agents build it while you watch, then help you launch it.</span>
-              <span className="hidden md:inline">Describe the website or app you want. A team of 30 AI agents designs it, builds it and tests it while you watch, then walks you to launch. No code, no templates to fight, no waiting on anyone.</span>
+              <span className="hidden md:inline">Describe the website or app you want. 30 AI agents design, build and test it while you watch, then walk you to launch.</span>
             </p>
             <div className="reveal in mt-8 md:mt-10 flex flex-col sm:flex-row items-stretch sm:items-center justify-center gap-3 max-w-sm sm:max-w-none mx-auto" style={{ transitionDelay: "650ms" }}>
               <Link href={user ? "/app" : "/signup"} className="btn btn-signal btn-glow px-8 py-4 text-base" data-magnetic>
@@ -94,7 +94,6 @@ export default async function Home() {
               <a href="#how" className="hidden sm:inline-flex btn btn-outline px-7 py-4 text-base bg-void/50 backdrop-blur" data-magnetic>See it in action</a>
               <a href="#how" className="sm:hidden text-sm text-fog underline underline-offset-4 py-2">See it in action ↓</a>
             </div>
-            {!user && <p className="reveal in mt-4 text-xs text-ash" style={{ transitionDelay: "800ms" }}>Free plan · no card needed · your first version in under a minute</p>}
 
             {/* Floating glass cards */}
             <div className="hidden md:grid mt-24 md:grid-cols-3 gap-5 max-w-5xl mx-auto text-left items-start">
@@ -127,7 +126,7 @@ export default async function Home() {
         <section id="how" className="py-16 md:py-28 border-t border-graphite">
           <div className="max-w-6xl mx-auto px-6">
             <p className="label reveal">How it works</p>
-            <h2 className="heading mt-3 max-w-2xl reveal">From an idea to a live product, step by step.</h2>
+            <h2 className="heading mt-3 max-w-2xl reveal-text">From an idea to a live product, step by step.</h2>
             <div className="mt-14 glass-card rounded-[28px] p-2 reveal-up">
               <div className="card-grid" />
               <div className="card-body grid lg:grid-cols-[1fr_1.6fr]">
@@ -136,18 +135,19 @@ export default async function Home() {
                   <div className="text-[11px] font-mono uppercase tracking-[0.14em] text-ash">Six steps · one workspace</div>
                   <h3 className="mt-4 text-2xl md:text-3xl font-semibold tracking-tight leading-tight">Describe it once.<br />Ship it for real.</h3>
                   <p className="mt-4 text-sm text-fog/90 leading-relaxed">Every step happens in the same project: the prompt, the AI team, the audit, client approval and launch. Nothing to copy between tools.</p>
-                  <div className="mt-8 flex flex-wrap gap-2">
+                  <div className="mt-8 flex flex-wrap gap-2" data-stagger>
                     {STEPS.map((s) => <span key={s.n} className="pill text-[10px] gap-1.5"><BrandIcon name={s.icon} size={12} strokeWidth={1.8} />{s.title}</span>)}
                   </div>
                   <Link href="/signup" className="btn btn-signal btn-glow mt-9 inline-flex">Start free</Link>
                 </div>
                 {/* Right: the steps as one continuous list */}
-                <ol className="divide-y divide-graphite/70">
-                  {STEPS.map((s, i) => (
+                <ol className="relative" data-stagger>
+                  {/* One continuous line running through every step icon */}
+                  <div aria-hidden className="timeline-line absolute left-[calc(1.75rem+22px)] md:left-[calc(2.25rem+22px)] top-12 bottom-12 w-px" />
+                  {STEPS.map((s) => (
                     <li key={s.n} className="group relative flex gap-5 px-7 py-6 md:px-9 transition-colors hover:bg-white/[0.025]">
-                      <div className="flex flex-col items-center shrink-0">
+                      <div className="relative z-10 shrink-0">
                         <div className="step-num !w-11 !h-11 !rounded-xl"><BrandIcon name={s.icon} size={18} strokeWidth={1.7} /></div>
-                        {i < STEPS.length - 1 && <div className="mt-2 w-px flex-1 bg-gradient-to-b from-signal/40 to-transparent" />}
                       </div>
                       <div className="min-w-0 pb-1">
                         <div className="flex items-baseline gap-3">
@@ -168,10 +168,10 @@ export default async function Home() {
         <section id="product" className="py-16 md:py-28 border-t border-graphite" data-spotlight>
           <div className="max-w-6xl mx-auto px-6">
             <p className="label reveal">The whole workflow</p>
-            <h2 className="heading mt-3 max-w-2xl reveal">Not just prompt to code. Idea to production.</h2>
+            <h2 className="heading mt-3 max-w-2xl reveal-text">Not just prompt to code. Idea to production.</h2>
             <div className="mt-14 glass-card rounded-[28px] p-2 reveal-up">
               <div className="card-grid" />
-              <div className="card-body grid sm:grid-cols-2 lg:grid-cols-3 gap-px bg-graphite/60 rounded-[22px] overflow-hidden">
+              <div className="card-body grid sm:grid-cols-2 lg:grid-cols-3 gap-px bg-graphite/60 rounded-[22px] overflow-hidden" data-stagger>
                 {FEATURES.map(([t, d, icon]) => (
                   <div key={t} className="group flex gap-4 p-7 md:p-8 bg-[#0b0b0d] transition-colors hover:bg-[#101013]">
                     <div className="step-num !w-10 !h-10 !rounded-xl shrink-0"><BrandIcon name={icon} size={17} strokeWidth={1.7} /></div>
@@ -189,11 +189,11 @@ export default async function Home() {
         <section id="agents" className="py-16 md:py-28 border-t border-graphite">
           <div className="max-w-6xl mx-auto px-6">
             <p className="label reveal">AI agent catalog</p>
-            <h2 className="heading mt-3 reveal">{AGENTS.length} specialised agents. One team.</h2>
-            <p className="mt-4 text-fog max-w-2xl reveal">You never have to pick. Describe the change and IDÆVIA routes it to the right specialist, or pick one yourself.</p>
+            <h2 className="heading mt-3 reveal-text">{AGENTS.length} specialised agents. One team.</h2>
+            <p className="mt-4 text-fog max-w-2xl reveal" style={{ transitionDelay: "120ms" }}>You never have to pick. Describe the change and IDÆVIA routes it to the right specialist, or pick one yourself.</p>
             <div className="mt-12 glass-card rounded-[28px] p-2 reveal-up">
               <div className="card-grid" />
-              <div className="card-body grid md:grid-cols-2 xl:grid-cols-4 gap-px bg-graphite/60 rounded-t-[22px] overflow-hidden">
+              <div className="card-body grid md:grid-cols-2 xl:grid-cols-4 gap-px bg-graphite/60 rounded-t-[22px] overflow-hidden" data-stagger>
                 {AGENT_GROUPS.map(([group, ids]) => (
                   <div key={group} className="p-6 md:p-7 bg-[#0b0b0d]">
                     <div className="flex items-center justify-between mb-4">
@@ -226,7 +226,7 @@ export default async function Home() {
         <section id="templates" className="py-16 md:py-28 border-t border-graphite">
           <div className="max-w-6xl mx-auto px-6">
             <p className="label reveal">Templates</p>
-            <h2 className="heading mt-3 reveal">{TEMPLATES.length} production-ready templates, remixable with one sentence.</h2>
+            <h2 className="heading mt-3 reveal-text">{TEMPLATES.length} production-ready templates, remixable with one sentence.</h2>
             <div className="mt-12 grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4">
               {TEMPLATES.slice(0, 8).map((t, i) => (
                 <div key={t.id} className="glass-card rounded-2xl overflow-hidden reveal-up group" style={{ transitionDelay: `${i * 60}ms` }} data-tilt="8">
@@ -247,7 +247,7 @@ export default async function Home() {
             <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-6">
               <div>
                 <p className="label reveal">Plans</p>
-                <h2 className="heading mt-3 max-w-2xl reveal">Simple plans. Credits for everything the agents do.</h2>
+                <h2 className="heading mt-3 max-w-2xl reveal-text">Simple plans. Credits for everything the agents do.</h2>
               </div>
               <Link href="/pricing" className="btn btn-ghost btn-sm reveal self-start md:self-auto">Compare every feature →</Link>
             </div>

@@ -15,7 +15,12 @@ export function LandingFx() {
     const io = new IntersectionObserver((entries) => {
       for (const e of entries) if (e.isIntersecting) { e.target.classList.add("in"); io.unobserve(e.target); }
     }, { threshold: 0.15, rootMargin: "0px 0px -8% 0px" });
-    document.querySelectorAll<HTMLElement>(".reveal, .reveal-up, .reveal-left, .reveal-right").forEach((el) => io.observe(el));
+    document.querySelectorAll<HTMLElement>(".reveal, .reveal-up, .reveal-left, .reveal-right, .reveal-text").forEach((el) => io.observe(el));
+    // Staggered groups: children get an incremental delay, the group itself is observed.
+    document.querySelectorAll<HTMLElement>("[data-stagger]").forEach((group) => {
+      Array.from(group.children).forEach((child, i) => { (child as HTMLElement).style.transitionDelay = `${Math.min(i, 12) * 70}ms`; });
+      io.observe(group);
+    });
 
     const cleanups: (() => void)[] = [];
     if (!reduced && !coarse) {
