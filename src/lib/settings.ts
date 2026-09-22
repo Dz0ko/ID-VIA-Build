@@ -18,8 +18,8 @@ export interface AppSettings {
   routing: "auto" | "manual";
   /**
    * Profit floor: every run is charged at least ceil(estimatedProviderCostUsd × creditsPerUsd) credits.
-   * The cheapest plan sells credits at $99/7500 = $0.0132 each, so 150 credits per $1 of cost
-   * guarantees ≥ 2× cost on Max, ≈3× on Pro, ≈3.8× on Starter and ≈5× on Agency.
+   * The cheapest credit is Max at $99/6000 = $0.0165, so 150 credits per $1 of cost
+   * keeps every plan and pack above a 50% margin even if all credits are spent at the floor (after a 6% payment fee).
    */
   creditsPerUsd: number;
   /** Referral programme rewards (credits). */
