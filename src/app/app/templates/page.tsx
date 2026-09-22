@@ -18,7 +18,7 @@ export default async function Templates({ searchParams }: PageProps<"/app/templa
           {list.map((t) => (
             <div key={t.id} className="card overflow-hidden flex flex-col">
               <div className="h-40 bg-void border-b border-graphite overflow-hidden">
-                <iframe title={t.name} src={`/api/templates/${t.id}`} className="w-[1200px] h-[800px] origin-top-left pointer-events-none" style={{ transform: "scale(0.25)" }} loading="lazy" />
+                <iframe title={t.name} src={`/api/templates/${t.id}`} sandbox="allow-scripts" className="w-[1200px] h-[800px] origin-top-left pointer-events-none" style={{ transform: "scale(0.25)" }} loading="lazy" />
               </div>
               <div className="p-4 flex-1 flex flex-col">
                 <div className="text-sm font-medium">{t.name}</div>

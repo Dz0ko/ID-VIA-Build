@@ -17,7 +17,8 @@ const securityHeaders = [
     key: "Content-Security-Policy",
     value: [
       "default-src 'self'",
-      "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://t.whop.tw https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://unpkg.com https://*.codesandbox.io https://*.csb.app",
+      // cdn.tailwindcss.com / esm.sh: generated sites previewed via srcDoc inherit this policy.
+      "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://t.whop.tw https://cdn.tailwindcss.com https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://unpkg.com https://esm.sh https://*.codesandbox.io https://*.csb.app",
       "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdn.jsdelivr.net",
       "font-src 'self' data: https://fonts.gstatic.com https://cdn.jsdelivr.net",
       "img-src 'self' data: blob: https:",
@@ -41,7 +42,7 @@ const nextConfig: NextConfig = {
   async headers() {
     return [
       // User-generated HTML gets its own (sandboxed) policy in the route handlers.
-      { source: "/((?!s/|api/portal/|api/projects/[^/]+/preview|api/marketplace/[^/]+/preview).*)", headers: securityHeaders },
+      { source: "/((?!s/|api/portal/|api/templates/|api/projects/[^/]+/preview|api/marketplace/[^/]+/preview).*)", headers: securityHeaders },
     ];
   },
 };
