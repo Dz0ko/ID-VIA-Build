@@ -1,6 +1,7 @@
 import { db } from "./db";
 import { PLANS, isPlanId, type ModelTier } from "./plans";
 import { getSettings } from "./settings";
+import { estimateUsd } from "./ai/cost";
 
 export class InsufficientCredits extends Error {
   constructor(public needed: number, public have: number) {
@@ -16,11 +17,44 @@ export async function estimateCredits(opts: {
   taskClass: "tiny" | "small" | "section" | "page" | "feature" | "fullstack";
   agentMultiplier: number;
   tier: ModelTier;
+  /** Concrete model that will run (for the cost floor). */
+  model?: string;
+  /** Size of the current document/files in tokens (≈ chars / 4). Rewrites re-emit it all. */
+  docTokens?: number;
+  mode?: "rewrite" | "report";
 }) {
   const s = await getSettings();
   const base = s.creditBase[opts.taskClass];
   const tierMult = s.tierMultiplier[opts.tier];
-  return Math.max(1, Math.round(base * opts.agentMultiplier * tierMult));
+  const byClass = Math.max(1, Math.round(base * opts.agentMultiplier * tierMult));
+  if (!opts.model) return byClass;
+  // Cost floor: what this run will most likely cost at the provider, converted to credits.
+  const doc = Math.max(0, opts.docTokens ?? 0);
+  const inputTokens = 6000 + doc; // system prompt + design skill + the document itself
+  const outputTokens = opts.mode === "report" ? 2500 : Math.max(doc, opts.taskClass === "fullstack" || opts.taskClass === "feature" ? 14000 : 10000);
+  const usd = estimateUsd(opts.model, { inputTokens, outputTokens });
+  const floor = Math.ceil(usd * (s.creditsPerUsd ?? 150));
+  return Math.max(byClass, floor);
+}
+
+/**
+ * After a run: if the real provider cost, converted to credits, exceeds what was charged,
+ * charge the difference (never below a zero balance). Guarantees no run is sold at a loss.
+ * Returns the extra credits charged.
+ */
+export async function settleCredits(userId: string, charged: number, costUsd: number, reason: string, projectId?: string): Promise<number> {
+  const s = await getSettings();
+  const due = Math.ceil(costUsd * (s.creditsPerUsd ?? 150));
+  const extra = due - charged;
+  if (extra <= 0) return 0;
+  const rows = await db.$queryRaw<{ taken: number }[]>`
+    UPDATE "User" SET "credits" = GREATEST(0, "credits" - ${extra}),
+      "purchasedCredits" = LEAST("purchasedCredits", GREATEST(0, "credits" - ${extra}))
+    WHERE "id" = ${userId}
+    RETURNING LEAST(${extra}, (SELECT "credits" FROM "User" u2 WHERE u2."id" = ${userId})) AS taken`;
+  const taken = Number(rows[0]?.taken ?? 0);
+  if (taken > 0) await db.creditLedger.create({ data: { userId, delta: -taken, reason: `${reason}:usage`, projectId } });
+  return taken;
 }
 
 /**

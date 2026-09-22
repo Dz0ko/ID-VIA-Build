@@ -16,6 +16,12 @@ export interface AppSettings {
   tierMultiplier: Record<ModelTier, number>;
   creditBase: Record<"tiny" | "small" | "section" | "page" | "feature" | "fullstack", number>;
   routing: "auto" | "manual";
+  /**
+   * Profit floor: every run is charged at least ceil(estimatedProviderCostUsd × creditsPerUsd) credits.
+   * The cheapest plan sells credits at $99/7500 = $0.0132 each, so 150 credits per $1 of cost
+   * guarantees ≥ 2× cost on Max, ≈3× on Pro, ≈3.8× on Starter and ≈5× on Agency.
+   */
+  creditsPerUsd: number;
   /** Referral programme rewards (credits). */
   referral: {
     /** Credits the new user gets for signing up through a friend's link. */
@@ -79,6 +85,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   tierMultiplier: { fast: 1, standard: 1.5, advanced: 3, premium: 6, frontier: 12 },
   creditBase: { tiny: 2, small: 3, section: 5, page: 10, feature: 20, fullstack: 40 },
   routing: "auto",
+  creditsPerUsd: 150,
   // 50 credits ≈ $0.55 of model cost: cheap acquisition; the paid bonus is worth ~1 full page.
   referral: { referredSignupCredits: 50, referrerSignupCredits: 50, referrerPaidCredits: 300 },
 };

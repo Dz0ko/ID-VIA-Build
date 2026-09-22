@@ -173,7 +173,8 @@ export function isPlanId(v: string): v is PlanId {
 }
 
 /** Rough credit cost of common tasks, used to explain what credits buy. */
-export const CREDIT_GUIDE = { smallEdit: 5, page: 30, fullstack: 240 };
+/** Typical credit costs shown in marketing copy. Edits scale with page size (a rewrite re-emits the whole document). */
+export const CREDIT_GUIDE = { smallEdit: 12, page: 30, fullstack: 240 };
 
 /**
  * Credit top-ups. Each step is roughly 3× the previous one and the price per

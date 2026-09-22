@@ -1,6 +1,6 @@
 import { db } from "../db";
 import type { PlanId, ModelTier } from "../plans";
-import { estimateCredits, refundCredits, reserveCredits } from "../credits";
+import { estimateCredits, refundCredits, reserveCredits, settleCredits } from "../credits";
 import { resolveAgent } from "../agents-runtime";
 import {
   APP_BUILDER_SYSTEM,
@@ -57,10 +57,11 @@ export async function runAgent(opts: RunOptions) {
   const tier = tierForTask(taskClass, opts.plan, opts.requestedTier ?? merged);
   const visionBump = opts.images?.length ? 1.5 : 1;
 
-  const credits = await estimateCredits({ taskClass, agentMultiplier: agent.multiplier * visionBump * (isApp ? 1.5 : 1), tier });
+  const resolved = await resolveModel(tier);
+  const docTokens = Math.ceil((isApp ? project.files.reduce((n, f) => n + f.content.length, 0) : project.html.length) / 4);
+  const credits = await estimateCredits({ taskClass, agentMultiplier: agent.multiplier * visionBump * (isApp ? 1.5 : 1), tier, model: resolved.config.model, docTokens, mode: agent.mode });
   const { purchasedSpent } = await reserveCredits(opts.userId, credits, `agent:${agent.id}`, project.id);
 
-  const resolved = await resolveModel(tier);
   const run = await db.agentRun.create({
     data: { userId: opts.userId, projectId: project.id, agentId: agent.id, status: "RUNNING", task: opts.request, model: resolved.config.model, creditsUsed: credits },
   });
@@ -101,11 +102,16 @@ export async function runAgent(opts: RunOptions) {
       onText: (t) => opts.onEvent?.({ type: "delta", text: t }),
       signal: opts.signal,
     });
+    const costUsd = resolved.provider.id === "mock" && !result.fellBack ? 0 : estimateUsd(result.model, result);
+    // Profit guarantee: charge any difference between the estimate and the real cost.
+    const extra = await settleCredits(opts.userId, credits, costUsd, `agent:${agent.id}`, project.id);
+    const creditsCharged = credits + extra;
     const usage = {
       model: result.model, // the model that actually answered (may differ after a provider fallback)
       inputTokens: result.inputTokens,
       outputTokens: result.outputTokens,
-      costUsd: resolved.provider.id === "mock" && !result.fellBack ? 0 : estimateUsd(result.model, result),
+      costUsd,
+      creditsUsed: creditsCharged,
     };
 
     if (agent.mode === "rewrite" && isApp) {
@@ -117,11 +123,11 @@ export async function runAgent(opts: RunOptions) {
         db.projectFile.deleteMany({ where: { projectId: project.id } }),
         ...files.map((f) => db.projectFile.create({ data: { projectId: project.id, path: f.path, content: f.content } })),
         db.version.create({ data: { projectId: project.id, number, html: JSON.stringify(files), message: `${agent.name}: ${opts.request.slice(0, 120)}` } }),
-        db.message.create({ data: { projectId: project.id, role: "assistant", content: `Updated the app (v${number}, ${files.length} files) using ${agent.name}.`, agentId: agent.id, model: result.model, creditsUsed: credits } }),
+        db.message.create({ data: { projectId: project.id, role: "assistant", content: `Updated the app (v${number}, ${files.length} files) using ${agent.name}.`, agentId: agent.id, model: result.model, creditsUsed: creditsCharged } }),
         db.agentRun.update({ where: { id: run.id }, data: { status: "DONE", finishedAt: new Date(), output: `v${number}`, ...usage } }),
       ]);
-      opts.onEvent?.({ type: "done", mode: "rewrite", versionNumber: number, files, creditsUsed: credits });
-      return { mode: "rewrite" as const, files, versionNumber: number, credits };
+      opts.onEvent?.({ type: "done", mode: "rewrite", versionNumber: number, files, creditsUsed: creditsCharged });
+      return { mode: "rewrite" as const, files, versionNumber: number, credits: creditsCharged };
     }
 
     if (agent.mode === "rewrite") {
@@ -132,19 +138,19 @@ export async function runAgent(opts: RunOptions) {
       await db.$transaction([
         db.project.update({ where: { id: project.id }, data: { html } }),
         db.version.create({ data: { projectId: project.id, number, html, message: `${agent.name}: ${opts.request.slice(0, 120)}` } }),
-        db.message.create({ data: { projectId: project.id, role: "assistant", content: `Updated the project (v${number}) using ${agent.name}.`, agentId: agent.id, model: result.model, creditsUsed: credits } }),
+        db.message.create({ data: { projectId: project.id, role: "assistant", content: `Updated the project (v${number}) using ${agent.name}.`, agentId: agent.id, model: result.model, creditsUsed: creditsCharged } }),
         db.agentRun.update({ where: { id: run.id }, data: { status: "DONE", finishedAt: new Date(), output: `v${number}`, ...usage } }),
       ]);
-      opts.onEvent?.({ type: "done", mode: "rewrite", versionNumber: number, html, creditsUsed: credits });
-      return { mode: "rewrite" as const, html, versionNumber: number, credits };
+      opts.onEvent?.({ type: "done", mode: "rewrite", versionNumber: number, html, creditsUsed: creditsCharged });
+      return { mode: "rewrite" as const, html, versionNumber: number, credits: creditsCharged };
     }
 
     await db.$transaction([
-      db.message.create({ data: { projectId: project.id, role: "assistant", content: result.text, agentId: agent.id, model: result.model, creditsUsed: credits } }),
+      db.message.create({ data: { projectId: project.id, role: "assistant", content: result.text, agentId: agent.id, model: result.model, creditsUsed: creditsCharged } }),
       db.agentRun.update({ where: { id: run.id }, data: { status: "DONE", finishedAt: new Date(), output: result.text, ...usage } }),
     ]);
-    opts.onEvent?.({ type: "done", mode: "report", report: result.text, creditsUsed: credits });
-    return { mode: "report" as const, report: result.text, credits };
+    opts.onEvent?.({ type: "done", mode: "report", report: result.text, creditsUsed: creditsCharged });
+    return { mode: "report" as const, report: result.text, credits: creditsCharged };
   } catch (err) {
     const message = friendlyAiError(err);
     console.error("[agent run failed]", err instanceof Error ? err.message : err);

@@ -16,6 +16,7 @@ const tierRecord = <T extends z.ZodTypeAny>(v: T) => z.object(Object.fromEntries
 const settingsSchema = z.object({
   tiers: tierRecord(modelConfig),
   tierMultiplier: tierRecord(z.number().min(0.1).max(100)),
+  creditsPerUsd: z.number().min(50).max(2000).default(150),
   creditBase: z.object({ tiny: z.number().int().min(1).max(1000), small: z.number().int().min(1).max(1000), section: z.number().int().min(1).max(1000), page: z.number().int().min(1).max(1000), feature: z.number().int().min(1).max(1000), fullstack: z.number().int().min(1).max(1000) }),
   routing: z.enum(["auto", "manual"]),
   referral: z.object({ referredSignupCredits: z.number().int().min(0).max(10000), referrerSignupCredits: z.number().int().min(0).max(10000), referrerPaidCredits: z.number().int().min(0).max(100000) }),
