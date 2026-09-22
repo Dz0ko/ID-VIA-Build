@@ -9,6 +9,7 @@ import { PROVIDER_INFO } from "@/lib/integrations";
 import { DEFAULT_SETTINGS } from "@/lib/settings";
 import { MARKETPLACE_FEE_PCT } from "@/lib/marketplace";
 import { LEGAL_CONTACT } from "@/components/LegalPage";
+import { DocsNav } from "@/components/DocsNav";
 
 export const metadata: Metadata = { title: "Docs", description: "Everything about IDÆVIA Build: how it works, the 30 agents, models and credits, terminal and deploys, integrations, marketplace, plans." };
 
@@ -38,10 +39,20 @@ const GROUPS: [string, string[]][] = [
 ];
 
 function H2({ id, children }: { id: string; children: React.ReactNode }) {
-  return <h2 id={id} className="scroll-mt-24 text-2xl md:text-3xl font-semibold tracking-tight mt-16 first:mt-0">{children}</h2>;
+  const n = NAV.findIndex(([k]) => k === id) + 1;
+  return (
+    <h2 id={id} className="scroll-mt-24 text-2xl md:text-3xl font-semibold tracking-tight mt-16 first:mt-0 flex items-baseline gap-3">
+      <span className="font-mono text-sm text-signal-soft">{String(n).padStart(2, "0")}</span>
+      <span>{children}<span className="block mt-2 h-[2px] w-10 rounded-full bg-signal" /></span>
+    </h2>
+  );
 }
 function H3({ children }: { children: React.ReactNode }) {
-  return <h3 className="text-lg font-medium mt-8">{children}</h3>;
+  return <h3 className="text-lg font-medium mt-8 text-paper"><span className="text-signal-soft mr-2">§</span>{children}</h3>;
+}
+/** Key term in the brand colour. */
+function K({ children }: { children: React.ReactNode }) {
+  return <strong className="font-medium text-signal-soft">{children}</strong>;
 }
 function P({ children }: { children: React.ReactNode }) {
   return <p className="mt-3 text-fog leading-relaxed">{children}</p>;
@@ -50,13 +61,13 @@ function Table({ head, rows }: { head: string[]; rows: (React.ReactNode)[][] }) 
   return (
     <div className="mt-4 overflow-x-auto rounded-xl border border-graphite">
       <table className="w-full text-sm">
-        <thead className="bg-ink text-ash"><tr>{head.map((h) => <th key={h} className="text-left p-3 font-medium">{h}</th>)}</tr></thead>
+        <thead className="bg-ink text-signal-soft"><tr>{head.map((h) => <th key={h} className="text-left p-3 font-medium">{h}</th>)}</tr></thead>
         <tbody>{rows.map((r, i) => <tr key={i} className="border-t border-graphite align-top">{r.map((c, j) => <td key={j} className="p-3 text-fog">{c}</td>)}</tr>)}</tbody>
       </table>
     </div>
   );
 }
-const Code = ({ children }: { children: string }) => <code className="font-mono text-[13px] bg-ink border border-graphite rounded px-1.5 py-0.5 text-paper">{children}</code>;
+const Code = ({ children }: { children: string }) => <code className="font-mono text-[13px] bg-ink border border-graphite rounded px-1.5 py-0.5 text-signal-soft">{children}</code>;
 
 export default function Docs() {
   const agentById = new Map(AGENTS.map((a) => [a.id, a]));
@@ -72,19 +83,17 @@ export default function Docs() {
 
       <div className="max-w-[1400px] mx-auto w-full px-6 py-10 md:py-14 grid lg:grid-cols-[260px_1fr] gap-10 lg:gap-16 flex-1">
         <aside className="lg:sticky lg:top-24 self-start">
-          <div className="label">Documentation</div>
-          <nav className="mt-3 flex lg:flex-col gap-1 overflow-x-auto text-sm">
-            {NAV.map(([id, label]) => <a key={id} href={`#${id}`} className="whitespace-nowrap px-2.5 py-1.5 rounded-lg text-fog hover:text-paper hover:bg-ink">{label}</a>)}
-          </nav>
+          <div className="label text-signal-soft">Documentation</div>
+          <DocsNav items={NAV} />
         </aside>
 
         <article className="min-w-0 max-w-3xl">
-          <p className="label">IDÆVIA Build docs</p>
-          <h1 className="heading mt-3">Everything you need to know.</h1>
+          <p className="label text-signal-soft">IDÆVIA Build docs</p>
+          <h1 className="heading mt-3">Everything you need to <span className="text-signal-soft">know</span>.</h1>
           <P>IDÆVIA Build is an AI software-creation platform. You describe a website or app in one sentence; a team of {AGENTS.length} specialist agents plans, designs, builds, tests and deploys it while you watch, edit real code, collect client approvals and launch. This page explains what the product does, what each feature is for, and how credits and plans work.</P>
 
           <H2 id="overview">What is IDÆVIA Build</H2>
-          <P>One workspace for two kinds of projects: <strong className="text-paper">websites</strong> (a single, fast HTML page with Tailwind and vanilla JavaScript, ready to publish anywhere) and <strong className="text-paper">React apps</strong> (a multi-file React + TypeScript project that runs live in your browser and exports as a Vite project).</P>
+          <P>One workspace for two kinds of projects: <K>websites</K> (a single, fast HTML page with Tailwind and vanilla JavaScript, ready to publish anywhere) and <K>React apps</K> (a multi-file React + TypeScript project that runs live in your browser and exports as a Vite project).</P>
           <P>You never write prompts for a generic chatbot. You talk to a team: the Router reads your request, picks the right specialist, the specialist tells you what it will do, does it, and reports back. Every change is saved as a version you can roll back.</P>
           <Table head={["You get", "In short"]} rows={[
             ["30 agents", "Named specialists with professions, from Builder and Designer to Database, Deploy, QA and Security."],
@@ -92,7 +101,7 @@ export default function Docs() {
             ["Live workspace", "Preview on desktop/tablet/mobile, code editor, React sandbox, versions, audits, logs."],
             ["Real terminal", "publish, git push, deploy vercel, supabase link, env set, export. Real commands with full logs."],
             ["Integrations", "GitHub, Vercel, Supabase, Higgsfield, Netlify."],
-            ["Library", `${TEMPLATES.length} templates in ${TEMPLATE_CATEGORIES.length} categories, prompts, components and effects.`],
+            ["Library", `${TEMPLATES.length} templates in ${TEMPLATE_CATEGORIES.length} categories, plus ready-made prompts, components and effects (hover, scroll, cursor, 3D) you drop into any project.`],
             ["Collaboration", "Teams, white-label client portal with comments and approvals."],
             ["Marketplace", `Sell templates, components, prompts and agents; keep ${100 - MARKETPLACE_FEE_PCT}%.`],
             ["Learn", "18 lessons and a glossary, from frontend basics to deployment and security."],
@@ -101,20 +110,20 @@ export default function Docs() {
           <H2 id="start">Getting started</H2>
           <ol className="mt-3 list-decimal pl-5 space-y-2 text-fog">
             <li>Create an account with email, Google or GitHub. The Free plan gives {PLANS.FREE.credits} credits every month, no card.</li>
-            <li>Click <strong className="text-paper">New project</strong>, name it and describe what you want. Or pick a template and remix it with one sentence. You can also attach a screenshot (Starter+) or import from a URL, GitHub or ZIP.</li>
+            <li>Click <K>New project</K>, name it and describe what you want. Or pick a template and remix it with one sentence. You can also attach a screenshot (Starter+) or import from a URL, GitHub or ZIP.</li>
             <li>Watch the Builder stream the first version. Keep chatting: “make the hero darker”, “add a pricing table”, “translate to German”. The Router sends each request to the right agent.</li>
-            <li>Open the <strong className="text-paper">Problems</strong> tab for a production audit, fix issues with one click, then <strong className="text-paper">publish</strong> for an instant link, push to GitHub or deploy to Vercel from the terminal.</li>
+            <li>Open the <K>Problems</K> tab for a production audit, fix issues with one click, then <K>publish</K> for an instant link, push to GitHub or deploy to Vercel from the terminal.</li>
           </ol>
 
           <H2 id="workspace">The workspace</H2>
           <H3>Chat</H3>
-          <P>The default agent is <strong className="text-paper">Auto</strong>: the Router classifies your request (small tweak, section, full page, feature, full-stack) and picks the specialist. You can choose an agent and a model yourself. Each agent introduces itself when it starts and writes a short first-person note when it finishes, so the chat reads like a real team.</P>
+          <P>The default agent is <K>Auto</K>: the Router classifies your request (small tweak, section, full page, feature, full-stack) and picks the specialist. You can choose an agent and a model yourself. Each agent introduces itself when it starts and writes a short first-person note when it finishes, so the chat reads like a real team.</P>
           <H3>Preview and code</H3>
-          <P>Live preview with desktop, tablet and mobile widths. Switch to <strong className="text-paper">Code</strong> to edit the HTML or any file of a React app in a full editor; saving creates a new version. Generated sites run in an isolated sandbox and cannot touch your account.</P>
+          <P>Live preview with desktop, tablet and mobile widths. Switch to <K>Code</K> to edit the HTML or any file of a React app in a full editor; saving creates a new version. Generated sites run in an isolated sandbox and cannot touch your account.</P>
           <H3>Versions, audits, logs</H3>
           <P>Every run is a version with a message; restore any version instantly. The audit scores performance, SEO, accessibility, security, code quality and mobile, and the Debugger fixes findings on request. The Logs tab shows routing decisions, the model used, credits and deploy events.</P>
           <H3>One-click workflows</H3>
-          <P><strong className="text-paper">Build website</strong>, <strong className="text-paper">Make it premium</strong>, <strong className="text-paper">Production ready</strong> and <strong className="text-paper">Optimise landing</strong> run several agents in sequence on your project.</P>
+          <P><K>Build website</K>, <K>Make it premium</K>, <K>Production ready</K> and <K>Optimise landing</K> run several agents in sequence on your project.</P>
 
           <H2 id="agents">The {AGENTS.length} agents</H2>
           <P>Every agent is a specialist with a profession. Agents unlock by plan: Free {PLANS.FREE.agentLimit}, Starter {PLANS.STARTER.agentLimit}, Pro {PLANS.PRO.agentLimit}, Max and Agency all {AGENTS.length}. Agency can also create custom agents with their own instructions.</P>
@@ -144,7 +153,7 @@ export default function Docs() {
           <P>If a provider is unavailable, the same tier runs on the alternative provider automatically; failed runs are refunded.</P>
 
           <H2 id="credits">Credits and plans</H2>
-          <P>Credits measure the work the agents do. A run is priced from what it is (a tweak, a section, a full page, a feature), which agent and model tier it uses, and how large your document is, because an edit rewrites the whole document. You see the estimate before the run and the exact charge, with the reason, in <strong className="text-paper">Profile → Credit usage</strong>.</P>
+          <P>Credits measure the work the agents do. A run is priced from what it is (a tweak, a section, a full page, a feature), which agent and model tier it uses, and how large your document is, because an edit rewrites the whole document. You see the estimate before the run and the exact charge, with the reason, in <K>Profile → Credit usage</K>.</P>
           <Table head={["Typical task", "Credits (Standard/Advanced)"]} rows={[
             ["Small edit on a typical page", `about ${CREDIT_GUIDE.smallEdit}`],
             ["New full landing page", `about ${CREDIT_GUIDE.page}`],
@@ -155,7 +164,7 @@ export default function Docs() {
           <Table head={["Plan", "Price", "Credits / month", "Agents", "Top tier", "Includes"]} rows={PLAN_ORDER.map((id) => { const p = PLANS[id]; return [p.name, p.price ? `$${p.price}/mo` : "Free", p.credits.toLocaleString(), p.agentLimit === "all" ? `All ${AGENTS.length}` : String(p.agentLimit), TIER_LABELS[p.maxTier].split(" · ")[0], p.highlights.slice(0, 3).join(" · ")]; })} />
           <P>Plan credits renew every 30 days; Pro and above roll over up to 25% of unused plan credits. Cancel any time; the plan stays active until the end of the paid period.</P>
           <H3>Credit packs</H3>
-          <P>{CREDIT_PACKS.map((c) => `${c.credits.toLocaleString()} for $${c.price}`).join(" · ")}. Packs are one-time purchases on paid plans, paid by card, PayPal or crypto. Purchased credits <strong className="text-paper">never expire</strong> and are spent after your plan credits.</P>
+          <P>{CREDIT_PACKS.map((c) => `${c.credits.toLocaleString()} for $${c.price}`).join(" · ")}. Packs are one-time purchases on paid plans, paid by card, PayPal or crypto. Purchased credits <K>never expire</K> and are spent after your plan credits.</P>
 
           <H2 id="terminal">Terminal and deploys</H2>
           <P>Every project has a terminal. On the web the commands run on our servers with full logs; in the desktop app you also get a real local shell.</P>
@@ -170,16 +179,16 @@ export default function Docs() {
           ]} />
 
           <H2 id="integrations">Integrations</H2>
-          <P>Connect services once in <strong className="text-paper">Integrations</strong>; the terminal uses them in every project. Credentials are verified when you save them, stored encrypted, never shown again and never sent to AI providers.</P>
+          <P>Connect services once in <K>Integrations</K>; the terminal uses them in every project. Credentials are verified when you save them, stored encrypted, never shown again and never sent to AI providers.</P>
           <Table head={["Service", "What it enables"]} rows={Object.entries(PROVIDER_INFO).map(([id, p]) => [p.name, p.blurb])} />
 
           <H2 id="templates">Templates and library</H2>
           <P>{TEMPLATES.length} templates across {TEMPLATE_CATEGORIES.join(", ")}. Pick one, then change anything with a sentence. The Interactive category contains playable mini-apps (trivia quiz, poll, countdown with RSVP, decision wheel, personality quiz, would-you-rather, party cards).</P>
-          <P>The <strong className="text-paper">Prompts</strong> library gives you proven prompts per industry. <strong className="text-paper">Components</strong> and <strong className="text-paper">Effects</strong> (hover, scroll, cursor, 3D) have live previews and are added by prompt. <strong className="text-paper">Learn</strong> (Starter+) has 18 lessons and a 45-term glossary.</P>
+          <P>Everything in the library is ready to use in your own project. The <K>Prompts</K> library gives you proven prompts per industry that you run as they are or adapt. <K>Components</K> (heroes, pricing tables, navbars, forms, testimonials and more) and <K>Effects</K> (hover, scroll, cursor, 3D) have live previews and are added to the project by prompt, so a section that would take an afternoon is one click. <K>Learn</K> (Starter+) has 18 lessons and a 45-term glossary.</P>
 
           <H2 id="marketplace">Marketplace and payouts</H2>
           <P>Sell websites, app templates, components, prompts and agents (Starter+). Buyers see a protected preview, never the code; after paying they install the item into a new project. IDÆVIA keeps {MARKETPLACE_FEE_PCT}%, you keep {100 - MARKETPLACE_FEE_PCT}%.</P>
-          <P>Earnings land in your <strong className="text-paper">Seller wallet</strong> on your profile. Add a payout destination (crypto: USDT, USDC, BTC, ETH on several networks, or PayPal), then request a payout of at least $10. We review and send it within 3 business days; every step is visible in the wallet.</P>
+          <P>Earnings land in your <K>Seller wallet</K> on your profile. Add a payout destination (crypto: USDT, USDC, BTC, ETH on several networks, or PayPal), then request a payout of at least $10. We review and send it within 3 business days; every step is visible in the wallet.</P>
 
           <H2 id="portal">Client portal and teams</H2>
           <P>Create a share link for any project, optionally with a password and an expiry. Clients open it without an account, see the live preview, leave comments and change requests and approve. Feedback flows back into the workspace. Agency plans get teams with roles and white-label portals (your name, logo and colours).</P>

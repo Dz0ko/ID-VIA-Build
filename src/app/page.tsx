@@ -16,7 +16,7 @@ const FEATURES: { title: string; text: string; icon: BrandIconName }[] = [
   { title: "Websites and React apps", text: "Single-page sites or multi-file React + TypeScript apps with a live in-browser sandbox and a real code editor.", icon: "code" },
   { title: "Real terminal", text: "git push, deploy vercel, supabase link, env set. Commands run for real with full logs.", icon: "terminal" },
   { title: "Client portal", text: "Share a link. Clients preview, comment and approve without an account. Feedback flows back to the agents.", icon: "share" },
-  { title: "Templates and marketplace", text: `${TEMPLATES.length} templates across ${TEMPLATE_CATEGORIES.length} categories, plus a marketplace where you sell your own work and keep 90%.`, icon: "marketplace" },
+  { title: "Templates and marketplace", text: `${TEMPLATES.length} templates across ${TEMPLATE_CATEGORIES.length} categories, plus ready-made prompts, components and effects you can drop into your project. Sell your own work on the marketplace and keep 90%.`, icon: "marketplace" },
   { title: "Versions and audits", text: "Every change is a version you can roll back. Production audit for performance, SEO, accessibility and security.", icon: "versions" },
 ];
 
