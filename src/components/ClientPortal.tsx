@@ -82,7 +82,7 @@ export function ClientPortal({ token }: { token: string }) {
       <div className="flex-1 grid lg:grid-cols-[1fr_360px] min-h-0">
         <div className="p-4 bg-[#050506] min-h-[60vh]">
           <div className="h-full min-h-[60vh] rounded-lg overflow-hidden border border-graphite bg-white">
-            {project.kind === "app" ? (files.length ? <div className="h-full min-h-[60vh]"><AppSandbox files={files} /></div> : <div className="h-full min-h-[60vh] grid place-items-center text-sm text-ash bg-void">Loading app…</div>) : <iframe title="preview" src={previewSrc} className="w-full h-full min-h-[60vh]" sandbox="allow-scripts allow-same-origin allow-forms" />}
+            {project.kind === "app" ? (files.length ? <div className="h-full min-h-[60vh]"><AppSandbox files={files} /></div> : <div className="h-full min-h-[60vh] grid place-items-center text-sm text-ash bg-void">Loading app…</div>) : <iframe title="preview" src={previewSrc} className="w-full h-full min-h-[60vh]" sandbox="allow-scripts allow-forms allow-popups allow-modals" />}
           </div>
         </div>
         <aside className="border-l border-graphite flex flex-col">

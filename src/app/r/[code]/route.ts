@@ -12,6 +12,9 @@ export async function GET(req: Request, ctx: RouteContext<"/r/[code]">) {
   const url = new URL(req.url);
   const to = url.searchParams.get("to");
   const target = safePath(to, "/login");
+  // Only a real top-level navigation earns attribution; hidden <img src="/r/…"> embeds do not.
+  const dest = req.headers.get("sec-fetch-dest");
+  if (dest && dest !== "document") return NextResponse.redirect(new URL("/", url.origin));
   const ref = await resolveCode(code);
   if (ref) await setAttributionCookie(ref);
   return NextResponse.redirect(new URL(ref ? target : "/", url.origin));

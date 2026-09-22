@@ -16,8 +16,9 @@ const secret = () => {
   return new TextEncoder().encode(s ?? "dev-secret-change-me");
 };
 
-export async function createSession(userId: string) {
-  const token = await new SignJWT({ sub: userId })
+export async function createSession(userId: string, sessionVersion?: number) {
+  const ver = sessionVersion ?? (await db.user.findUnique({ where: { id: userId }, select: { sessionVersion: true } }))?.sessionVersion ?? 0;
+  const token = await new SignJWT({ sub: userId, ver })
     .setProtectedHeader({ alg: "HS256" })
     .setIssuedAt()
     .setExpirationTime("30d")
@@ -37,16 +38,21 @@ export async function destroySession() {
   store.delete(COOKIE);
 }
 
-export async function getSessionUserId(): Promise<string | null> {
+async function readSession(): Promise<{ userId: string; ver: number } | null> {
   const store = await cookies();
   const token = store.get(COOKIE)?.value;
   if (!token) return null;
   try {
     const { payload } = await jwtVerify(token, secret());
-    return typeof payload.sub === "string" ? payload.sub : null;
+    if (typeof payload.sub !== "string") return null;
+    return { userId: payload.sub, ver: typeof payload.ver === "number" ? payload.ver : 0 };
   } catch {
     return null;
   }
+}
+
+export async function getSessionUserId(): Promise<string | null> {
+  return (await readSession())?.userId ?? null;
 }
 
 export type SessionUser = {
@@ -68,10 +74,13 @@ export type SessionUser = {
 
 /** Returns the current user, refreshing the monthly credit allowance if due. */
 export async function getCurrentUser(): Promise<SessionUser | null> {
-  const id = await getSessionUserId();
-  if (!id) return null;
+  const session = await readSession();
+  if (!session) return null;
+  const id = session.userId;
   let user = await db.user.findUnique({ where: { id } });
   if (!user) return null;
+  // A password change bumps sessionVersion; older cookies are no longer valid.
+  if (user.sessionVersion !== session.ver) return null;
 
   // Monthly credit reset (simple calendar-month cycle from last reset)
   const next = new Date(user.creditsResetAt);

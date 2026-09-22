@@ -1,13 +1,13 @@
-import { safeEqual, rateLimit, clientIp } from "@/lib/security";
+import { rateLimit, clientIp } from "@/lib/security";
+import { checkPortalLink } from "@/lib/portal";
 import { z } from "zod";
 import { db } from "@/lib/db";
 import { error, json } from "@/lib/api";
 
 async function loadLink(token: string, password: string | null) {
-  const link = await db.shareLink.findUnique({ where: { token }, include: { project: { include: { team: true, comments: { orderBy: { createdAt: "asc" } } } } } });
-  if (!link) return { err: error("This link is invalid or was removed.", 404) };
-  if (link.expiresAt && link.expiresAt < new Date()) return { err: error("This link has expired.", 410) };
-  if (link.password && !safeEqual(link.password, password)) return { err: error("Password required.", 401, { code: "PASSWORD" }) };
+  const denied = await checkPortalLink(token, password);
+  if (denied) return { err: error(denied.message, denied.status, denied.status === 401 ? { code: "PASSWORD" } : undefined) };
+  const link = await db.shareLink.findUniqueOrThrow({ where: { token }, include: { project: { include: { team: true, comments: { orderBy: { createdAt: "asc" } } } } } });
   return { link };
 }
 

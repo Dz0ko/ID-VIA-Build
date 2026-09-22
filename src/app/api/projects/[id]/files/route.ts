@@ -4,7 +4,7 @@ import { db } from "@/lib/db";
 import { error, json, withUser } from "@/lib/api";
 
 const schema = z.object({
-  files: z.array(z.object({ path: z.string().regex(/^\/[\w\-./]+$/), content: z.string().max(300_000) })).max(80),
+  files: z.array(z.object({ path: z.string().max(200).regex(/^\/(?!.*(?:^|\/)\.\.(?:\/|$))[\w\-./]+$/), content: z.string().max(300_000) })).max(80),
   saveVersion: z.boolean().optional(),
   message: z.string().max(120).optional(),
 });

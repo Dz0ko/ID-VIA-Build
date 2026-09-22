@@ -23,20 +23,27 @@ export async function estimateCredits(opts: {
   return Math.max(1, Math.round(base * opts.agentMultiplier * tierMult));
 }
 
-export async function reserveCredits(userId: string, amount: number, reason: string, projectId?: string) {
-  // Atomic conditional decrement: concurrent runs cannot spend the same credits twice.
-  // Plan credits are spent first; purchased credits only once the plan allowance is gone.
-  const rows = await db.$queryRaw<{ credits: number }[]>`
-    UPDATE "User"
-    SET "credits" = "credits" - ${amount},
-        "purchasedCredits" = LEAST("purchasedCredits", "credits" - ${amount})
-    WHERE "id" = ${userId} AND "credits" >= ${amount}
-    RETURNING "credits"`;
-  if (rows.length === 0) {
-    const user = await db.user.findUnique({ where: { id: userId }, select: { credits: true } });
-    throw new InsufficientCredits(amount, user?.credits ?? 0);
-  }
-  await db.creditLedger.create({ data: { userId, delta: -amount, reason, projectId } });
+/**
+ * Atomic conditional decrement: concurrent runs cannot spend the same credits twice.
+ * Plan credits are spent first; purchased credits only once the plan allowance is gone.
+ * Returns how many purchased credits this reservation consumed (so a refund can restore them).
+ */
+export async function reserveCredits(userId: string, amount: number, reason: string, projectId?: string): Promise<{ purchasedSpent: number }> {
+  return db.$transaction(async (tx) => {
+    const rows = await tx.$queryRaw<{ credits: number; purchasedBefore: number; purchasedAfter: number }[]>`
+      UPDATE "User" u
+      SET "credits" = u."credits" - ${amount},
+          "purchasedCredits" = LEAST(u."purchasedCredits", u."credits" - ${amount})
+      FROM (SELECT "id", "purchasedCredits" AS before FROM "User" WHERE "id" = ${userId} FOR UPDATE) prev
+      WHERE u."id" = prev."id" AND u."credits" >= ${amount}
+      RETURNING u."credits", prev.before AS "purchasedBefore", u."purchasedCredits" AS "purchasedAfter"`;
+    if (rows.length === 0) {
+      const user = await tx.user.findUnique({ where: { id: userId }, select: { credits: true } });
+      throw new InsufficientCredits(amount, user?.credits ?? 0);
+    }
+    await tx.creditLedger.create({ data: { userId, delta: -amount, reason, projectId } });
+    return { purchasedSpent: Math.max(0, Number(rows[0].purchasedBefore) - Number(rows[0].purchasedAfter)) };
+  });
 }
 
 /**
@@ -51,10 +58,11 @@ export function renewalBalance(user: { plan: string; credits: number; purchasedC
   return { plan, rollover, purchased, next: plan.credits + rollover + purchased };
 }
 
-export async function refundCredits(userId: string, amount: number, reason: string, projectId?: string) {
+export async function refundCredits(userId: string, amount: number, reason: string, projectId?: string, opts: { purchased?: number } = {}) {
   if (amount <= 0) return;
+  const purchased = Math.max(0, Math.min(amount, opts.purchased ?? 0));
   await db.$transaction([
-    db.user.update({ where: { id: userId }, data: { credits: { increment: amount } } }),
+    db.user.update({ where: { id: userId }, data: { credits: { increment: amount }, ...(purchased ? { purchasedCredits: { increment: purchased } } : {}) } }),
     db.creditLedger.create({ data: { userId, delta: amount, reason, projectId } }),
   ]);
 }

@@ -37,10 +37,15 @@ export async function PATCH(req: Request) {
     const body = z.object({ sellerId: z.string().optional(), affiliateId: z.string().optional() }).safeParse(await req.json().catch(() => null));
     if (!body.success) return error("Invalid input.");
     if (body.data.sellerId) {
-      const u = await db.user.findUnique({ where: { id: body.data.sellerId }, select: { sellerBalanceCents: true } });
-      if (!u) return error("Seller not found", 404);
-      await db.user.update({ where: { id: body.data.sellerId }, data: { sellerBalanceCents: 0, sellerPaidOutCents: { increment: u.sellerBalanceCents } } });
-      return json({ ok: true, paidCents: u.sellerBalanceCents });
+      // Atomic: move exactly the current balance to "paid out", even if a sale lands concurrently.
+      const rows = await db.$queryRaw<{ paid: number }[]>`
+        UPDATE "User" SET "sellerPaidOutCents" = "sellerPaidOutCents" + "sellerBalanceCents", "sellerBalanceCents" = 0
+        WHERE "id" = ${body.data.sellerId} AND "sellerBalanceCents" > 0
+        RETURNING "sellerPaidOutCents" - (SELECT "sellerPaidOutCents" FROM "User" u2 WHERE u2."id" = ${body.data.sellerId}) AS paid`;
+      if (!rows.length) return error("Seller not found or nothing to pay out.", 404);
+      const paidCents = Number(rows[0].paid);
+      console.info(`[admin] payout ${paidCents}c to seller ${body.data.sellerId}`);
+      return json({ ok: true, paidCents });
     }
     if (body.data.affiliateId) {
       const r = await db.affiliateCommission.updateMany({ where: { affiliateId: body.data.affiliateId, status: "PENDING" }, data: { status: "PAID", paidAt: new Date() } });

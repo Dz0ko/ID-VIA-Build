@@ -118,7 +118,21 @@ export async function fetchProfile(p: OAuthProvider, code: string, origin: strin
 export async function upsertOAuthUser(p: OAuthProvider, profile: OAuthProfile) {
   const email = profile.email.toLowerCase();
   const idField = p === "google" ? "googleId" : "githubId";
-  let user = await db.user.findFirst({ where: { OR: [{ [idField]: profile.providerId }, { email }] } });
+  // 1. Exact provider-id match: the account this Google/GitHub identity already belongs to.
+  let user = await db.user.findFirst({ where: { [idField]: profile.providerId } });
+  if (!user) {
+    // 2. Same email: only auto-link when that account was itself created by a social sign-in
+    //    (no password). A password account is never taken over by an OAuth login with a matching
+    //    email, because password sign-up does not verify the address.
+    const byEmail = await db.user.findUnique({ where: { email } });
+    if (byEmail) {
+      const otherProvider = idField === "googleId" ? byEmail.githubId : byEmail.googleId;
+      if (byEmail.passwordHash || (otherProvider && !byEmail[idField])) {
+        throw new Error(`An account with ${email} already exists. Sign in with your ${byEmail.passwordHash ? "password" : "other sign-in method"} and link ${p === "google" ? "Google" : "GitHub"} from Settings.`);
+      }
+      user = byEmail;
+    }
+  }
   if (!user) {
     user = await db.user.create({
       data: {

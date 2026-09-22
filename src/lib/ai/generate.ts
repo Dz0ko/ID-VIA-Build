@@ -58,7 +58,7 @@ export async function runAgent(opts: RunOptions) {
   const visionBump = opts.images?.length ? 1.5 : 1;
 
   const credits = await estimateCredits({ taskClass, agentMultiplier: agent.multiplier * visionBump * (isApp ? 1.5 : 1), tier });
-  await reserveCredits(opts.userId, credits, `agent:${agent.id}`, project.id);
+  const { purchasedSpent } = await reserveCredits(opts.userId, credits, `agent:${agent.id}`, project.id);
 
   const resolved = await resolveModel(tier);
   const run = await db.agentRun.create({
@@ -152,7 +152,7 @@ export async function runAgent(opts: RunOptions) {
     // format, the tokens were still paid for, so only half is refunded (prevents "free" runs).
     const malformed = err instanceof Error && /did not return/.test(err.message);
     const refund = malformed ? Math.floor(credits / 2) : credits;
-    await refundCredits(opts.userId, refund, `refund:${agent.id}`, project.id);
+    await refundCredits(opts.userId, refund, `refund:${agent.id}`, project.id, { purchased: Math.min(purchasedSpent, refund) });
     await db.agentRun.update({ where: { id: run.id }, data: { status: "FAILED", finishedAt: new Date(), output: message, creditsUsed: credits - refund } });
     opts.onEvent?.({ type: "error", message });
     throw err;

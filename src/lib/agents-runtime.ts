@@ -40,7 +40,9 @@ export function customAgentsAllowed(plan: PlanId) {
 }
 
 export async function listCustomAgentsFor(userId: string) {
-  return db.customAgent.findMany({ where: { OR: [{ userId }, { isPublic: true }] }, orderBy: { createdAt: "desc" } });
+  const rows = await db.customAgent.findMany({ where: { OR: [{ userId }, { isPublic: true }] }, orderBy: { createdAt: "desc" } });
+  // Other people's public agents can be run, but their prompts stay private to the author.
+  return rows.map((r) => (r.userId === userId ? r : { ...r, systemPrompt: "" }));
 }
 
 export function checkAgentAccess(plan: PlanId, agentId: string, custom: boolean) {

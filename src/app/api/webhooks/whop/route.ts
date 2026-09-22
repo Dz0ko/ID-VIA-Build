@@ -61,7 +61,12 @@ export async function POST(req: Request) {
   if (/^(refund\.(created|succeeded|updated)|dispute\.(created|updated)|payment\.(refunded|disputed))$/.test(event.type)) {
     const pid = (typeof d.payment_id === "string" ? d.payment_id : typeof (d.payment as { id?: string })?.id === "string" ? (d.payment as { id: string }).id : typeof d.id === "string" ? d.id : null);
     const reversed = pid ? await reversePurchase(pid, event.type) : null;
-    return Response.json({ ok: true, reversed: reversed?.id ?? null });
+    // Refunded credit pack: take the credits back (never below zero).
+    if (checkout?.kind === "pack" && checkout.credits) {
+      await db.$executeRaw`UPDATE "User" SET "credits" = GREATEST(0, "credits" - ${checkout.credits}), "purchasedCredits" = GREATEST(0, LEAST("purchasedCredits" - ${checkout.credits}, "credits" - ${checkout.credits})) WHERE "id" = ${checkout.userId}`;
+      await db.creditLedger.create({ data: { userId: checkout.userId, delta: -checkout.credits, reason: `refund_pack:${event.type}` } });
+    }
+    return Response.json({ ok: true, reversed: reversed?.id ?? null, packRefunded: checkout?.kind === "pack" });
   }
 
   // Marketplace orders: settle them before any user matching (the paid amount must cover the price).

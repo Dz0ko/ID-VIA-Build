@@ -25,17 +25,23 @@ export const TYPE_LABELS: Record<string, string> = {
  * watermark. Buyers receive the untouched original after purchase.
  */
 export function buildPreviewHtml(html: string) {
-  let out = html
-    .replace(/<script[\s\S]*?<\/script>/gi, "")
-    .replace(/<script[^>]*>/gi, "")
-    .replace(/<iframe[\s\S]*?<\/iframe>/gi, "")
-    .replace(/<object[\s\S]*?<\/object>/gi, "")
-    .replace(/<embed[^>]*>/gi, "")
-    .replace(/\son[a-z]+\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi, "")
-    .replace(/\shref\s*=\s*("javascript:[^"]*"|'javascript:[^']*')/gi, ' href="#"')
-    .replace(/<a\b([^>]*)\shref\s*=\s*("[^"]*"|'[^']*')/gi, '<a$1 href="#"')
-    .replace(/<form\b/gi, '<form onsubmit="return false"')
-    .replace(/<!--[\s\S]*?-->/g, "");
+  // Defence in depth: the preview is also served under a CSP that blocks all scripts,
+  // frames, forms and navigation (USER_HTML_HEADERS + default-src 'none').
+  let out = html;
+  let prev = "";
+  for (let i = 0; i < 5 && out !== prev; i++) {
+    // Loop: removing a tag can reassemble another (<scr<script>ipt>), so repeat until stable.
+    prev = out;
+    out = out
+      .replace(/<!--[\s\S]*?-->/g, "")
+      .replace(/<(script|iframe|object|embed|applet|base|link|meta|noscript|template)\b[^>]*>[\s\S]*?<\/\1\s*>/gi, "")
+      .replace(/<\/?(script|iframe|object|embed|applet|base|link|meta|noscript|template)\b[^>]*>/gi, "")
+      .replace(/[\s/]on[a-z]+\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi, " ")
+      .replace(/\s(href|src|action|formaction|xlink:href|data|poster|srcdoc)\s*=\s*("\s*(?:javascript|vbscript|data):[^"]*"|'\s*(?:javascript|vbscript|data):[^']*'|(?:javascript|vbscript|data):[^\s>]+)/gi, ' $1="#"')
+      .replace(/<a\b([^>]*)\shref\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi, '<a$1 href="#"')
+      .replace(/<form\b/gi, '<form action="#"')
+      .replace(/url\(\s*["']?\s*(?:javascript|vbscript):[^)]*\)/gi, "none");
+  }
   const guard = `<meta name="robots" content="noindex,nofollow"><style>html,body{user-select:none!important;-webkit-user-select:none!important}a,button,input,select,textarea{pointer-events:none!important}#idaevia-wm{position:fixed;right:12px;bottom:12px;z-index:2147483647;font:600 11px/1 -apple-system,BlinkMacSystemFont,sans-serif;color:#fff;background:rgba(0,0,0,.6);border:1px solid rgba(255,255,255,.2);border-radius:999px;padding:7px 11px;letter-spacing:.04em;pointer-events:none;backdrop-filter:blur(6px)}</style>`;
   const wm = `<div id="idaevia-wm">PREVIEW · IDÆVIA Marketplace</div>`;
   out = /<head[^>]*>/i.test(out) ? out.replace(/<head[^>]*>/i, (m) => `${m}${guard}`) : `${guard}${out}`;
@@ -109,25 +115,30 @@ export async function markPurchasePaid(purchaseId: string, whopPaymentId?: strin
     console.warn(`[marketplace] payment ${whopPaymentId} for ${purchaseId} was ${paidCents}c, expected ${purchase.priceCents}c; not unlocking`);
     return null;
   }
-  const [updated] = await db.$transaction([
-    db.purchase.update({ where: { id: purchaseId }, data: { status: "PAID", paidAt: new Date(), whopPaymentId: whopPaymentId ?? purchase.whopPaymentId } }),
+  // The status flip is the guard: only the first concurrent settlement credits the seller.
+  const flipped = await db.purchase.updateMany({ where: { id: purchaseId, status: "PENDING" }, data: { status: "PAID", paidAt: new Date(), whopPaymentId: whopPaymentId ?? purchase.whopPaymentId } });
+  if (flipped.count !== 1) return db.purchase.findUnique({ where: { id: purchaseId } });
+  await db.$transaction([
     db.marketItem.update({ where: { id: purchase.itemId }, data: { sales: { increment: 1 }, installs: { increment: 1 } } }),
     db.user.update({ where: { id: purchase.sellerId }, data: { sellerBalanceCents: { increment: purchase.sellerCents } } }),
   ]);
-  return updated;
+  return db.purchase.findUnique({ where: { id: purchaseId } });
 }
 
 /** Reverse a paid purchase after a refund or chargeback: lock the item again and take the seller share back. Idempotent. */
 export async function reversePurchase(whopPaymentId: string, reason: string) {
   const purchase = await db.purchase.findFirst({ where: { whopPaymentId, status: "PAID" } });
   if (!purchase) return null;
-  const [updated] = await db.$transaction([
-    db.purchase.update({ where: { id: purchase.id }, data: { status: "REFUNDED" } }),
+  const flipped = await db.purchase.updateMany({ where: { id: purchase.id, status: "PAID" }, data: { status: "REFUNDED" } });
+  if (flipped.count !== 1) return null;
+  await db.$transaction([
     db.marketItem.update({ where: { id: purchase.itemId }, data: { sales: { decrement: 1 } } }),
-    db.user.update({ where: { id: purchase.sellerId }, data: { sellerBalanceCents: { decrement: purchase.sellerCents } } }),
+    // Never below zero: if the seller was already paid out, the negative is tracked in paidOut instead.
+    db.$executeRaw`UPDATE "User" SET "sellerBalanceCents" = GREATEST(0, "sellerBalanceCents" - ${purchase.sellerCents}),
+      "sellerPaidOutCents" = "sellerPaidOutCents" - GREATEST(0, ${purchase.sellerCents} - "sellerBalanceCents") WHERE "id" = ${purchase.sellerId}`,
   ]);
   console.warn(`[marketplace] purchase ${purchase.id} reversed (${reason})`);
-  return updated;
+  return db.purchase.findUnique({ where: { id: purchase.id } });
 }
 
 export async function hasPurchased(userId: string, itemId: string) {

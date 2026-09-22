@@ -45,6 +45,7 @@ export async function PATCH(req: Request, ctx: RouteContext<"/api/teams/[id]">) 
       await db.team.update({ where: { id }, data: { name: d.name ?? team.name, whiteLabel: JSON.stringify(wl) } });
     }
     if (d.invite) {
+      if (d.invite.role === "OWNER") return error("A team has exactly one owner.", 400);
       const email = d.invite.email.toLowerCase();
       const existing = await db.user.findUnique({ where: { email } });
       await db.teamMember.upsert({

@@ -146,21 +146,33 @@ export function outlineToPrompt(o: UrlOutline, extra?: string) {
 
 /** Fetch index.html (or public/index.html, dist/index.html) from a public GitHub repo. */
 export async function fetchGithubIndex(repoUrl: string): Promise<{ html: string; path: string; repo: string }> {
-  const m = repoUrl.match(/github\.com\/([\w.-]+)\/([\w.-]+)(?:\/tree\/([\w.-\/]+))?/i);
+  const m = repoUrl.match(/github\.com\/([\w.-]+)\/([\w.-]+)(?:\/tree\/([\w.\-/]+))?/i);
   if (!m) throw new Error("Enter a GitHub repository URL like https://github.com/owner/repo");
   const owner = m[1];
   const repo = m[2].replace(/\.git$/, "");
   const ref = m[3] ?? "HEAD";
+  if ([owner, repo, ref].some((s) => s.split("/").some((seg) => !seg || seg === ".." || seg === "."))) throw new Error("Invalid repository URL.");
   const candidates = ["index.html", "public/index.html", "dist/index.html", "docs/index.html", "src/index.html"];
   for (const p of candidates) {
-    const url = `https://raw.githubusercontent.com/${owner}/${repo}/${ref}/${p}`;
-    const res = await fetch(url, { headers: { "User-Agent": UA }, signal: AbortSignal.timeout(15000) });
+    const url = `https://raw.githubusercontent.com/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/${ref.split("/").map(encodeURIComponent).join("/")}/${p}`;
+    const res = await fetchPublic(url, { headers: { "User-Agent": UA }, signal: AbortSignal.timeout(15000) });
     if (res.ok) {
       const html = await res.text();
       if (/<html[\s>]/i.test(html)) return { html, path: p, repo: `${owner}/${repo}` };
     }
   }
   throw new Error("No index.html found in the repository (checked root, public/, dist/, docs/, src/). Import a static site or use URL import for the deployed page.");
+}
+
+/**
+ * Normalise a project file path: absolute, no traversal, no backslashes, safe characters only.
+ * Returns null when the path cannot be made safe (zip-slip, hidden system paths…).
+ */
+export function safeProjectPath(p: string): string | null {
+  const parts = p.replace(/\\/g, "/").split("/").filter((s) => s && s !== ".");
+  if (parts.some((s) => s === ".." || !/^[\w\-.]+$/.test(s))) return null;
+  const out = "/" + parts.join("/");
+  return out.length > 1 && out.length <= 200 ? out : null;
 }
 
 /** Read index.html + any .tsx/.ts files from an uploaded ZIP. */
@@ -174,8 +186,8 @@ export async function readZip(buf: ArrayBuffer): Promise<{ html: string | null; 
   for (const n of names) {
     if (/\.(tsx?|jsx?|css|json)$/i.test(n) && !/package(-lock)?\.json$/.test(n)) {
       const content = await zip.files[n].async("string");
-      const rel = n.replace(/^[^/]*\/src\//, "/").replace(/^src\//, "/").replace(/^\/?/, "/");
-      if (content.length < 200_000) files.push({ path: rel, content });
+      const rel = safeProjectPath(n.replace(/^[^/]*\/src\//, "/").replace(/^src\//, "/").replace(/^\/?/, "/"));
+      if (rel && content.length < 200_000) files.push({ path: rel, content });
     }
   }
   return { html, files: files.slice(0, 60) };
