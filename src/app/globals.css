@@ -617,3 +617,12 @@ body {
 }
 .agents-chip-icon { width: 0.75em; height: 0.75em; flex: none; }
 @media (max-width: 640px) { .agents-chip-icon { display: none; } }
+
+
+/* ---------- Landing: one section per screen, smooth snap, sticky-safe ---------- */
+html.landing-html { scroll-behavior: smooth; }
+html.landing-html body { overflow-x: clip; } /* clip (not hidden) keeps position: sticky working */
+@media (min-width: 1024px) and (prefers-reduced-motion: no-preference) {
+  html.landing-html { scroll-snap-type: y proximity; scroll-padding-top: 4rem; }
+  .snap-section { scroll-snap-align: start; }
+}

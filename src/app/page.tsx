@@ -23,7 +23,7 @@ const FEATURES: { title: string; text: string; icon: BrandIconName }[] = [
 export default async function Home() {
   const user = await getCurrentUser();
   return (
-    <div className="min-h-screen bg-void text-paper overflow-x-hidden">
+    <div className="min-h-screen bg-void text-paper landing">
       <LandingFx />
 
       <header className="sticky top-0 z-40 bg-void/80 backdrop-blur-xl border-b border-graphite/70">
@@ -45,10 +45,10 @@ export default async function Home() {
 
       <main>
         {/* HERO */}
-        <section className="relative overflow-hidden stars">
+        <section className="relative overflow-hidden stars snap-section lg:min-h-[calc(100vh-4rem)] flex flex-col justify-center">
           <div className="guide-x" />
-          <div className="hidden md:block absolute right-[6%] top-1/2 -translate-y-1/2 w-[340px] h-[340px] lg:w-[420px] lg:h-[420px] opacity-70 pointer-events-none"><HeroBlob className="absolute inset-0 [&>canvas]:w-full [&>canvas]:h-full" /></div>
-          <div className="relative max-w-[1400px] mx-auto px-8 md:px-12 pt-20 md:pt-32 pb-14 md:pb-24 text-center">
+          <div className="hidden lg:block absolute right-[-40px] xl:right-[2%] top-[58%] -translate-y-1/2 w-[300px] h-[300px] xl:w-[380px] xl:h-[380px] opacity-60 pointer-events-none -z-0"><HeroBlob className="absolute inset-0 [&>canvas]:w-full [&>canvas]:h-full" /></div>
+          <div className="relative z-10 max-w-[1400px] mx-auto px-8 md:px-12 pt-20 md:pt-24 pb-14 md:pb-20 text-center">
             <h1 className="display-hero max-w-6xl mx-auto">
               <span className="word" style={{ animationDelay: "100ms" }}>Where</span>{" "}
               <span className="word agents-chip" style={{ animationDelay: "220ms" }}><BrandIcon name="agents" size={28} strokeWidth={1.8} className="agents-chip-icon" />agents</span>{" "}
@@ -65,29 +65,29 @@ export default async function Home() {
         </section>
 
         {/* WHO IT'S FOR + PRODUCT */}
-        <section className="py-14 md:py-20">
-          <div className="max-w-[1400px] mx-auto px-8 md:px-12">
+        <section className="py-14 md:py-16 snap-section lg:min-h-screen flex flex-col justify-center">
+          <div className="max-w-[1400px] mx-auto px-8 md:px-12 w-full">
             <AudienceTabs />
           </div>
         </section>
 
         {/* AGENT TEAM (scroll-driven) */}
-        <section id="agents" className="py-16 md:py-24 border-t border-graphite/70 guides">
+        <section id="agents" className="py-16 md:py-20 border-t border-graphite/70 guides snap-section">
           <div className="max-w-[1400px] mx-auto px-8 md:px-12">
             <AgentTeamSection heading={<>Give every idea<br />a team of {AGENTS.length} agents</>} intro="Assign work like you would to teammates. The Router picks the right specialist, each agent says what it will do, does it, and reports back in the chat." catalogHref={user ? "/app/agents" : "/signup"} count={AGENTS.length} />
           </div>
         </section>
 
         {/* FOR WHOM */}
-        <section id="features" className="py-16 md:py-28 border-t border-graphite/70 guides">
+        <section id="features" className="py-16 md:py-20 border-t border-graphite/70 guides snap-section">
           <div className="max-w-[1400px] mx-auto px-8 md:px-12">
             <RoleTabs />
           </div>
         </section>
 
         {/* FEATURE GRID */}
-        <section className="py-16 md:py-24 border-t border-graphite/70">
-          <div className="max-w-[1400px] mx-auto px-8 md:px-12">
+        <section className="py-16 md:py-24 border-t border-graphite/70 snap-section lg:min-h-screen flex flex-col justify-center">
+          <div className="max-w-[1400px] mx-auto px-8 md:px-12 w-full">
             <p className="label reveal">Everything included</p>
             <h2 className="heading mt-3 max-w-2xl reveal-text">Not just prompt to code. Idea to production.</h2>
             <div className="mt-12 grid sm:grid-cols-2 lg:grid-cols-3 gap-px bg-graphite/60 rounded-3xl overflow-hidden" data-stagger>
@@ -103,8 +103,8 @@ export default async function Home() {
         </section>
 
         {/* TEMPLATES */}
-        <section id="templates" className="py-16 md:py-24 border-t border-graphite/70 guides">
-          <div className="max-w-[1400px] mx-auto px-8 md:px-12">
+        <section id="templates" className="py-16 md:py-24 border-t border-graphite/70 guides snap-section lg:min-h-screen flex flex-col justify-center">
+          <div className="max-w-[1400px] mx-auto px-8 md:px-12 w-full">
             <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-6">
               <div>
                 <p className="label reveal">Templates</p>
@@ -128,8 +128,8 @@ export default async function Home() {
         </section>
 
         {/* PRICING */}
-        <section id="pricing" className="py-16 md:py-28 border-t border-graphite/70">
-          <div className="max-w-[1400px] mx-auto px-8 md:px-12">
+        <section id="pricing" className="py-16 md:py-24 border-t border-graphite/70 snap-section lg:min-h-screen flex flex-col justify-center">
+          <div className="max-w-[1400px] mx-auto px-8 md:px-12 w-full">
             <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-6">
               <div>
                 <p className="label reveal">Pricing</p>
@@ -171,7 +171,7 @@ export default async function Home() {
         </section>
 
         {/* DOWNLOAD CTA */}
-        <section className="py-20 md:py-32 border-t border-graphite/70 relative overflow-hidden stars">
+        <section className="py-20 md:py-32 border-t border-graphite/70 relative overflow-hidden stars snap-section lg:min-h-[70vh] flex flex-col justify-center">
           <div className="relative max-w-3xl mx-auto px-6 text-center reveal-up">
             <h2 className="display !text-[clamp(34px,6vw,64px)]">Build your first product tonight.</h2>
             <p className="mt-5 text-lg text-fog">Desktop app for macOS and Windows, or the web app in any browser. Same account, same projects, same team.</p>

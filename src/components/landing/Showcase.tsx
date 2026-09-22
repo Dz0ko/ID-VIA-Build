@@ -17,12 +17,14 @@ function useScrollIndex(count: number, enabled = true) {
       const rect = el.getBoundingClientRect();
       const total = rect.height - window.innerHeight;
       if (total <= 0) return;
-      const p = Math.min(1, Math.max(0, -rect.top / total));
-      if (rect.top > 0 || rect.bottom < window.innerHeight) return; // not pinned
+      // Progress through the tall wrapper: 0 when its top reaches the header, 1 when its bottom reaches the viewport bottom.
+      const p = Math.min(1, Math.max(0, (-rect.top + 80) / total));
+      if (rect.top > 80 || rect.bottom < window.innerHeight - 40) return; // not pinned yet / already passed
       manual.current = false;
       setIndex(Math.min(count - 1, Math.floor(p * count)));
     };
     window.addEventListener("scroll", onScroll, { passive: true });
+    onScroll();
     return () => window.removeEventListener("scroll", onScroll);
   }, [count, enabled]);
   const set = (i: number) => { manual.current = true; setIndex(i); };
@@ -180,8 +182,8 @@ const TEAM_FRAMES: ReactNode[] = [<WorkspaceFrame key="w" />, <WorkspaceFrame ke
 export function AgentTeamSection({ heading, intro, catalogHref, count }: { heading: ReactNode; intro: string; catalogHref: string; count: number }) {
   const { ref, index, set } = useScrollIndex(TEAM.length);
   return (
-    <div ref={ref} className="lg:min-h-[260vh]">
-      <div className="lg:sticky lg:top-20 grid lg:grid-cols-[1fr_1.15fr] gap-10 lg:gap-16 items-start lg:min-h-[calc(100vh-5rem)] py-4">
+    <div ref={ref} className="lg:min-h-[300vh]">
+      <div className="lg:sticky lg:top-20 grid lg:grid-cols-[1fr_1.15fr] gap-10 lg:gap-16 items-center lg:h-[calc(100vh-5rem)] py-4">
         <div>
           <p className="label reveal">Your team</p>
           <h2 className="heading mt-3 reveal-text">{heading}</h2>
@@ -208,8 +210,8 @@ export function RoleTabs() {
   const { ref, index, set } = useScrollIndex(ROLES.length);
   const r = ROLES[index];
   return (
-    <div ref={ref} className="lg:min-h-[220vh]">
-      <div className="lg:sticky lg:top-20 grid lg:grid-cols-[260px_1fr] gap-8 lg:gap-14 lg:min-h-[calc(100vh-5rem)] py-4">
+    <div ref={ref} className="lg:min-h-[240vh]">
+      <div className="lg:sticky lg:top-20 grid lg:grid-cols-[260px_1fr] gap-8 lg:gap-14 items-center lg:h-[calc(100vh-5rem)] py-4">
         <div className="flex lg:flex-col gap-4 lg:gap-6 lg:pt-12 overflow-x-auto">
           {ROLES.map((x, i) => (
             <button key={x.id} onClick={() => set(i)} className={`relative flex items-center gap-3 whitespace-nowrap text-left text-xl font-medium transition ${index === i ? "text-paper" : "text-ash hover:text-fog"}`}>

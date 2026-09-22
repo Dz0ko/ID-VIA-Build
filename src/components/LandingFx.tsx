@@ -8,6 +8,7 @@ import { useEffect } from "react";
  */
 export function LandingFx() {
   useEffect(() => {
+    document.documentElement.classList.add("landing-html");
     const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     // Pointer effects only make sense with a real cursor; on touch they just cost battery.
     const coarse = window.matchMedia("(hover: none), (pointer: coarse)").matches;
@@ -69,7 +70,7 @@ export function LandingFx() {
         cleanups.push(() => sec.removeEventListener("pointermove", move));
       });
     }
-    return () => { io.disconnect(); cleanups.forEach((c) => c()); };
+    return () => { io.disconnect(); cleanups.forEach((c) => c()); document.documentElement.classList.remove("landing-html"); };
   }, []);
   return null;
 }
