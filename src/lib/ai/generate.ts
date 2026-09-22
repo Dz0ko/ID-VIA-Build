@@ -24,6 +24,8 @@ export interface RunOptions {
   request: string;
   agentId?: string; // default: builder
   requestedTier?: ModelTier;
+  /** Explicit model family for the tier: "openai" → GPT (e.g. GPT-6 Astra), "anthropic" → Claude. */
+  preferProvider?: "anthropic" | "openai";
   images?: InputImage[];
   onEvent?: (e: RunEvent) => void;
   signal?: AbortSignal;
@@ -61,7 +63,7 @@ export async function runAgent(opts: RunOptions) {
   const tier = tierForTask(taskClass, opts.plan, opts.requestedTier ?? merged);
   const visionBump = opts.images?.length ? 1.5 : 1;
 
-  const resolved = await resolveModel(tier);
+  const resolved = await resolveModel(tier, opts.preferProvider);
   const docTokens = Math.ceil((isApp ? project.files.reduce((n, f) => n + f.content.length, 0) : project.html.length) / 4);
   const est = await estimateCreditsDetailed({ taskClass, agentMultiplier: agent.multiplier * visionBump * (isApp ? 1.5 : 1), tier, model: resolved.config.model, docTokens, mode: agent.mode });
   const credits = est.credits;

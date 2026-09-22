@@ -12,6 +12,7 @@ const schema = z.object({
   request: z.string().min(1).max(8000),
   agentId: z.string().optional(),
   tier: z.enum(MODEL_TIERS).optional(),
+  provider: z.enum(["anthropic", "openai"]).optional(),
   images: z
     .array(z.object({ mediaType: z.enum(["image/png", "image/jpeg", "image/webp", "image/gif"]), data: z.string().max(6_000_000) }))
     .max(4)
@@ -58,6 +59,7 @@ export async function POST(req: Request, ctx: RouteContext<"/api/projects/[id]/r
           request: body.data.request,
           agentId,
           requestedTier: body.data.tier,
+          preferProvider: body.data.provider,
           images: body.data.images,
           onEvent: send,
           signal: req.signal,

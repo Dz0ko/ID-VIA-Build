@@ -44,6 +44,16 @@ export interface WorkspaceProps {
 
 type LogLine = { t: string; text: string; kind?: "info" | "ok" | "err" };
 const TIERS: ModelTier[] = [...MODEL_TIERS];
+/** What the user can pick explicitly: the Claude model of each tier, plus the GPT alternative on premium/frontier. */
+const MODEL_CHOICES: { value: string; label: string; tier: ModelTier }[] = [
+  { value: "fast:anthropic", label: "Fast · Claude Haiku 4.5", tier: "fast" },
+  { value: "standard:anthropic", label: "Standard · Claude Sonnet 5", tier: "standard" },
+  { value: "advanced:anthropic", label: "Advanced · Sonnet 5 high effort", tier: "advanced" },
+  { value: "premium:anthropic", label: "Premium · Claude Opus 5", tier: "premium" },
+  { value: "premium:openai", label: "Premium · GPT-5.6 Sol", tier: "premium" },
+  { value: "frontier:anthropic", label: "Frontier · Claude Fable 5.1", tier: "frontier" },
+  { value: "frontier:openai", label: "Frontier · GPT-6 Astra", tier: "frontier" },
+];
 
 declare global {
   interface Window { __TAURI__?: { core: { invoke: (cmd: string, args?: Record<string, unknown>) => Promise<unknown> } } }
@@ -69,6 +79,7 @@ export function Workspace(p: WorkspaceProps) {
   const [bottom, setBottom] = useState<"chat" | "changes" | "logs" | "problems" | "terminal" | "share">("chat");
   const [agentId, setAgentId] = useState("auto");
   const [tier, setTier] = useState<ModelTier | "auto">("auto");
+  const [provider, setProvider] = useState<"anthropic" | "openai" | undefined>(undefined);
   const [input, setInput] = useState(params.get("prompt") ?? "");
   const [images, setImages] = useState<RefImage[]>([]);
   const [busy, setBusy] = useState<string | null>(null);
@@ -130,7 +141,7 @@ export function Workspace(p: WorkspaceProps) {
       const res = await fetch(`/api/projects/${p.project.id}/run`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ request, agentId: agentToRun, tier: tier === "auto" ? undefined : tier, images: imgs.length ? imgs.map((i) => ({ mediaType: i.mediaType, data: i.data })) : undefined }),
+        body: JSON.stringify({ request, agentId: agentToRun, tier: tier === "auto" ? undefined : tier, provider: tier === "auto" ? undefined : provider, images: imgs.length ? imgs.map((i) => ({ mediaType: i.mediaType, data: i.data })) : undefined }),
         signal: ac.signal,
       });
       if (!res.ok || !res.body) { const d = await res.json().catch(() => ({})); throw new Error(d.error ?? `Request failed (${res.status})`); }
@@ -462,9 +473,9 @@ export function Workspace(p: WorkspaceProps) {
                       <optgroup label="Agents">{p.agents.map((a) => <option key={a.id} value={a.id} disabled={!isAllowed(a.id)}>{a.name}{isAllowed(a.id) ? "" : ` (${p.minPlanByAgent[a.id]})`}</option>)}</optgroup>
                       {p.customAgents.length > 0 && <optgroup label="Custom agents">{p.customAgents.map((c) => <option key={c.id} value={`custom:${c.id}`} disabled={!p.customAgentsAllowed}>{c.name}</option>)}</optgroup>}
                     </select>
-                    <select value={tier} onChange={(e) => setTier(e.target.value as ModelTier | "auto")} className="input py-1.5 text-xs w-40">
+                    <select value={tier === "auto" ? "auto" : `${tier}:${provider ?? "anthropic"}`} onChange={(e) => { const [t, pv] = e.target.value.split(":"); setTier(t as ModelTier | "auto"); setProvider(pv === "openai" ? "openai" : pv === "anthropic" ? "anthropic" : undefined); }} className="input py-1.5 text-xs w-52">
                       <option value="auto">Auto routing</option>
-                      {TIERS.map((t) => <option key={t} value={t} disabled={TIERS.indexOf(t) > TIERS.indexOf(p.maxTier)}>{t} tier{TIERS.indexOf(t) > TIERS.indexOf(p.maxTier) ? " (upgrade)" : ""}</option>)}
+                      {MODEL_CHOICES.map((c) => <option key={c.value} value={c.value} disabled={TIERS.indexOf(c.tier) > TIERS.indexOf(p.maxTier)}>{c.label}{TIERS.indexOf(c.tier) > TIERS.indexOf(p.maxTier) ? " (upgrade)" : ""}</option>)}
                     </select>
                   </div>
                   <textarea value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); const r = input; setInput(""); run(r); } }} rows={2} className="input flex-1 resize-none" placeholder={isAuto ? "Describe what to build or change. IDÆVIA picks the right agent." : agent.mode === "rewrite" ? "What should the AI build or change?" : `Ask ${agent.name} for a report…`} />

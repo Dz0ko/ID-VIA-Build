@@ -154,7 +154,7 @@ export default async function Home() {
                       <div><dt className="text-[10px] font-mono uppercase tracking-[0.14em] text-ash">Credits</dt><dd className="mt-0.5 font-medium">{p.credits.toLocaleString()}<span className="text-ash font-normal">/mo</span></dd></div>
                       <div><dt className="text-[10px] font-mono uppercase tracking-[0.14em] text-ash">≈ Pages</dt><dd className="mt-0.5 font-medium">{Math.round(p.credits / CREDIT_GUIDE.page)}</dd></div>
                       <div><dt className="text-[10px] font-mono uppercase tracking-[0.14em] text-ash">Agents</dt><dd className="mt-0.5 font-medium">{p.agentLimit === "all" ? `All ${AGENTS.length}` : p.agentLimit}</dd></div>
-                      <div><dt className="text-[10px] font-mono uppercase tracking-[0.14em] text-ash">Top model</dt><dd className="mt-0.5 font-medium truncate">{TIER_LABELS[p.maxTier].split(" · ")[0]}</dd></div>
+                      <div><dt className="text-[10px] font-mono uppercase tracking-[0.14em] text-ash">Top model</dt><dd className="mt-0.5 font-medium text-[13px] leading-snug">{TIER_LABELS[p.maxTier].split(" · ").map((m) => <span key={m} className="block">{m}</span>)}</dd></div>
                     </dl>
                     <ul className="mt-5 space-y-2 text-sm text-fog flex-1">{p.highlights.slice(0, 4).map((f) => <li key={f} className="flex gap-2.5"><span className="text-signal-soft">✓</span><span>{f}</span></li>)}</ul>
                     <Link href={`/api/billing/checkout?plan=${id}`} className={`btn mt-7 ${featured ? "btn-signal btn-glow" : "btn-outline"}`}>Choose {p.name}</Link>

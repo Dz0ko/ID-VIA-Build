@@ -114,9 +114,15 @@ export function friendlyAiError(e: unknown): string {
 }
 
 /** Resolve a tier to a concrete model + provider, falling back to mock when no key is set. */
-export async function resolveModel(tier: ModelTier): Promise<ResolvedModel> {
+export async function resolveModel(tier: ModelTier, preferProvider?: "anthropic" | "openai"): Promise<ResolvedModel> {
   const settings = await getSettings();
   let cfg = settings.tiers[tier];
+  // Explicit choice (e.g. GPT-6 Astra instead of Claude Fable 5.1 on the frontier tier).
+  if (preferProvider === "openai" && PROVIDERS.openai.available()) {
+    cfg = { ...cfg, provider: "openai", model: process.env.OPENAI_MODEL || OPENAI_TIER_MODELS[tier] };
+  } else if (preferProvider === "anthropic" && PROVIDERS.anthropic.available() && cfg.provider !== "anthropic") {
+    cfg = { ...cfg, provider: "anthropic" };
+  }
   let provider = PROVIDERS[cfg.provider];
   const paused = provider.id === "anthropic" && Date.now() < anthropicPausedUntil && PROVIDERS.openai.available();
   if (!cfg.enabled || !provider.available() || paused) {
