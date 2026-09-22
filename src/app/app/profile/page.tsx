@@ -22,6 +22,19 @@ export default async function Profile() {
     referralStats(user.id),
     getSettings(),
   ]);
+  const usage = await db.creditLedger.findMany({ where: { userId: user.id }, orderBy: { createdAt: "desc" }, take: 40 });
+  const projectNames = new Map((await db.project.findMany({ where: { id: { in: usage.map((u) => u.projectId).filter((x): x is string => Boolean(x)) } }, select: { id: true, name: true } })).map((p) => [p.id, p.name]));
+  const REASON: Record<string, string> = { signup: "Welcome credits", monthly_reset: "Monthly renewal", credit_pack: "Credit pack purchased", referral_welcome: "Referral welcome bonus", referral_signup: "Friend signed up through your link", referral_paid: "Friend upgraded to a paid plan", admin_grant: "Credits added by IDÆVIA", refund_pack: "Credit pack refunded" };
+  const explain = (r: { reason: string; note: string | null; delta: number }) => {
+    if (r.note) return r.note;
+    if (REASON[r.reason]) return REASON[r.reason];
+    if (r.reason.startsWith("renewal:")) return `Monthly renewal (${r.reason.split(":")[1]} plan${r.reason.includes("rollover") ? ", with rollover" : ""})`;
+    if (r.reason.startsWith("upgrade:")) return `Plan upgrade to ${r.reason.split(":")[1]}`;
+    if (r.reason.startsWith("agent:")) return `${r.reason.split(":")[1]} agent run`;
+    if (r.reason.startsWith("refund:")) return "Refund for a failed run";
+    if (r.reason.startsWith("assistant")) return "IDÆVIA Agent conversation";
+    return r.reason;
+  };
   const used = usedThisMonth._sum.creditsUsed ?? 0;
   const pct = Math.min(100, Math.round((user.credits / plan.credits) * 100));
   const resetsAt = new Date(new Date(user.creditsResetAt).setMonth(new Date(user.creditsResetAt).getMonth() + 1));
@@ -65,6 +78,28 @@ export default async function Profile() {
           <div className="card p-4"><div className="label">Agent runs</div><div className="mt-1 text-2xl font-semibold">{runs.toLocaleString()}</div><div className="mt-1 text-[11px] text-ash">Top model: {TIER_LABELS[plan.maxTier]}</div></div>
         </section>
 
+        <section className="card overflow-hidden">
+          <div className="px-6 py-4 border-b border-graphite flex items-center justify-between gap-3">
+            <div><h2 className="text-sm font-medium">Credit usage</h2><p className="text-[11px] text-ash mt-0.5">Every run is charged for the work it actually did: which agent, which model tier, how large the document was and how much the model generated. Deep-reasoning models (Opus, Fable, Astra) cost more per run.</p></div>
+            <div className="text-right shrink-0"><div className="label">Used this month</div><div className="text-lg font-semibold">{used.toLocaleString()}</div></div>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs">
+              <thead className="text-ash border-b border-graphite"><tr><th className="text-left p-3 font-medium">When</th><th className="text-left p-3 font-medium">Project</th><th className="text-left p-3 font-medium">What was charged / added and why</th><th className="text-right p-3 font-medium">Credits</th></tr></thead>
+              <tbody>
+                {usage.map((u) => (
+                  <tr key={u.id} className="border-b border-graphite/60 align-top">
+                    <td className="p-3 text-ash whitespace-nowrap">{new Date(u.createdAt).toLocaleString()}</td>
+                    <td className="p-3 whitespace-nowrap">{u.projectId ? <Link href={`/app/projects/${u.projectId}`} className="hover:underline">{projectNames.get(u.projectId) ?? "Project"}</Link> : <span className="text-ash">—</span>}</td>
+                    <td className="p-3 text-fog">{explain(u)}</td>
+                    <td className={`p-3 text-right font-mono whitespace-nowrap ${u.delta < 0 ? "text-error" : "text-success"}`}>{u.delta > 0 ? "+" : ""}{u.delta.toLocaleString()}</td>
+                  </tr>
+                ))}
+                {usage.length === 0 && <tr><td colSpan={4} className="p-4 text-ash">No credit activity yet.</td></tr>}
+              </tbody>
+            </table>
+          </div>
+        </section>
         <WalletCard />
         <ReferralCard url={ref.url} invited={ref.invited} converted={ref.converted} creditsEarned={ref.creditsEarned} rewards={settings.referral} />
 

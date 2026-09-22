@@ -91,7 +91,7 @@ export default async function Settings({ searchParams }: PageProps<"/app/setting
           <table className="w-full text-xs">
             <tbody>
               {ledger.map((l) => (
-                <tr key={l.id} className="border-b border-graphite/60"><td className="p-3 text-ash">{new Date(l.createdAt).toLocaleString()}</td><td className="p-3 font-mono">{l.reason}</td><td className={`p-3 text-right font-mono ${l.delta < 0 ? "text-error" : "text-success"}`}>{l.delta > 0 ? "+" : ""}{l.delta}</td></tr>
+                <tr key={l.id} className="border-b border-graphite/60"><td className="p-3 text-ash">{new Date(l.createdAt).toLocaleString()}</td><td className="p-3">{l.note ?? <span className="font-mono">{l.reason}</span>}</td><td className={`p-3 text-right font-mono ${l.delta < 0 ? "text-error" : "text-success"}`}>{l.delta > 0 ? "+" : ""}{l.delta}</td></tr>
               ))}
               {ledger.length === 0 && <tr><td className="p-4 text-ash" colSpan={3}>No activity yet.</td></tr>}
             </tbody>

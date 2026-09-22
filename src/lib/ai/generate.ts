@@ -1,6 +1,7 @@
 import { db } from "../db";
 import type { PlanId, ModelTier } from "../plans";
-import { estimateCreditsDetailed, refundCredits, reserveCredits, finalizeCredits } from "../credits";
+import { estimateCreditsDetailed, reserveCredits, finalizeCredits, releaseCredits } from "../credits";
+import { TIER_LABELS } from "../plans";
 import { resolveAgent } from "../agents-runtime";
 import {
   APP_BUILDER_SYSTEM,
@@ -61,8 +62,19 @@ export async function runAgent(opts: RunOptions) {
   const docTokens = Math.ceil((isApp ? project.files.reduce((n, f) => n + f.content.length, 0) : project.html.length) / 4);
   const est = await estimateCreditsDetailed({ taskClass, agentMultiplier: agent.multiplier * visionBump * (isApp ? 1.5 : 1), tier, model: resolved.config.model, docTokens, mode: agent.mode });
   const credits = est.credits;
+  // Why this run costs what it costs: shown to the user in their credit log.
+  const docKb = Math.round((docTokens * 4) / 1024);
+  const CLASS_LABEL: Record<TaskClass, string> = { tiny: "small tweak", small: "small edit", section: "new section", page: "full page", feature: "feature build", fullstack: "full-stack feature" };
+  const reasons: string[] = [`${agent.name} · ${agent.mode === "report" ? "report" : CLASS_LABEL[taskClass]}`, TIER_LABELS[tier]];
+  if (tier === "frontier" || tier === "premium") reasons.push("deep reasoning model");
+  if (agent.mode !== "report" && docKb > 0) reasons.push(`${docKb} KB document rewritten`);
+  if (isApp) reasons.push("multi-file React app");
+  if (opts.images?.length) reasons.push(`${opts.images.length} reference image${opts.images.length > 1 ? "s" : ""}`);
+  if (agent.multiplier > 1) reasons.push(`specialist agent ×${agent.multiplier}`);
+  const noteBase = reasons.join(" · ");
+  const meta = { agent: agent.id, agentName: agent.name, taskClass, tier, model: resolved.config.model, docKb, images: opts.images?.length ?? 0, app: isApp, byClass: est.byClass, estimated: credits, k: est.k };
   // Hold a buffer for long/thinking-heavy answers; the unused part is released right after the run.
-  const { purchasedSpent } = await reserveCredits(opts.userId, est.hold, `agent:${agent.id}`, project.id);
+  const { purchasedSpent, ledgerId } = await reserveCredits(opts.userId, est.hold, `agent:${agent.id}`, project.id, `${noteBase} · running…`);
   // Cost controls: cap the output to what the task can need, and only spend deep thinking on big tasks.
   const heavy = taskClass === "fullstack" || taskClass === "feature" || taskClass === "page";
   const maxOutput = agent.mode === "report" ? Math.min(resolved.config.maxOutput, 8000) : Math.min(resolved.config.maxOutput, Math.max(12000, Math.ceil(docTokens * 1.6) + 6000));
@@ -112,7 +124,8 @@ export async function runAgent(opts: RunOptions) {
     });
     const costUsd = resolved.provider.id === "mock" && !result.fellBack ? 0 : estimateUsd(result.model, result);
     // Profit guarantee: final charge = max(class price, real cost × creditsPerUsd); the rest of the hold is released.
-    const creditsCharged = await finalizeCredits(opts.userId, est.hold, credits, costUsd, `agent:${agent.id}`, project.id, purchasedSpent);
+    const outK = Math.round(result.outputTokens / 1000);
+    const creditsCharged = await finalizeCredits({ userId: opts.userId, ledgerId, hold: est.hold, byClassCredits: credits, costUsd, k: est.k, purchasedHeld: purchasedSpent, note: `${noteBase} · ${outK}k tokens generated${result.fellBack ? " · provider fallback" : ""}`, meta: { ...meta, model: result.model, inputTokens: result.inputTokens, outputTokens: result.outputTokens, costUsd: Number(costUsd.toFixed(4)) } });
     const usage = {
       model: result.model, // the model that actually answered (may differ after a provider fallback)
       inputTokens: result.inputTokens,
@@ -164,9 +177,9 @@ export async function runAgent(opts: RunOptions) {
     // Provider failures are refunded in full. When the model answered but not in the required
     // format, the tokens were still paid for, so only half is refunded (prevents "free" runs).
     const malformed = err instanceof Error && /did not return/.test(err.message);
-    const refund = malformed ? est.hold - Math.ceil(credits / 2) : est.hold;
-    await refundCredits(opts.userId, refund, `refund:${agent.id}`, project.id, { purchased: Math.min(purchasedSpent, refund) });
-    await db.agentRun.update({ where: { id: run.id }, data: { status: "FAILED", finishedAt: new Date(), output: message, creditsUsed: est.hold - refund } });
+    const keep = malformed ? Math.ceil(credits / 2) : 0;
+    await releaseCredits({ userId: opts.userId, ledgerId, hold: est.hold, keep, purchasedHeld: purchasedSpent, note: malformed ? `${noteBase} · output could not be applied, half refunded` : `${noteBase} · failed, fully refunded` });
+    await db.agentRun.update({ where: { id: run.id }, data: { status: "FAILED", finishedAt: new Date(), output: message, creditsUsed: keep } });
     opts.onEvent?.({ type: "error", message });
     throw err;
   }

@@ -173,8 +173,14 @@ model CreditLedger {
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   delta     Int
   reason    String
+  /// Human-readable explanation shown to the user ("Builder · full page · Sonnet 5 · 42 KB document").
+  note      String?
+  /// JSON breakdown: agent, taskClass, tier, model, docKb, images, status…
+  meta      String?
   projectId String?
   createdAt DateTime @default(now())
+
+  @@index([userId, createdAt])
 }
 
 model Membership {

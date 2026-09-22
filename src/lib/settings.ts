@@ -22,6 +22,12 @@ export interface AppSettings {
    * keeps every plan and pack above a 50% margin even if all credits are spent at the floor (after a 6% payment fee).
    */
   creditsPerUsd: number;
+  /**
+   * Per-tier multiplier on top of creditsPerUsd. Deep-reasoning tiers carry a higher margin
+   * (their answers are worth more and vary more), so the effective floor is
+   * fast/standard 150, advanced 165, premium 210, frontier 260 credits per $1 of cost.
+   */
+  floorMultiplier: Record<ModelTier, number>;
   /** Referral programme rewards (credits). */
   referral: {
     /** Credits the new user gets for signing up through a friend's link. */
@@ -86,6 +92,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   creditBase: { tiny: 2, small: 3, section: 5, page: 10, feature: 20, fullstack: 40 },
   routing: "auto",
   creditsPerUsd: 150,
+  floorMultiplier: { fast: 1, standard: 1, advanced: 1.1, premium: 1.4, frontier: 1.75 },
   // 50 credits ≈ $0.55 of model cost: cheap acquisition; the paid bonus is worth ~1 full page.
   referral: { referredSignupCredits: 50, referrerSignupCredits: 50, referrerPaidCredits: 300 },
 };
@@ -116,6 +123,7 @@ export async function getSettings(): Promise<AppSettings> {
       ...parsed,
       tiers: { ...DEFAULT_SETTINGS.tiers, ...(parsed.tiers ?? {}) },
       tierMultiplier: { ...DEFAULT_SETTINGS.tierMultiplier, ...(parsed.tierMultiplier ?? {}) },
+      floorMultiplier: { ...DEFAULT_SETTINGS.floorMultiplier, ...(parsed.floorMultiplier ?? {}) },
       creditBase: { ...DEFAULT_SETTINGS.creditBase, ...(parsed.creditBase ?? {}) },
       referral: { ...DEFAULT_SETTINGS.referral, ...(parsed.referral ?? {}) },
     };
