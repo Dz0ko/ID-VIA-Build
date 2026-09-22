@@ -12,6 +12,7 @@ export function LegalPage({ title, intro, children }: { title: string; intro: st
         <div className="max-w-6xl mx-auto px-6 h-16 flex items-center justify-between">
           <Logo />
           <nav className="flex items-center gap-4 text-sm text-ash">
+            <Link href="/docs" className="hover:text-paper">Docs</Link>
             <Link href="/privacy" className="hover:text-paper">Privacy</Link>
             <Link href="/terms" className="hover:text-paper">Terms</Link>
             <Link href="/cookies" className="hover:text-paper">Cookies</Link>

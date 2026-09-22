@@ -34,6 +34,7 @@ export default async function Home() {
             <a href="#agents" className="hover:text-paper transition">Agents</a>
             <a href="#templates" className="hover:text-paper transition">Templates</a>
             <a href="#pricing" className="hover:text-paper transition">Pricing</a>
+            <Link href="/docs" className="hover:text-paper transition">Docs</Link>
           </nav>
           <div className="flex items-center gap-3">
             {user ? <Link href="/app" className="hidden md:inline-flex btn btn-ghost btn-sm">Open workspace</Link> : <Link href="/login" className="hidden md:inline-flex btn btn-ghost btn-sm">Log in</Link>}
@@ -186,6 +187,7 @@ export default async function Home() {
           <nav className="flex flex-wrap justify-center gap-4 text-xs">
             <Link href="/pricing" className="hover:text-paper">Pricing</Link>
             <Link href="/download" className="hover:text-paper">Download</Link>
+            <Link href="/docs" className="hover:text-paper">Docs</Link>
             <Link href="/privacy" className="hover:text-paper">Privacy</Link>
             <Link href="/terms" className="hover:text-paper">Terms</Link>
             <Link href="/cookies" className="hover:text-paper">Cookies</Link>
