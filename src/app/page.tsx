@@ -125,17 +125,38 @@ export default async function Home() {
           <div className="max-w-6xl mx-auto px-6">
             <p className="label reveal">How it works</p>
             <h2 className="heading mt-3 max-w-2xl reveal">From an idea to a live product, step by step.</h2>
-            <div className="mt-14 grid md:grid-cols-2 gap-5">
-              {STEPS.map((s, i) => (
-                <div key={s.n} className={`glass-card rounded-3xl p-7 ${i % 2 ? "reveal-right" : "reveal-left"}`} data-tilt="7">
-                  <div className="card-grid" />
-                  <span className="card-arrow">↗</span>
-                  <div className="card-body flex gap-5">
-                    <div className="step-num"><BrandIcon name={s.icon} size={22} strokeWidth={1.6} /></div>
-                    <div><h3 className="card-title text-lg font-medium">{s.title}</h3><p className="mt-3 text-sm text-fog/90 leading-relaxed">{s.text}</p></div>
+            <div className="mt-14 glass-card rounded-[28px] p-2 reveal-up">
+              <div className="card-grid" />
+              <div className="card-body grid lg:grid-cols-[1fr_1.6fr]">
+                {/* Left: summary */}
+                <div className="p-7 md:p-9 lg:border-r border-graphite/70">
+                  <div className="text-[11px] font-mono uppercase tracking-[0.14em] text-ash">Six steps · one workspace</div>
+                  <h3 className="mt-4 text-2xl md:text-3xl font-semibold tracking-tight leading-tight">Describe it once.<br />Ship it for real.</h3>
+                  <p className="mt-4 text-sm text-fog/90 leading-relaxed">Every step happens in the same project: the prompt, the AI team, the audit, client approval and launch. Nothing to copy between tools.</p>
+                  <div className="mt-8 flex flex-wrap gap-2">
+                    {STEPS.map((s) => <span key={s.n} className="pill text-[10px] gap-1.5"><BrandIcon name={s.icon} size={12} strokeWidth={1.8} />{s.title}</span>)}
                   </div>
+                  <Link href="/signup" className="btn btn-signal btn-glow mt-9 inline-flex">Start free</Link>
                 </div>
-              ))}
+                {/* Right: the steps as one continuous list */}
+                <ol className="divide-y divide-graphite/70">
+                  {STEPS.map((s, i) => (
+                    <li key={s.n} className="group relative flex gap-5 px-7 py-6 md:px-9 transition-colors hover:bg-white/[0.025]">
+                      <div className="flex flex-col items-center shrink-0">
+                        <div className="step-num !w-11 !h-11 !rounded-xl"><BrandIcon name={s.icon} size={18} strokeWidth={1.7} /></div>
+                        {i < STEPS.length - 1 && <div className="mt-2 w-px flex-1 bg-gradient-to-b from-signal/40 to-transparent" />}
+                      </div>
+                      <div className="min-w-0 pb-1">
+                        <div className="flex items-baseline gap-3">
+                          <span className="font-mono text-[10px] text-ash tracking-[0.14em]">{s.n}</span>
+                          <h4 className="text-base md:text-lg font-medium">{s.title}</h4>
+                        </div>
+                        <p className="mt-2 text-sm text-fog/90 leading-relaxed">{s.text}</p>
+                      </div>
+                    </li>
+                  ))}
+                </ol>
+              </div>
             </div>
           </div>
         </section>

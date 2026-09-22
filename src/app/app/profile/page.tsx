@@ -5,6 +5,7 @@ import { PLANS, TIER_LABELS } from "@/lib/plans";
 import { PageHeader } from "@/components/app/PageHeader";
 import { ProfileForm } from "@/components/app/ProfileForm";
 import { ReferralCard } from "@/components/app/ReferralCard";
+import { WalletCard } from "@/components/app/WalletCard";
 import { referralStats } from "@/lib/referrals";
 import { getSettings } from "@/lib/settings";
 
@@ -64,6 +65,7 @@ export default async function Profile() {
           <div className="card p-4"><div className="label">Agent runs</div><div className="mt-1 text-2xl font-semibold">{runs.toLocaleString()}</div><div className="mt-1 text-[11px] text-ash">Top model: {TIER_LABELS[plan.maxTier]}</div></div>
         </section>
 
+        <WalletCard />
         <ReferralCard url={ref.url} invited={ref.invited} converted={ref.converted} creditsEarned={ref.creditsEarned} rewards={settings.referral} />
 
         <ProfileForm name={user.name ?? ""} avatarUrl={user.avatarUrl ?? ""} hasPassword={user.providers.password} />

@@ -36,7 +36,7 @@ export default function Terms() {
       </Section>
 
       <Section title="6. Marketplace">
-        <p><strong className="text-paper">Selling.</strong> You may list websites and templates you created and have the right to sell. Listings must be accurate. When an item sells, {100 - MARKETPLACE_FEE_PCT}% of the sale price is credited to your seller balance and IDÆVIA keeps a {MARKETPLACE_FEE_PCT}% platform fee. Balances are paid out by us through Whop on request, subject to a minimum of $10 and any verification Whop requires. You are responsible for taxes on your earnings.</p>
+        <p><strong className="text-paper">Selling.</strong> You may list websites and templates you created and have the right to sell. Listings must be accurate. When an item sells, {100 - MARKETPLACE_FEE_PCT}% of the sale price is credited to your seller balance and IDÆVIA keeps a {MARKETPLACE_FEE_PCT}% platform fee. Earnings accumulate in your seller wallet. You can request a payout of at least $10 to a crypto wallet or PayPal account you add to your profile; we review and send payouts within 3 business days and may ask for identity verification before the first payout. You are responsible for taxes on your earnings.</p>
         <p><strong className="text-paper">Buying.</strong> A purchase gives you a licence to install the item into your own projects and modify and deploy it for your own or your clients’ use. You may not resell, redistribute or re-list the item. Because items are digital and delivered instantly, sales are final except where the item is materially different from its listing, in which case contact us within 14 days.</p>
       </Section>
 

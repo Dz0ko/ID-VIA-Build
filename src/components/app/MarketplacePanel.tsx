@@ -214,7 +214,7 @@ export function MarketplacePanel({ plan, feePct }: { plan: PlanId; feePct: numbe
               {me.purchases.length === 0 && <tr><td className="p-4 text-ash">You have not bought anything yet.</td></tr>}
             </tbody></table>
           </div>
-          <p className="text-[11px] text-ash">Payouts: your balance is transferred by IDÆVIA through Whop. Email <a href="mailto:support@idaevia.app" className="underline hover:text-paper">support@idaevia.app</a> to request a payout once your balance is above $10.</p>
+          <p className="text-[11px] text-ash">Payouts: add your crypto wallet or PayPal and request a payout from your <a href="/app/profile" className="underline hover:text-paper">Seller wallet</a> (minimum $10). The IDÆVIA team approves and sends it.</p>
         </div>
       ) : <div className="text-sm text-ash">Loading…</div>)}
 

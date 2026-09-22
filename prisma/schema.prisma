@@ -33,6 +33,10 @@ model User {
   /// Marketplace earnings (USD cents) not yet paid out, and total paid out.
   sellerBalanceCents Int  @default(0)
   sellerPaidOutCents Int  @default(0)
+  /// Where marketplace earnings are sent: "crypto" | "paypal"; details is JSON ({network,address} or {email}).
+  payoutMethod   String?
+  payoutDetails  String?
+  payoutRequests PayoutRequest[]
   /// Referral programme: every user has a share code; signups attribute to a user or an affiliate.
   referralCode         String?  @unique
   referredById         String?
@@ -197,6 +201,23 @@ model WhopCheckout {
   purchaseId String? // marketplace order
   createdAt DateTime @default(now())
 
+  @@index([userId])
+}
+
+/// A seller asks for their marketplace balance to be paid out; an admin approves (after sending the money) or rejects.
+model PayoutRequest {
+  id          String    @id @default(cuid())
+  userId      String
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  amountCents Int
+  method      String // crypto | paypal
+  details     String // JSON snapshot of the payout destination at request time
+  status      String    @default("PENDING") // PENDING | PAID | REJECTED
+  note        String? // admin note (tx hash, reason)
+  createdAt   DateTime  @default(now())
+  resolvedAt  DateTime?
+
+  @@index([status, createdAt])
   @@index([userId])
 }
 
