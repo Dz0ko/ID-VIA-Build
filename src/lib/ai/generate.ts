@@ -1,6 +1,6 @@
 import { db } from "../db";
 import type { PlanId, ModelTier } from "../plans";
-import { estimateCredits, refundCredits, reserveCredits, settleCredits } from "../credits";
+import { estimateCreditsDetailed, refundCredits, reserveCredits, finalizeCredits } from "../credits";
 import { resolveAgent } from "../agents-runtime";
 import {
   APP_BUILDER_SYSTEM,
@@ -59,8 +59,16 @@ export async function runAgent(opts: RunOptions) {
 
   const resolved = await resolveModel(tier);
   const docTokens = Math.ceil((isApp ? project.files.reduce((n, f) => n + f.content.length, 0) : project.html.length) / 4);
-  const credits = await estimateCredits({ taskClass, agentMultiplier: agent.multiplier * visionBump * (isApp ? 1.5 : 1), tier, model: resolved.config.model, docTokens, mode: agent.mode });
-  const { purchasedSpent } = await reserveCredits(opts.userId, credits, `agent:${agent.id}`, project.id);
+  const est = await estimateCreditsDetailed({ taskClass, agentMultiplier: agent.multiplier * visionBump * (isApp ? 1.5 : 1), tier, model: resolved.config.model, docTokens, mode: agent.mode });
+  const credits = est.credits;
+  // Hold a buffer for long/thinking-heavy answers; the unused part is released right after the run.
+  const { purchasedSpent } = await reserveCredits(opts.userId, est.hold, `agent:${agent.id}`, project.id);
+  // Cost controls: cap the output to what the task can need, and only spend deep thinking on big tasks.
+  const heavy = taskClass === "fullstack" || taskClass === "feature" || taskClass === "page";
+  const maxOutput = agent.mode === "report" ? Math.min(resolved.config.maxOutput, 8000) : Math.min(resolved.config.maxOutput, Math.max(12000, Math.ceil(docTokens * 1.6) + 6000));
+  const EFFORT_RANK = { low: 0, medium: 1, high: 2, xhigh: 3, max: 4 } as const;
+  const capEffort = heavy ? "xhigh" : taskClass === "section" ? "high" : "medium";
+  const effort = resolved.config.effort && EFFORT_RANK[resolved.config.effort] > EFFORT_RANK[capEffort] ? capEffort : resolved.config.effort;
 
   const run = await db.agentRun.create({
     data: { userId: opts.userId, projectId: project.id, agentId: agent.id, status: "RUNNING", task: opts.request, model: resolved.config.model, creditsUsed: credits },
@@ -97,15 +105,14 @@ export async function runAgent(opts: RunOptions) {
       system,
       messages: [{ role: "user", content: userPrompt }],
       images: opts.images,
-      maxOutput: resolved.config.maxOutput,
-      effort: resolved.config.effort,
+      maxOutput,
+      effort,
       onText: (t) => opts.onEvent?.({ type: "delta", text: t }),
       signal: opts.signal,
     });
     const costUsd = resolved.provider.id === "mock" && !result.fellBack ? 0 : estimateUsd(result.model, result);
-    // Profit guarantee: charge any difference between the estimate and the real cost.
-    const extra = await settleCredits(opts.userId, credits, costUsd, `agent:${agent.id}`, project.id);
-    const creditsCharged = credits + extra;
+    // Profit guarantee: final charge = max(class price, real cost × creditsPerUsd); the rest of the hold is released.
+    const creditsCharged = await finalizeCredits(opts.userId, est.hold, credits, costUsd, `agent:${agent.id}`, project.id, purchasedSpent);
     const usage = {
       model: result.model, // the model that actually answered (may differ after a provider fallback)
       inputTokens: result.inputTokens,
@@ -157,9 +164,9 @@ export async function runAgent(opts: RunOptions) {
     // Provider failures are refunded in full. When the model answered but not in the required
     // format, the tokens were still paid for, so only half is refunded (prevents "free" runs).
     const malformed = err instanceof Error && /did not return/.test(err.message);
-    const refund = malformed ? Math.floor(credits / 2) : credits;
+    const refund = malformed ? est.hold - Math.ceil(credits / 2) : est.hold;
     await refundCredits(opts.userId, refund, `refund:${agent.id}`, project.id, { purchased: Math.min(purchasedSpent, refund) });
-    await db.agentRun.update({ where: { id: run.id }, data: { status: "FAILED", finishedAt: new Date(), output: message, creditsUsed: credits - refund } });
+    await db.agentRun.update({ where: { id: run.id }, data: { status: "FAILED", finishedAt: new Date(), output: message, creditsUsed: est.hold - refund } });
     opts.onEvent?.({ type: "error", message });
     throw err;
   }

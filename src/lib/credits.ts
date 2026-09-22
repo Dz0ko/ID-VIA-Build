@@ -23,18 +23,55 @@ export async function estimateCredits(opts: {
   docTokens?: number;
   mode?: "rewrite" | "report";
 }) {
+  return (await estimateCreditsDetailed(opts)).credits;
+}
+
+/** How much hidden "thinking"/reasoning output a model typically adds (billed as output tokens). */
+function thinkingTokens(model: string, taskClass: string) {
+  const heavy = taskClass === "fullstack" || taskClass === "feature" || taskClass === "page";
+  if (/fable|mythos|astra/.test(model)) return heavy ? 12000 : 5000;
+  if (/opus|sol/.test(model)) return heavy ? 8000 : 3000;
+  if (/sonnet|terra/.test(model)) return heavy ? 3000 : 1000;
+  return 0;
+}
+
+/**
+ * Credits to charge (floor = provider cost × creditsPerUsd) and the larger amount to HOLD while the
+ * run is in flight, so a long frontier answer can never leave the account in deficit. The unused
+ * part of the hold is refunded right after the run.
+ */
+export async function estimateCreditsDetailed(opts: Parameters<typeof estimateCredits>[0]) {
   const s = await getSettings();
   const base = s.creditBase[opts.taskClass];
   const tierMult = s.tierMultiplier[opts.tier];
   const byClass = Math.max(1, Math.round(base * opts.agentMultiplier * tierMult));
-  if (!opts.model) return byClass;
-  // Cost floor: what this run will most likely cost at the provider, converted to credits.
+  if (!opts.model) return { credits: byClass, hold: byClass, estimatedUsd: 0 };
   const doc = Math.max(0, opts.docTokens ?? 0);
-  const inputTokens = 6000 + doc; // system prompt + design skill + the document itself
-  const outputTokens = opts.mode === "report" ? 2500 : Math.max(doc, opts.taskClass === "fullstack" || opts.taskClass === "feature" ? 14000 : 10000);
+  const inputTokens = 6000 + doc; // system prompt + design skill + the document itself (system part is cache-priced after the first run)
+  const visible = opts.mode === "report" ? 2500 : Math.max(doc, opts.taskClass === "fullstack" || opts.taskClass === "feature" ? 14000 : 10000);
+  const outputTokens = visible + thinkingTokens(opts.model, opts.taskClass);
   const usd = estimateUsd(opts.model, { inputTokens, outputTokens });
-  const floor = Math.ceil(usd * (s.creditsPerUsd ?? 150));
-  return Math.max(byClass, floor);
+  const k = s.creditsPerUsd ?? 150;
+  const credits = Math.max(byClass, Math.ceil(usd * k));
+  // Frontier/premium answers vary the most (thinking + long outputs): hold more up front.
+  const buffer = /fable|mythos|astra/.test(opts.model) ? 1.6 : /opus|sol/.test(opts.model) ? 1.4 : 1.2;
+  return { credits, hold: Math.ceil(credits * buffer), estimatedUsd: usd };
+}
+
+/**
+ * Final charge for a finished run: at least the pre-run estimate's class price, at least the real
+ * provider cost × creditsPerUsd; the difference to the hold is refunded (or charged if it exceeds it).
+ */
+export async function finalizeCredits(userId: string, hold: number, byClassCredits: number, costUsd: number, reason: string, projectId?: string, purchasedHeld = 0): Promise<number> {
+  const s = await getSettings();
+  const due = Math.max(byClassCredits, Math.ceil(costUsd * (s.creditsPerUsd ?? 150)));
+  if (due < hold) {
+    const back = hold - due;
+    await refundCredits(userId, back, `${reason}:release`, projectId, { purchased: Math.min(purchasedHeld, back) });
+    return due;
+  }
+  if (due > hold) return hold + (await settleCredits(userId, hold, costUsd, reason, projectId));
+  return hold;
 }
 
 /**
