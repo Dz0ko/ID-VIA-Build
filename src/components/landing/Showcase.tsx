@@ -3,9 +3,12 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 
 /**
- * Step-through on scroll: while the section fills the screen, each wheel / arrow / PageDown
- * moves exactly one step (with a short lock so a single flick cannot skip steps). Past the last
- * step (or before the first) the page scrolls normally to the next section. Disabled under 1024px.
+ * Step-through on scroll. While the enclosing <section> fills the screen the page is held in
+ * place and every scroll gesture moves exactly one step: wheel / trackpad / arrow / PageDown.
+ * After a step there is a ~1s freeze and the gesture must stop before the next step counts, so a
+ * single flick can never skip items. Entering from above starts at the first step, entering from
+ * below at the last one. Only past the last step (or before the first) does the page scroll on to
+ * the next section. Disabled under 1024px.
  */
 function useStepScroll(count: number) {
   const ref = useRef<HTMLDivElement>(null);
@@ -13,35 +16,46 @@ function useStepScroll(count: number) {
   const idx = useRef(0);
   useEffect(() => {
     const el = ref.current; if (!el) return;
-    let lock = false; let acc = 0;
-    const inView = () => { const r = el.getBoundingClientRect(); return window.innerWidth >= 1024 && r.top <= 110 && r.top >= -80; };
-    const step = (dir: 1 | -1) => {
-      if (lock) return;
-      const next = idx.current + dir;
-      if (next < 0 || next >= count) return;
-      lock = true; idx.current = next; setIndex(next);
-      setTimeout(() => { lock = false; }, 900);
+    const section = (el.closest("section") ?? el) as HTMLElement;
+    const FREEZE = 1000, QUIET = 180, ARRIVE = 600;
+    let steppedAt = 0, lastWheel = 0, arrivedAt = 0, wasIn = false, lastY = window.scrollY;
+    const go = (i: number) => { idx.current = i; setIndex(i); };
+    const pinned = () => {
+      if (window.innerWidth < 1024) return false;
+      const r = section.getBoundingClientRect();
+      const inside = r.top <= 120 && r.top >= -60;
+      if (inside && !wasIn) { arrivedAt = performance.now(); go(window.scrollY >= lastY ? 0 : count - 1); }
+      wasIn = inside;
+      return inside;
+    };
+    const onScroll = () => { pinned(); lastY = window.scrollY; };
+    const canRelease = (dir: 1 | -1) => (dir > 0 && idx.current >= count - 1) || (dir < 0 && idx.current <= 0);
+    const step = (dir: 1 | -1, now: number) => {
+      if (now - steppedAt < FREEZE || now - arrivedAt < ARRIVE) return;
+      steppedAt = now; go(idx.current + dir);
     };
     const onWheel = (e: WheelEvent) => {
-      if (!inView()) return;
+      if (!pinned()) return;
       const dir: 1 | -1 = e.deltaY > 0 ? 1 : -1;
-      if ((dir > 0 && idx.current >= count - 1) || (dir < 0 && idx.current <= 0)) return; // release to normal scrolling
+      const now = performance.now();
+      if (canRelease(dir) && now - steppedAt >= FREEZE && now - arrivedAt >= ARRIVE) return; // let the page move on
       e.preventDefault();
-      if (lock) return;
-      acc += e.deltaY;
-      if (Math.abs(acc) < 24) return;
-      acc = 0; step(dir);
+      const quiet = now - lastWheel >= QUIET; // a new gesture, not the tail of the previous one
+      lastWheel = now;
+      if (!quiet || Math.abs(e.deltaY) < 4) return;
+      step(dir, now);
     };
     const onKey = (e: KeyboardEvent) => {
-      if (!inView()) return;
-      const dir: 1 | -1 | 0 = e.key === "ArrowDown" || e.key === "PageDown" ? 1 : e.key === "ArrowUp" || e.key === "PageUp" ? -1 : 0;
-      if (!dir) return;
-      if ((dir > 0 && idx.current >= count - 1) || (dir < 0 && idx.current <= 0)) return;
-      e.preventDefault(); step(dir);
+      if (!pinned()) return;
+      const dir: 1 | -1 | 0 = e.key === "ArrowDown" || e.key === "PageDown" || e.key === " " ? 1 : e.key === "ArrowUp" || e.key === "PageUp" ? -1 : 0;
+      if (!dir || canRelease(dir)) return;
+      e.preventDefault(); step(dir, performance.now());
     };
+    pinned();
+    window.addEventListener("scroll", onScroll, { passive: true });
     window.addEventListener("wheel", onWheel, { passive: false });
     window.addEventListener("keydown", onKey);
-    return () => { window.removeEventListener("wheel", onWheel); window.removeEventListener("keydown", onKey); };
+    return () => { window.removeEventListener("scroll", onScroll); window.removeEventListener("wheel", onWheel); window.removeEventListener("keydown", onKey); };
   }, [count]);
   const set = (i: number) => { idx.current = i; setIndex(i); };
   return { ref, index, set };
