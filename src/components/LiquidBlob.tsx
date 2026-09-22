@@ -5,9 +5,11 @@ import * as THREE from "three";
 
 /**
  * Glossy liquid-metal sphere rendered with three.js. Slowly rotates, morphs with 3D noise
- * and tilts toward the mouse. Sits behind the hero content.
+ * and tilts toward the mouse. With `roam` it drifts around the whole viewport on a smooth
+ * path (left edge, top right, bottom, ...), nudged by scrolling, and is pushed away and
+ * ripples harder when the pointer gets close.
  */
-export function LiquidBlob({ className }: { className?: string }) {
+export function LiquidBlob({ className, roam = false }: { className?: string; roam?: boolean }) {
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -104,17 +106,35 @@ export function LiquidBlob({ className }: { className?: string }) {
     const blue = new THREE.PointLight(0x3b6cff, 40, 30); blue.position.set(-4, -1, 2.5); scene.add(blue);
     const rim = new THREE.PointLight(0x9b9cff, 25, 30); rim.position.set(-2, 3, -3); scene.add(rim);
 
-    // Stars
-    const starGeo = new THREE.BufferGeometry();
-    const starPos = new Float32Array(300 * 3);
-    for (let i = 0; i < 300; i++) { starPos[i * 3] = (Math.random() - 0.5) * 30; starPos[i * 3 + 1] = (Math.random() - 0.5) * 18; starPos[i * 3 + 2] = -6 - Math.random() * 12; }
-    starGeo.setAttribute("position", new THREE.BufferAttribute(starPos, 3));
-    const stars = new THREE.Points(starGeo, new THREE.PointsMaterial({ color: 0xc9c9cf, size: 0.035, transparent: true, opacity: 0.55 }));
-    scene.add(stars);
-
     const target = { x: 0, y: 0 };
-    const onMove = (e: PointerEvent) => { target.x = (e.clientX / window.innerWidth - 0.5) * 2; target.y = (e.clientY / window.innerHeight - 0.5) * 2; };
+    const pointer = { x: -9999, y: -9999 };
+    const onMove = (e: PointerEvent) => {
+      pointer.x = e.clientX; pointer.y = e.clientY;
+      target.x = (e.clientX / window.innerWidth - 0.5) * 2; target.y = (e.clientY / window.innerHeight - 0.5) * 2;
+    };
+    const onLeave = () => { pointer.x = -9999; pointer.y = -9999; };
     window.addEventListener("pointermove", onMove, { passive: true });
+    document.addEventListener("pointerleave", onLeave);
+
+    // Roaming: position of the (fixed) container in viewport space, plus a repulsion offset from the pointer.
+    const push = { x: 0, y: 0 };
+    let near = 0; // 0..1 how close the pointer is
+    const place = (t: number) => {
+      if (!roam) return;
+      const w = el.clientWidth, h = el.clientHeight;
+      const vw = window.innerWidth, vh = window.innerHeight;
+      const phase = t * 0.11 + window.scrollY * 0.0012; // scrolling advances the path too
+      const cx = vw / 2 + (vw / 2 - w * 0.35) * Math.sin(phase);
+      const cy = vh / 2 + (vh / 2 - h * 0.35) * Math.sin(phase * 0.73 + 1.4);
+      const dx = pointer.x - cx, dy = pointer.y - cy;
+      const d = Math.hypot(dx, dy);
+      const R = w * 0.75;
+      near += ((d < R ? 1 - d / R : 0) - near) * 0.08;
+      const k = d < R && d > 1 ? (R - d) / d : 0;
+      push.x += (-dx * k * 0.9 - push.x) * 0.06;
+      push.y += (-dy * k * 0.9 - push.y) * 0.06;
+      el.style.transform = `translate3d(${cx - w / 2 + push.x}px, ${cy - h / 2 + push.y}px, 0)`;
+    };
 
     const resize = () => {
       const w = el.clientWidth, h = el.clientHeight;
@@ -142,14 +162,15 @@ export function LiquidBlob({ className }: { className?: string }) {
       if (t - last < 1 / 30) return; // cap at 30fps
       last = t;
       uniforms.uTime.value = reduced ? 0 : t;
-      blob.rotation.y += reduced ? 0 : 0.0025;
+      place(reduced ? 0 : t);
+      uniforms.uAmp.value += ((roam ? 0.22 + near * 0.3 : 0.22) - uniforms.uAmp.value) * 0.08;
+      blob.rotation.y += reduced ? 0 : 0.0025 + near * 0.02;
       blob.rotation.x += (target.y * 0.35 - blob.rotation.x) * 0.04;
       blob.rotation.z += (-target.x * 0.35 - blob.rotation.z) * 0.04;
-      blob.position.x += (target.x * 0.35 - blob.position.x) * 0.03;
-      blob.position.y += (-target.y * 0.25 - 0.55 - blob.position.y) * 0.03;
+      blob.position.x += ((roam ? 0 : target.x * 0.35) - blob.position.x) * 0.03;
+      blob.position.y += ((roam ? 0 : -target.y * 0.25 - 0.55) - blob.position.y) * 0.03;
       gold.position.x = 3 + Math.sin(t * 0.5) * 0.8;
       blue.position.y = -1 + Math.cos(t * 0.4) * 0.8;
-      stars.rotation.z = t * 0.01;
       renderer.render(scene, camera);
     };
     tick();
@@ -157,14 +178,15 @@ export function LiquidBlob({ className }: { className?: string }) {
     return () => {
       cancelAnimationFrame(raf);
       window.removeEventListener("pointermove", onMove);
+      document.removeEventListener("pointerleave", onLeave);
       document.removeEventListener("visibilitychange", onVis);
       ro.disconnect();
       io.disconnect();
-      geo.dispose(); mat.dispose(); starGeo.dispose(); envTex.dispose(); pmrem.dispose();
+      geo.dispose(); mat.dispose(); envTex.dispose(); pmrem.dispose();
       renderer.dispose();
       el.removeChild(renderer.domElement);
     };
-  }, []);
+  }, [roam]);
 
   return <div ref={ref} className={className} aria-hidden />;
 }
