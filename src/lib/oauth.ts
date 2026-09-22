@@ -53,13 +53,13 @@ export function redirectUri(p: OAuthProvider, origin: string) {
   return `${process.env.APP_URL ?? origin}/api/auth/${p}/callback`;
 }
 
-export function authorizeUrl(p: OAuthProvider, opts: { state: string; origin: string }) {
+export function authorizeUrl(p: OAuthProvider, opts: { state: string; origin: string; scope?: string }) {
   const c = CONFIG[p];
   const url = new URL(c.authorizeUrl);
   url.searchParams.set("client_id", c.clientId!);
   url.searchParams.set("redirect_uri", redirectUri(p, opts.origin));
   url.searchParams.set("response_type", "code");
-  url.searchParams.set("scope", c.scope);
+  url.searchParams.set("scope", opts.scope ?? c.scope);
   url.searchParams.set("state", opts.state);
   for (const [k, v] of Object.entries(c.extraAuthParams ?? {})) url.searchParams.set(k, v);
   return url;
@@ -70,6 +70,8 @@ export interface OAuthProfile {
   email: string;
   name: string | null;
   avatarUrl: string | null;
+  /** Provider access token (only used by the "connect GitHub for pushes" flow). */
+  accessToken?: string;
 }
 
 /** Exchange the code for a token and fetch a normalised profile. */
@@ -96,7 +98,7 @@ export async function fetchProfile(p: OAuthProvider, code: string, origin: strin
     if (!res.ok) throw new Error("google userinfo failed");
     const me = (await res.json()) as { sub: string; email?: string; email_verified?: boolean; name?: string; picture?: string };
     if (!me.email || me.email_verified === false) throw new Error("google account has no verified email");
-    return { providerId: me.sub, email: me.email, name: me.name ?? null, avatarUrl: me.picture ?? null };
+    return { providerId: me.sub, email: me.email, name: me.name ?? null, avatarUrl: me.picture ?? null, accessToken: token.access_token };
   }
 
   const res = await fetch("https://api.github.com/user", { headers: auth });
@@ -111,7 +113,7 @@ export async function fetchProfile(p: OAuthProvider, code: string, origin: strin
     }
   }
   if (!email) throw new Error("github account has no verified email");
-  return { providerId: String(me.id), email, name: me.name ?? me.login, avatarUrl: me.avatar_url ?? null };
+  return { providerId: String(me.id), email, name: me.name ?? me.login, avatarUrl: me.avatar_url ?? null, accessToken: token.access_token };
 }
 
 /** Find-or-create the local user for a social profile and link the provider id. */

@@ -26,6 +26,7 @@ const GROUPS: { title: string; items: Item[] }[] = [
   { title: "Grow", items: [
     { href: "/app/marketplace", label: "Marketplace", icon: "marketplace" },
     { href: "/app/deployments", label: "Deployments", icon: "deployments" },
+    { href: "/app/integrations", label: "Integrations", icon: "link" },
     { href: "/app/teams", label: "Teams & clients", icon: "teams" },
     { href: "/app/learn", label: "Learn", icon: "learn", minPlan: "STARTER" },
   ] },

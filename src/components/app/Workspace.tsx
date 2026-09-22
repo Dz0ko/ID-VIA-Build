@@ -74,6 +74,7 @@ export function Workspace(p: WorkspaceProps) {
   const [busy, setBusy] = useState<string | null>(null);
   const [stream, setStream] = useState("");
   const [logs, setLogs] = useState<LogLine[]>([{ t: now(), text: "Workspace ready.", kind: "info" }]);
+  const [termBusy, setTermBusy] = useState(false);
   const [audit, setAudit] = useState<AuditResult | null>(p.project.health ? JSON.parse(p.project.health) : null);
   const [publishing, setPublishing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -109,7 +110,7 @@ export function Workspace(p: WorkspaceProps) {
       if (desktop) {
         try { const home = (await window.__TAURI__!.core.invoke("home_dir")) as string; setTermCwd(home); setTermLines([`IDÆVIA desktop terminal: real shell. cwd: ${home}`, "Type `help` for IDÆVIA commands or any shell command (dir, git, npm…)."]); }
         catch { setTermLines(["IDÆVIA terminal: type `help`"]); }
-      } else setTermLines(["IDÆVIA terminal (virtual): type `help`. Open the desktop app for a real shell."]);
+      } else setTermLines(["IDÆVIA terminal · commands run on the server with full logs. Type `help`.", "Try: status · preview · publish · git push · deploy vercel · env set KEY=VALUE · supabase link"]);
     }, 0);
     return () => clearTimeout(t);
   }, []);
@@ -278,14 +279,33 @@ export function Workspace(p: WorkspaceProps) {
     const push = (...l: string[]) => setTermLines((x) => [...x, ...l]);
     if (!cmd) return;
     if (cmd === "clear") { setTermLines([]); return; }
-    if (cmd === "help") { push(...out, "IDÆVIA: versions, git log, git checkout v<N>, agents, run <agent> <task>, audit, deploy, export, clear", isDesktop ? "Shell: any command runs in the real shell (cwd shown in prompt). `cd <dir>` changes directory." : "Open the desktop app for a real shell (npm, git, node…)."); return; }
+    if (cmd === "help" && isDesktop) { push(...out, "IDÆVIA: versions, git log, git checkout v<N>, agents, run <agent> <task>, audit, deploy, export, clear", "Shell: any command runs in the real shell (cwd shown in prompt). `cd <dir>` changes directory."); return; }
     if (cmd === "versions" || cmd === "git log") { push(...out, ...versions.map((v) => `v${String(v.number).padStart(2, "0")}  ${new Date(v.createdAt).toLocaleString()}  ${v.message}`)); return; }
     if (cmd.startsWith("git checkout v")) { const n = Number(cmd.replace("git checkout v", "")); restore(n); push(...out, `Restoring v${n}…`); return; }
-    if (cmd === "audit") { runAudit(); push(...out, "Running audit… see Problems tab"); return; }
-    if (cmd === "deploy") { publish(); push(...out, "Deploying…"); return; }
     if (cmd === "export") { exportZip(); push(...out, "Exporting…"); return; }
     if (cmd === "agents") { push(...out, ...allAgents.map((a) => `${isAllowed(a.id) ? "●" : "○"} ${a.id.padEnd(18)} ${a.short}`)); return; }
     if (cmd.startsWith("run ")) { const [id, ...rest] = cmd.slice(4).split(" "); run(rest.join(" ") || "Improve the project.", id); push(...out, `Running ${id}…`); return; }
+    if (!isDesktop) {
+      // Web: real commands run on the server and stream their log lines (git push, deploy vercel, publish, env…).
+      push(...out);
+      setTermBusy(true);
+      try {
+        const res = await fetch(`/api/projects/${p.project.id}/terminal`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ cmd }) });
+        if (!res.ok || !res.body) { const d = await res.json().catch(() => ({})); push(`✗ ${d.error ?? `HTTP ${res.status}`}`); setTermBusy(false); return; }
+        const reader = res.body.getReader(); const dec = new TextDecoder(); let buf = "";
+        for (;;) {
+          const { value, done } = await reader.read(); if (done) break;
+          buf += dec.decode(value, { stream: true });
+          const parts = buf.split("\n\n"); buf = parts.pop() ?? "";
+          for (const part of parts) {
+            const m = part.match(/^data: (.*)$/m); if (!m) continue;
+            try { const ev = JSON.parse(m[1]) as { kind: string; line: string }; if (ev.kind === "done") continue; push(ev.line); if (ev.kind === "ok") log(ev.line, "ok"); if (ev.kind === "err") log(ev.line, "err"); if (/^✓ Live at |^https:\/\//.test(ev.line) && cmd.startsWith("publish")) setStatus("PUBLISHED"); } catch { /* ignore */ }
+          }
+        }
+      } catch (e) { push(`✗ ${e instanceof Error ? e.message : "terminal error"}`); }
+      setTermBusy(false);
+      return;
+    }
     if (isDesktop) {
       if (/^cd\s+/.test(cmd)) {
         const target = cmd.replace(/^cd\s+/, "").replace(/^"|"$/g, "");
@@ -408,7 +428,7 @@ export function Workspace(p: WorkspaceProps) {
           {/* Bottom panel */}
           <div className="h-[280px] shrink-0 border-t border-graphite flex flex-col">
             <div className="h-9 flex items-center gap-1 px-2 border-b border-graphite text-xs overflow-x-auto">
-              {([["chat", "AI Chat", MessageSquare], ["changes", "Changes", History], ["terminal", isDesktop ? "Terminal" : "Terminal (virtual)", TerminalSquare], ["logs", "Logs", Activity], ["problems", "Problems", AlertTriangle], ["share", "Share / Client portal", Share2]] as const).map(([id, label, I]) => (
+              {([["chat", "AI Chat", MessageSquare], ["changes", "Changes", History], ["terminal", "Terminal", TerminalSquare], ["logs", "Logs", Activity], ["problems", "Problems", AlertTriangle], ["share", "Share / Client portal", Share2]] as const).map(([id, label, I]) => (
                 <button key={id} onClick={() => { setBottom(id); if (id === "share") loadShare(); }} className={`btn btn-sm ${bottom === id ? "bg-graphite text-paper" : "btn-ghost"}`}><I size={12} />{label}{id === "problems" && audit?.issues.length ? <span className="ml-1 text-[10px] text-warning">{audit.issues.length}</span> : null}</button>
               ))}
               {busy && <span className="ml-auto flex items-center gap-2 text-signal-soft whitespace-nowrap"><span className="w-1.5 h-1.5 rounded-full bg-signal pulse-dot" />{busy} working…<button onClick={() => abortRef.current?.abort()} className="text-ash hover:text-paper">stop</button></span>}
@@ -466,7 +486,7 @@ export function Workspace(p: WorkspaceProps) {
             {bottom === "terminal" && (
               <div className="flex-1 min-h-0 flex flex-col font-mono text-xs bg-[#050506]">
                 <div className="flex-1 overflow-y-auto p-3 space-y-0.5 text-fog">{termLines.map((l, i) => <div key={i} className={l.startsWith("$") ? "text-paper" : ""}>{l}</div>)}</div>
-                <form onSubmit={(e) => { e.preventDefault(); const c = termInput; setTermInput(""); term(c); }} className="flex items-center gap-2 px-3 py-2 border-t border-graphite"><span className="text-signal-soft truncate max-w-[40%]">{isDesktop && termCwd ? termCwd : ""}$</span><input value={termInput} onChange={(e) => setTermInput(e.target.value)} className="flex-1 bg-transparent outline-none" placeholder={isDesktop ? "git status" : "help"} autoFocus /></form>
+                <form onSubmit={(e) => { e.preventDefault(); const c = termInput; setTermInput(""); term(c); }} className="flex items-center gap-2 px-3 py-2 border-t border-graphite"><span className="text-signal-soft truncate max-w-[40%]">{isDesktop && termCwd ? termCwd : ""}$</span><input value={termInput} disabled={termBusy} onChange={(e) => setTermInput(e.target.value)} className="flex-1 bg-transparent outline-none disabled:opacity-60" placeholder={termBusy ? "running…" : isDesktop ? "git status" : "help · git push · deploy vercel"} autoFocus /></form>
               </div>
             )}
 

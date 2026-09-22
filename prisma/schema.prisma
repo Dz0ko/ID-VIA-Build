@@ -37,6 +37,7 @@ model User {
   payoutMethod   String?
   payoutDetails  String?
   payoutRequests PayoutRequest[]
+  integrations   Integration[]
   /// Referral programme: every user has a share code; signups attribute to a user or an affiliate.
   referralCode         String?  @unique
   referredById         String?
@@ -107,6 +108,11 @@ model Project {
   clientStatus  String    @default("NONE") // NONE | REVIEW | CHANGES_REQUESTED | APPROVED
   memory        String    @default("{}") // JSON: brand, design DNA, decisions
   health        String? // JSON: last audit scores
+  /// Per-project environment variables for deploys (AES-GCM encrypted JSON).
+  envEncrypted  String?
+  /// Last GitHub push: "owner/repo@sha"
+  gitRemote     String?
+  deployments   Deployment[]
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
@@ -219,6 +225,36 @@ model PayoutRequest {
 
   @@index([status, createdAt])
   @@index([userId])
+}
+
+/// A third-party connection owned by a user (GitHub, Vercel, Supabase, Higgsfield…). Secrets are AES-GCM encrypted.
+model Integration {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  provider  String // github | vercel | supabase | higgsfield | netlify
+  label     String? // e.g. GitHub login, Vercel username, Supabase project ref
+  secret    String // encrypted JSON of tokens/keys
+  meta      String   @default("{}") // public JSON (username, url…)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, provider])
+}
+
+/// A deployment or push performed from the project terminal.
+model Deployment {
+  id        String   @id @default(cuid())
+  projectId String
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  provider  String // idaevia | vercel | github
+  status    String   @default("PENDING") // PENDING | READY | ERROR
+  url       String?
+  log       String   @default("")
+  createdAt DateTime @default(now())
+  finishedAt DateTime?
+
+  @@index([projectId, createdAt])
 }
 
 model WebhookEvent {
