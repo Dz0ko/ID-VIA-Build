@@ -3,7 +3,9 @@ import { AuthError, getCurrentUser, type SessionUser } from "./auth";
 import { InsufficientCredits } from "./credits";
 
 export function json(data: unknown, init?: ResponseInit) {
-  return NextResponse.json(data, init);
+  const headers = new Headers(init?.headers);
+  headers.set("Cache-Control", "private, no-store");
+  return NextResponse.json(data, { ...init, headers });
 }
 
 export function error(message: string, status = 400, extra?: Record<string, unknown>) {
@@ -26,9 +28,8 @@ export function handleError(e: unknown) {
   if (e instanceof AuthError) return error(e.message, 401);
   if (e instanceof InsufficientCredits)
     return error(e.message, 402, { needed: e.needed, have: e.have, code: "INSUFFICIENT_CREDITS" });
-  const message = e instanceof Error ? e.message : "Unexpected error";
   console.error(e);
-  return error(message, 500);
+  return error("Something went wrong. Please try again.", 500);
 }
 
 export function slugify(s: string) {

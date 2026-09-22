@@ -17,10 +17,11 @@ const PRICES: { match: RegExp; input: number; output: number; cacheRead: number 
   { match: /gpt-4o/, input: 2.5, output: 10, cacheRead: 1.25 },
 ];
 
-export function estimateUsd(model: string, usage: { inputTokens: number; outputTokens: number; cacheReadTokens?: number }) {
+export function estimateUsd(model: string, usage: { inputTokens: number; outputTokens: number; cacheReadTokens?: number; cacheCreationTokens?: number }) {
   const p = PRICES.find((x) => x.match.test(model));
   if (!p) return 0;
   const cached = usage.cacheReadTokens ?? 0;
-  const uncached = Math.max(0, usage.inputTokens - cached);
-  return (uncached * p.input + cached * p.cacheRead + usage.outputTokens * p.output) / 1_000_000;
+  const created = usage.cacheCreationTokens ?? 0;
+  const uncached = Math.max(0, usage.inputTokens - cached - created);
+  return (uncached * p.input + created * p.input * 1.25 + cached * p.cacheRead + usage.outputTokens * p.output) / 1_000_000;
 }

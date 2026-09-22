@@ -1,3 +1,4 @@
+import { publicProject } from "@/lib/public-project";
 import { Suspense } from "react";
 import { notFound } from "next/navigation";
 import { db } from "@/lib/db";
@@ -31,7 +32,7 @@ export default async function ProjectPage({ params }: PageProps<"/app/projects/[
     <Suspense>
       <Workspace
         project={{
-          ...project,
+          ...publicProject(project),
           versions: project.versions.map((v) => ({ ...v, createdAt: v.createdAt.toISOString() })),
           messages: project.messages.map((m) => ({ ...m, createdAt: m.createdAt.toISOString() })),
           agentRuns: project.agentRuns.map((r) => ({ ...r, startedAt: r.startedAt.toISOString(), finishedAt: r.finishedAt?.toISOString() ?? null })),

@@ -4,7 +4,8 @@ import { getCurrentUser } from "@/lib/auth";
 import { json, withUser } from "@/lib/api";
 import { ASSISTANT_SYSTEM, mockAssistantReply } from "@/lib/assistant";
 import { friendlyAiError, generateWithFallback, resolveModel, tierForTask } from "@/lib/ai/router";
-import { estimateCredits, InsufficientCredits, refundCredits, reserveCredits } from "@/lib/credits";
+import { estimateCreditsDetailed, finalizeCredits, InsufficientCredits, releaseCredits, reserveCredits } from "@/lib/credits";
+import { estimateUsd } from "@/lib/ai/cost";
 import { rateLimit } from "@/lib/security";
 
 export async function GET() {
@@ -35,14 +36,20 @@ export async function POST(req: Request) {
   const messages = history.reverse().map((m) => ({ role: m.role as "user" | "assistant", content: m.content }));
 
   const tier = tierForTask("small", user.plan);
-  const credits = await estimateCredits({ taskClass: "small", agentMultiplier: 1, tier });
+  const resolved = await resolveModel(tier);
+  const estimate = await estimateCreditsDetailed({ taskClass: "small", agentMultiplier: 1, tier, model: resolved.config.model, docTokens: Math.ceil(JSON.stringify(messages).length / 4), mode: "report" });
+  const credits = estimate.hold;
   const encoder = new TextEncoder();
   const stream = new ReadableStream({
     async start(controller) {
-      const send = (e: Record<string, unknown>) => controller.enqueue(encoder.encode(`data: ${JSON.stringify(e)}\n\n`));
+      const send = (e: Record<string, unknown>) => { try { controller.enqueue(encoder.encode(`data: ${JSON.stringify(e)}\n\n`)); } catch { /* A disconnected browser cannot roll back completed work. */ } };
+      let reservation: Awaited<ReturnType<typeof reserveCredits>> | null = null;
+      let runId: string | null = null;
       try {
-        await reserveCredits(user.id, credits, "assistant");
-        const resolved = await resolveModel(tier);
+        reservation = await reserveCredits(user.id, credits, "assistant");
+        const run = await db.agentRun.create({ data: { userId: user.id, agentId: "assistant", status: "RUNNING", task: body.data.message, model: resolved.config.model } });
+        runId = run.id;
+        let costUsd = 0;
         send({ type: "meta", model: resolved.config.model, provider: resolved.provider.id, credits, fallback: resolved.fallback });
         let text: string;
         if (resolved.fallback) {
@@ -57,13 +64,21 @@ export async function POST(req: Request) {
             onText: (t) => send({ type: "delta", text: t }),
             signal: req.signal,
           });
+          costUsd = result.provider === "mock" ? 0 : estimateUsd(result.model, result);
+          await db.agentRun.update({ where: { id: runId }, data: { costUsd, inputTokens: result.inputTokens, outputTokens: result.outputTokens, model: result.model } });
           text = result.text;
         }
         const saved = await db.assistantMessage.create({ data: { userId: user.id, role: "assistant", content: text } });
-        send({ type: "done", id: saved.id, content: text, credits });
+        const charged = await finalizeCredits({ userId: user.id, ledgerId: reservation.ledgerId, hold: credits, byClassCredits: estimate.byClass, costUsd, k: estimate.k, purchasedHeld: reservation.purchasedSpent, note: "IDÆVIA Agent conversation", meta: { costUsd, tier } });
+        await db.agentRun.update({ where: { id: runId }, data: { status: "DONE", creditsUsed: charged, finishedAt: new Date() } });
+        send({ type: "done", id: saved.id, content: text, credits: charged });
       } catch (e) {
         if (e instanceof InsufficientCredits) send({ type: "error", message: `Not enough credits (need ${e.needed}, have ${e.have}).` });
-        else { await refundCredits(user.id, credits, "refund:assistant"); send({ type: "error", message: friendlyAiError(e) }); }
+        else {
+          if (reservation) await releaseCredits({ userId: user.id, ledgerId: reservation.ledgerId, hold: credits, keep: 0, purchasedHeld: reservation.purchasedSpent, note: "IDÆVIA Agent conversation failed, credits returned" });
+          if (runId) await db.agentRun.update({ where: { id: runId }, data: { status: "FAILED", finishedAt: new Date() } });
+          send({ type: "error", message: friendlyAiError(e) });
+        }
       } finally {
         controller.close();
       }

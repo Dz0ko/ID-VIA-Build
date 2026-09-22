@@ -1,141 +1,70 @@
+import { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
-import { CREDIT_PACKS, PLANS, isPlanId } from "@/lib/plans";
-import { extractWhop, findCheckout, verifyWhopSignature, whopPlanMap, type WhopWebhookEvent } from "@/lib/whop";
-import { grantCredits } from "@/lib/credits";
-import { markPurchasePaid, reversePurchase } from "@/lib/marketplace";
-import { onPaidConversion } from "@/lib/referrals";
+import { retrieveWhopPayment, verifyWhopSignature, type WhopWebhookEvent } from "@/lib/whop";
+import { getSettings } from "@/lib/settings";
+import { adjustPayment, objectId, settlePayment } from "@/lib/billing-ledger";
 
-/**
- * Whop webhook receiver.
- * Events handled: membership.activated / membership.went_valid → upgrade plan
- *                 membership.deactivated / membership.went_invalid → downgrade to FREE
- *                 payment.succeeded → (credit top-up packs via metadata.credits)
- */
-const HANDLED = new Set([
-  "membership.activated", "membership.went_valid", "membership.created",
-  "membership.deactivated", "membership.went_invalid", "membership.canceled", "membership.expired",
-  "payment.succeeded",
-  "refund.created", "refund.succeeded", "refund.updated", "dispute.created", "dispute.updated", "payment.refunded", "payment.disputed",
-]);
+const MEMBERSHIP_EVENTS = new Set(["membership.activated", "membership.went_valid", "membership.created", "membership.deactivated", "membership.went_invalid", "membership.canceled", "membership.expired"]);
+const ADJUSTMENT = /^(refund\.(created|succeeded|updated)|dispute\.(created|updated)|payment\.(refunded|disputed))$/;
 
 export async function POST(req: Request) {
   const raw = await req.text();
-  const secret = process.env.WHOP_WEBHOOK_SECRET ?? "";
   const id = req.headers.get("webhook-id");
-  const ok = verifyWhopSignature({
-    id,
-    timestamp: req.headers.get("webhook-timestamp"),
-    signature: req.headers.get("webhook-signature"),
-    rawBody: raw,
-    secret,
-  });
-  if (!ok) return new Response("invalid signature", { status: 401 });
-
+  if (!verifyWhopSignature({ id, timestamp: req.headers.get("webhook-timestamp"), signature: req.headers.get("webhook-signature"), rawBody: raw, secret: process.env.WHOP_WEBHOOK_SECRET ?? "" })) return new Response("invalid signature", { status: 401 });
   let event: WhopWebhookEvent;
+  try { event = JSON.parse(raw); } catch { return new Response("bad json", { status: 400 }); }
+  if (!event || typeof event.type !== "string" || !event.data || typeof event.data !== "object") return new Response("bad event", { status: 400 });
+  if (!MEMBERSHIP_EVENTS.has(event.type) && event.type !== "payment.succeeded" && !ADJUSTMENT.test(event.type)) return Response.json({ ok: true, ignored: true });
+  if (await db.webhookEvent.findUnique({ where: { id: id! } })) return Response.json({ ok: true, duplicate: true });
   try {
-    event = JSON.parse(raw);
-  } catch {
-    return new Response("bad json", { status: 400 });
-  }
-
-  // Only the events we act on; anything else (ads, cards, disputes, …) is acknowledged and ignored.
-  if (!HANDLED.has(event.type)) return Response.json({ ok: true, ignored: event.type });
-
-  // Idempotency
-  const eventId = id ?? event.id ?? `${event.type}:${Date.now()}`;
-  const seen = await db.webhookEvent.findUnique({ where: { id: eventId } });
-  if (seen) return Response.json({ ok: true, duplicate: true });
-  await db.webhookEvent.create({ data: { id: eventId, type: event.type, payload: raw } });
-
-  const d = (event.data ?? {}) as Record<string, unknown>;
-  const meta = (d.metadata ?? {}) as Record<string, unknown>;
-  // The checkout we created for this purchase (plans, packs, marketplace) — the most reliable link to our user.
-  const checkoutId = typeof d.checkout_configuration_id === "string" ? d.checkout_configuration_id
-    : typeof d.checkout_id === "string" ? d.checkout_id : null;
-  const checkout = await findCheckout(checkoutId);
-
-  const paidUsd = Number(d.total ?? d.subtotal ?? d.final_amount ?? d.amount_after_fees ?? d.amount ?? 0);
-  const paidCents = Number.isFinite(paidUsd) && paidUsd > 0 ? Math.round(paidUsd * 100) : null;
-
-  // Refunds / chargebacks: reverse marketplace orders so sellers are not paid for returned money.
-  if (/^(refund\.(created|succeeded|updated)|dispute\.(created|updated)|payment\.(refunded|disputed))$/.test(event.type)) {
-    const pid = (typeof d.payment_id === "string" ? d.payment_id : typeof (d.payment as { id?: string })?.id === "string" ? (d.payment as { id: string }).id : typeof d.id === "string" ? d.id : null);
-    const reversed = pid ? await reversePurchase(pid, event.type) : null;
-    // Refunded credit pack: take the credits back (never below zero).
-    if (checkout?.kind === "pack" && checkout.credits) {
-      await db.$executeRaw`UPDATE "User" SET "credits" = GREATEST(0, "credits" - ${checkout.credits}), "purchasedCredits" = GREATEST(0, LEAST("purchasedCredits" - ${checkout.credits}, "credits" - ${checkout.credits})) WHERE "id" = ${checkout.userId}`;
-      await db.creditLedger.create({ data: { userId: checkout.userId, delta: -checkout.credits, reason: `refund_pack:${event.type}` } });
+    const adjustment = ADJUSTMENT.test(event.type);
+    let data: Record<string, unknown> = event.data;
+    // Re-fetch financial events from Whop. Return 503 on failure so Whop retries;
+    // never acknowledge an event before its financial effects commit.
+    if (adjustment || event.type === "payment.succeeded") {
+      const paymentId = adjustment && !event.type.startsWith("payment.") ? objectId(data.payment ?? data.payment_id) : objectId(data.id);
+      if (!paymentId) throw new Error("Missing payment reference");
+      data = await retrieveWhopPayment(paymentId);
+      if (objectId(data.id) !== paymentId) throw new Error("Payment ID mismatch");
+      if (objectId(data.company ?? data.company_id) !== process.env.WHOP_COMPANY_ID) throw new Error("Payment company mismatch");
     }
-    return Response.json({ ok: true, reversed: reversed?.id ?? null, packRefunded: checkout?.kind === "pack" });
+    const settings = await getSettings();
+    const result = await db.$transaction(async (tx) => {
+      // Serialises payment delivery + corrections, including different webhook IDs.
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`whop:${objectId(data.id)}`}))`;
+      if (await tx.webhookEvent.findUnique({ where: { id: id! } })) return { duplicate: true };
+      let outcome: Record<string, unknown> = {};
+      if (event.type === "payment.succeeded") {
+        outcome = await settlePayment(tx, data, settings.referral.referrerPaidCredits);
+        if (Number(data.refunded_amount) > 0 || (Array.isArray(data.disputes) && data.disputes.length)) await adjustPayment(tx, data);
+      } else if (adjustment) {
+        if (!await tx.payment.findUnique({ where: { id: objectId(data.id)! } })) {
+          // Let payment.succeeded establish the original first. Legacy payments
+          // must be imported by reconciliation, never granted a second time.
+          throw new Error("Original payment is not recorded yet; retry or reconcile legacy history");
+        }
+        outcome = await adjustPayment(tx, data);
+      } else {
+        const membershipId = objectId(data.id);
+        if (!membershipId) throw new Error("Membership ID missing");
+        const existing = await tx.membership.findUnique({ where: { whopMembershipId: membershipId } });
+        // Membership events may revoke access, but only confirmed payments grant it.
+        if (existing && (/membership\.(deactivated|went_invalid|expired)/.test(event.type) || data.valid === false)) {
+          await tx.$queryRaw`SELECT "id" FROM "User" WHERE "id" = ${existing.userId} FOR UPDATE`;
+          await tx.membership.update({ where: { id: existing.id }, data: { status: "inactive" } });
+          const other = await tx.membership.findFirst({ where: { userId: existing.userId, status: "active" }, orderBy: { updatedAt: "desc" } });
+          await tx.user.update({ where: { id: existing.userId }, data: { plan: other?.plan ?? "FREE" } });
+        }
+        outcome = { membership: membershipId };
+      }
+      // Store only the necessary audit metadata, never card details or client_secret.
+      await tx.webhookEvent.create({ data: { id: id!, type: event.type, payload: JSON.stringify({ resourceId: objectId(data.id), processed: true }) } });
+      return outcome;
+    }, { timeout: 20000 });
+    return Response.json({ ok: true, ...result });
+  } catch (e) {
+    if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002" && await db.webhookEvent.findUnique({ where: { id: id! } })) return Response.json({ ok: true, duplicate: true });
+    console.error("[whop] Event could not be committed", { eventId: id, type: event.type, error: e instanceof Error ? e.message : "Unknown error" });
+    return Response.json({ error: "Payment processing temporarily unavailable. Retry required." }, { status: 503 });
   }
-
-  // Marketplace orders: settle them before any user matching (the paid amount must cover the price).
-  if (event.type === "payment.succeeded") {
-    const purchaseId = typeof meta.purchase_id === "string" ? meta.purchase_id : checkout?.purchaseId ?? null;
-    if (purchaseId) {
-      const paid = await markPurchasePaid(purchaseId, d.id as string | undefined ?? null, paidCents);
-      return Response.json({ ok: true, purchase: paid?.id ?? null });
-    }
-  }
-
-  const { membershipId, planId, userId: whopUserId, email, status, valid } = extractWhop(event);
-  // Plan: from our checkout record, then checkout metadata, then the static plan-id map (checkout links).
-  const map = whopPlanMap();
-  const metaPlan = typeof meta.idaevia_plan === "string" && isPlanId(meta.idaevia_plan) ? meta.idaevia_plan : undefined;
-  const recordPlan = checkout?.plan && isPlanId(checkout.plan) ? checkout.plan : undefined;
-  const mapped = recordPlan ?? metaPlan ?? (planId ? map[planId] : undefined);
-
-  // Find our user: by our checkout record, then our id from metadata, then Whop id, then email.
-  let user = checkout ? await db.user.findUnique({ where: { id: checkout.userId } }) : null;
-  if (!user && typeof meta.idaevia_user_id === "string") user = await db.user.findUnique({ where: { id: meta.idaevia_user_id } });
-  if (!user && whopUserId) user = await db.user.findUnique({ where: { whopUserId } });
-  if (!user && email) user = await db.user.findUnique({ where: { email: email.toLowerCase() } });
-  // Never create accounts from webhook data: every purchase starts from a signed-in user's checkout.
-  if (!user) {
-    console.warn(`[whop] ${event.type} could not be matched to a user (checkout=${checkoutId ?? "-"}, membership=${membershipId ?? "-"})`);
-    return Response.json({ ok: true, ignored: "no user match" });
-  }
-  if (whopUserId && !user.whopUserId) {
-    user = await db.user.update({ where: { id: user.id }, data: { whopUserId } });
-  }
-
-  const type = event.type;
-  const activated = /membership\.(activated|went_valid|created)/.test(type) || (type.startsWith("membership.") && valid === true && status !== "canceled");
-  const deactivated = /membership\.(deactivated|went_invalid|canceled|expired)/.test(type) || (type.startsWith("membership.") && valid === false);
-
-  if (activated && membershipId) {
-    // Only memberships we can map to one of our plans grant anything; unknown Whop products are ignored.
-    if (!mapped || !isPlanId(mapped) || mapped === "FREE") {
-      console.warn(`[whop] membership ${membershipId} activated with unknown plan (${planId ?? "-"}); ignored`);
-      return Response.json({ ok: true, ignored: "unknown plan" });
-    }
-    const plan = mapped;
-    await db.membership.upsert({
-      where: { whopMembershipId: membershipId },
-      create: { userId: user.id, whopMembershipId: membershipId, whopPlanId: planId ?? "", plan, status: "active", raw },
-      update: { plan, status: "active", raw, whopPlanId: planId ?? "" },
-    });
-    if (user.plan !== plan) {
-      await db.user.update({ where: { id: user.id }, data: { plan } });
-      const delta = Math.max(0, PLANS[plan].credits - PLANS[isPlanId(user.plan) ? user.plan : "FREE"].credits);
-      if (delta > 0) await grantCredits(user.id, delta, `upgrade:${plan}`);
-    }
-  } else if (deactivated && membershipId) {
-    await db.membership.updateMany({ where: { whopMembershipId: membershipId }, data: { status: "inactive", raw } });
-    const stillActive = await db.membership.findFirst({ where: { userId: user.id, status: "active" }, orderBy: { updatedAt: "desc" } });
-    await db.user.update({ where: { id: user.id }, data: { plan: stillActive?.plan ?? "FREE" } });
-  } else if (type === "payment.succeeded") {
-    const credits = Number(checkout?.credits ?? meta.credits ?? 0);
-    const pack = CREDIT_PACKS.find((c) => c.credits === credits);
-    if (credits > 0 && !pack) return Response.json({ ok: true, ignored: "unknown pack" });
-    if (pack && paidCents && paidCents + 1 < pack.price * 100) {
-      console.warn(`[whop] pack payment ${d.id} was ${paidCents}c, expected ${pack.price * 100}c; not granting`);
-      return Response.json({ ok: true, ignored: "underpaid" });
-    }
-    if (pack) await grantCredits(user.id, pack.credits, "credit_pack", { purchased: true });
-    // Plan payments (subscriptions, renewals) earn affiliate commission and the referral paid bonus.
-    if (credits === 0 && paidCents) await onPaidConversion(user.id, { amountCents: paidCents, reason: `payment:${d.id ?? eventId}` });
-  }
-
-  return Response.json({ ok: true });
 }

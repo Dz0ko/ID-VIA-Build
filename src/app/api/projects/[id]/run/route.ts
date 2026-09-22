@@ -29,10 +29,12 @@ export async function POST(req: Request, ctx: RouteContext<"/api/projects/[id]/r
   const limited = (await rateLimit(`run:user:${user.id}:min`, 12, 60)) ?? (await rateLimit(`run:user:${user.id}:day`, 400, 86400));
   if (limited) return limited;
 
+  const proj = await db.project.findFirst({ where: { id, userId: user.id }, select: { html: true, kind: true, _count: { select: { files: true } } } });
+  if (!proj) return Response.json({ error: "Not found" }, { status: 404 });
+
   let agentId = body.data.agentId ?? "builder";
   let autoPicked = false;
   if (agentId === "auto") {
-    const proj = await db.project.findFirst({ where: { id, userId: user.id }, select: { html: true, kind: true, _count: { select: { files: true } } } });
     const hasContent = proj ? (proj.kind === "app" ? proj._count.files > 0 : Boolean(proj.html.trim())) : false;
     const picked = pickAgent(body.data.request, hasContent);
     agentId = agentAllowed(user.plan, picked) ? picked : "builder";
@@ -49,7 +51,7 @@ export async function POST(req: Request, ctx: RouteContext<"/api/projects/[id]/r
   const encoder = new TextEncoder();
   const stream = new ReadableStream({
     async start(controller) {
-      const send = (e: RunEvent) => controller.enqueue(encoder.encode(`data: ${JSON.stringify(e)}\n\n`));
+      const send = (e: RunEvent) => { try { controller.enqueue(encoder.encode(`data: ${JSON.stringify(e)}\n\n`)); } catch { /* Client disconnects must not trigger a second refund. */ } };
       try {
         if (autoPicked) send({ type: "picked", agent: agentId });
         await runAgent({

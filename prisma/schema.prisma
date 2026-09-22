@@ -153,7 +153,7 @@ model AgentRun {
   userId      String
   user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   projectId   String?
-  project     Project?  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  project     Project?  @relation(fields: [projectId], references: [id], onDelete: SetNull)
   agentId     String
   status      String    @default("QUEUED") // QUEUED | RUNNING | DONE | FAILED
   task        String
@@ -404,4 +404,55 @@ model RateLimit {
   key     String   @id
   count   Int      @default(0)
   resetAt DateTime
+}
+
+/// Durable, server-verified money ledger. IDs and amounts never come from a browser request.
+/// Plain user IDs preserve accounting if an account is removed.
+model Payment {
+  id                       String   @id // Whop pay_ id; prevents duplicate settlement across webhook IDs
+  userId                   String
+  kind                     String // plan | pack | market
+  plan                     String?
+  membershipId             String?
+  purchaseId               String?
+  creditsGranted           Int      @default(0)
+  referralBonusCredits     Int      @default(0)
+  providerUpdatedAt        DateTime?
+  grossCents               Int // creator subtotal, excluding tax and buyer fees
+  feeCents                 Int? // null means not reported, never silently treated as confirmed zero
+  refundedCents            Int      @default(0)
+  disputedCents            Int      @default(0)
+  sellerCents              Int      @default(0)
+  referralCommissionCents  Int      @default(0)
+  affiliateCommissionCents Int      @default(0)
+  paidAt                   DateTime
+  updatedAt                DateTime @updatedAt
+
+  @@index([userId, paidAt])
+  @@index([paidAt])
+}
+
+model ReferralCommission {
+  id              String   @id @default(cuid())
+  paymentId       String   @unique
+  referrerId      String
+  buyerId         String
+  amountCents     Int
+  commissionCents Int
+  reversedCents   Int      @default(0)
+  pct             Int      @default(5)
+  createdAt       DateTime @default(now())
+
+  @@index([referrerId, createdAt])
+}
+
+/// Costs not available from the payment/AI APIs, e.g. hosting, taxes, payout fees.
+model FinancialExpense {
+  id          String   @id @default(cuid())
+  amountCents Int
+  category    String
+  note        String
+  incurredAt  DateTime
+  createdBy   String
+  createdAt   DateTime @default(now())
 }

@@ -12,7 +12,7 @@ async function requireRole(teamId: string, userId: string, roles: readonly strin
 export async function GET(_req: Request, ctx: RouteContext<"/api/teams/[id]">) {
   const { id } = await ctx.params;
   return withUser(async (user) => {
-    const m = await db.teamMember.findFirst({ where: { teamId: id, userId: user.id } });
+    const m = await db.teamMember.findFirst({ where: { teamId: id, userId: user.id, status: "ACTIVE" } });
     if (!m) return error("Not found", 404);
     const team = await db.team.findUnique({ where: { id }, include: { members: { orderBy: { createdAt: "asc" } }, projects: { select: { id: true, name: true, status: true, clientStatus: true, slug: true, updatedAt: true } } } });
     if (!team) return error("Not found", 404);
@@ -47,6 +47,8 @@ export async function PATCH(req: Request, ctx: RouteContext<"/api/teams/[id]">) 
     if (d.invite) {
       if (d.invite.role === "OWNER") return error("A team has exactly one owner.", 400);
       const email = d.invite.email.toLowerCase();
+      const member = await db.teamMember.findUnique({ where: { teamId_email: { teamId: id, email } } });
+      if (member?.role === "OWNER") return error("The owner role cannot be changed.", 403);
       const existing = await db.user.findUnique({ where: { email } });
       await db.teamMember.upsert({
         where: { teamId_email: { teamId: id, email } },
@@ -60,6 +62,7 @@ export async function PATCH(req: Request, ctx: RouteContext<"/api/teams/[id]">) 
       if (target) await db.teamMember.delete({ where: { id: target.id } });
     }
     if (d.setRole) {
+      if (d.setRole.role === "OWNER") return error("Ownership cannot be assigned through role changes.", 403);
       const target = await db.teamMember.findUnique({ where: { teamId_email: { teamId: id, email: d.setRole.email.toLowerCase() } } });
       if (target && target.role !== "OWNER") await db.teamMember.update({ where: { id: target.id }, data: { role: d.setRole.role } });
     }

@@ -57,7 +57,7 @@ export default async function Home() {
               <span className="word" style={{ animationDelay: "340ms" }}>build for you</span>
             </h1>
             <p className="reveal in mt-6 md:mt-7 text-base md:text-xl text-fog max-w-2xl mx-auto" style={{ transitionDelay: "450ms" }}>
-              One workspace for websites and apps. Describe it, a team of 30 AI agents designs, builds, tests and deploys it, all from your real code.
+              One workspace for websites and apps. Describe it, a team of <span className="text-signal-soft">30 AI agents</span> designs, builds, tests and deploys it, all from your real code.
             </p>
             <div className="reveal in mt-8 md:mt-9 flex flex-col items-center gap-3" style={{ transitionDelay: "600ms" }}>
               <DownloadButton loggedIn={Boolean(user)} />

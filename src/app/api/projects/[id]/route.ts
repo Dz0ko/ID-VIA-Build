@@ -1,3 +1,4 @@
+import { publicProject } from "@/lib/public-project";
 import { z } from "zod";
 import { db } from "@/lib/db";
 import { error, json, withUser } from "@/lib/api";
@@ -22,7 +23,7 @@ export async function GET(_req: Request, ctx: RouteContext<"/api/projects/[id]">
       },
     });
     if (!project) return error("Not found", 404);
-    return json({ project });
+    return json({ project: publicProject(project) });
   });
 }
 
@@ -45,7 +46,7 @@ export async function PATCH(req: Request, ctx: RouteContext<"/api/projects/[id]"
       versionNumber = (last?.number ?? 0) + 1;
       await db.version.create({ data: { projectId: id, number: versionNumber, html: body.data.html, message: "Manual edit" } });
     }
-    return json({ project: updated, versionNumber });
+    return json({ project: publicProject(updated), versionNumber });
   });
 }
 

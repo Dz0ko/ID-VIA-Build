@@ -1,3 +1,4 @@
+import { requireAdmin } from "./finance";
 import { db } from "./db";
 import { PLANS, PLAN_ORDER, isPlanId, type PlanId } from "./plans";
 import { providerStatus } from "./ai/router";
@@ -50,6 +51,7 @@ export interface AdminStats {
 }
 
 export async function getAdminStats(): Promise<AdminStats> {
+  await requireAdmin();
   const now = Date.now();
   const d7 = new Date(now - 7 * DAY);
   const d14 = new Date(now - 14 * DAY);

@@ -57,10 +57,6 @@ const MODEL_CHOICES: { value: string; label: string; tier: ModelTier }[] = [
   { value: "frontier:openai", label: "Frontier · GPT-6 Astra", tier: "frontier" },
 ];
 
-declare global {
-  interface Window { __TAURI__?: { core: { invoke: (cmd: string, args?: Record<string, unknown>) => Promise<unknown> } } }
-}
-
 export function Workspace(p: WorkspaceProps) {
   const router = useRouter();
   const params = useSearchParams();
@@ -97,8 +93,6 @@ export function Workspace(p: WorkspaceProps) {
   const [error, setError] = useState<string | null>(null);
   const [termLines, setTermLines] = useState<string[]>([]);
   const [termInput, setTermInput] = useState("");
-  const [termCwd, setTermCwd] = useState<string>("");
-  const [isDesktop, setIsDesktop] = useState(false);
   const [links, setLinks] = useState<ShareLink[]>([]);
   const [comments, setComments] = useState<Comment[]>([]);
   const [linkForm, setLinkForm] = useState({ label: "", password: "" });
@@ -123,14 +117,7 @@ export function Workspace(p: WorkspaceProps) {
   useEffect(() => { const el = chatEnd.current?.parentElement; if (el) el.scrollTop = el.scrollHeight; }, [messages, stream, bottom]);
   useEffect(() => { const el = terminalEnd.current?.parentElement; if (el) el.scrollTop = el.scrollHeight; }, [termLines, bottom]);
   useEffect(() => {
-    const desktop = typeof window !== "undefined" && Boolean(window.__TAURI__);
-    const t = setTimeout(async () => {
-      setIsDesktop(desktop);
-      if (desktop) {
-        try { const home = (await window.__TAURI__!.core.invoke("home_dir")) as string; setTermCwd(home); setTermLines([`IDÆVIA desktop terminal: real shell. cwd: ${home}`, "Type `help` for IDÆVIA commands or any shell command (dir, git, npm…)."]); }
-        catch { setTermLines(["IDÆVIA terminal: type `help`"]); }
-      } else setTermLines(["IDÆVIA terminal · commands run on the server with full logs. Type `help`.", "Try: status · preview · publish · git push · deploy vercel · env set KEY=VALUE · supabase link"]);
-    }, 0);
+    const t = setTimeout(() => setTermLines(["IDÆVIA terminal · commands run on the server with full logs. Type `help`.", "Try: status · preview · publish · git push · deploy vercel · env set KEY=VALUE · supabase link"]), 0);
     return () => clearTimeout(t);
   }, []);
 
@@ -323,13 +310,12 @@ export function Workspace(p: WorkspaceProps) {
     const push = (...l: string[]) => setTermLines((x) => [...x, ...l]);
     if (!cmd || termBusy) return;
     if (cmd === "clear") { setTermLines([]); return; }
-    if (cmd === "help" && isDesktop) { push(...out, "IDÆVIA: versions, git log, git checkout v<N>, agents, run <agent> <task>, audit, deploy, export, clear", "Shell: any command runs in the real shell (cwd shown in prompt). `cd <dir>` changes directory."); return; }
     if (cmd === "versions" || cmd === "git log") { push(...out, ...versions.map((v) => `v${String(v.number).padStart(2, "0")}  ${new Date(v.createdAt).toLocaleString()}  ${v.message}`)); return; }
     if (cmd.startsWith("git checkout v")) { const n = Number(cmd.replace("git checkout v", "")); restore(n); push(...out, `Restoring v${n}…`); return; }
     if (cmd === "export") { exportZip(); push(...out, "Exporting…"); return; }
     if (cmd === "agents") { push(...out, ...allAgents.map((a) => `${isAllowed(a.id) ? "●" : "○"} ${a.id.padEnd(18)} ${a.short}`)); return; }
     if (cmd.startsWith("run ")) { const [id, ...rest] = cmd.slice(4).split(" "); run(rest.join(" ") || "Improve the project.", id); push(...out, `Running ${id}…`); return; }
-    if (!isDesktop || /^(preview|publish|unpublish|audit|deploy|integrations|supabase)(?:\s|$)/.test(cmd)) {
+    {
       // Project commands use the same authenticated server endpoint on web and desktop.
       // Web: real commands run on the server and stream their log lines (git push, deploy vercel, publish, env…).
       push(...out);
@@ -352,28 +338,7 @@ export function Workspace(p: WorkspaceProps) {
       setTermBusy(false);
       return;
     }
-    if (isDesktop) {
-      setTermBusy(true);
-      try {
-        if (/^cd\s+/.test(cmd)) {
-          const target = cmd.replace(/^cd\s+/, "").replace(/^"|"$/g, "");
-          try {
-            const r = (await window.__TAURI__!.core.invoke("run_shell", { command: navigator.userAgent.includes("Windows") ? `cd /d "${target}" && cd` : `cd "${target}" && pwd`, cwd: termCwd })) as { code: number; stdout: string; stderr: string };
-            if (r.code === 0) { setTermCwd(r.stdout.trim()); push(...out); } else push(...out, r.stderr.trim() || "Directory not found");
-          } catch (e) { push(...out, String(e)); }
-          return;
-        }
-        push(...out);
-        try {
-          const r = (await window.__TAURI__!.core.invoke("run_shell", { command: cmd, cwd: termCwd })) as { code: number; stdout: string; stderr: string };
-          const lines = [...r.stdout.split(/\r?\n/), ...r.stderr.split(/\r?\n/)].filter((l) => l.length);
-          push(...lines.slice(-400), r.code === 0 ? "" : `exit code ${r.code}`);
-        } catch (e) { push(`error: ${String(e)}`); }
-        return;
-      }
-      finally { setTermBusy(false); }
-    }
-    push(...out, `command not found: ${cmd}. Try 'help'. (Real shell available in the desktop app.)`);
+
   }
 
   const width = device === "desktop" ? "100%" : device === "tablet" ? 820 : 390;
@@ -543,7 +508,7 @@ export function Workspace(p: WorkspaceProps) {
             {bottom === "terminal" && (
               <div className="flex-1 min-h-0 flex flex-col font-mono text-xs bg-[#050506]">
                 <div className="flex-1 overflow-y-auto p-3 space-y-0.5 text-fog whitespace-pre-wrap break-words">{termLines.map((l, i) => <div key={i} className={l.startsWith("$") ? "text-paper" : ""}>{l}</div>)}<div ref={terminalEnd} /></div>
-                <form onSubmit={(e) => { e.preventDefault(); const c = termInput; setTermInput(""); term(c); }} className="flex items-center gap-2 px-3 py-2 border-t border-graphite"><span className="text-signal-soft truncate max-w-[40%]">{isDesktop && termCwd ? termCwd : ""}$</span><input aria-label="Terminal command" value={termInput} disabled={termBusy} onChange={(e) => setTermInput(e.target.value)} className="flex-1 bg-transparent outline-none disabled:opacity-60" placeholder={termBusy ? "running…" : isDesktop ? "git status" : "help · git push · deploy vercel"} autoFocus /></form>
+                <form onSubmit={(e) => { e.preventDefault(); const c = termInput; setTermInput(""); term(c); }} className="flex items-center gap-2 px-3 py-2 border-t border-graphite"><span className="text-signal-soft truncate max-w-[40%]">$</span><input aria-label="Terminal command" value={termInput} disabled={termBusy} onChange={(e) => setTermInput(e.target.value)} className="flex-1 bg-transparent outline-none disabled:opacity-60" placeholder={termBusy ? "running…" : "help · git push · deploy vercel"} autoFocus /></form>
               </div>
             )}
 

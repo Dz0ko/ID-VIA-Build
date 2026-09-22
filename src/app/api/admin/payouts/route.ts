@@ -54,20 +54,23 @@ export async function PATCH(req: Request) {
     const { requestId, action, note, affiliateId } = body.data;
 
     if (requestId && action) {
-      const r = await db.payoutRequest.findUnique({ where: { id: requestId } });
-      if (!r) return error("Request not found", 404);
-      if (r.status !== "PENDING") return error("This request was already resolved.", 409);
-      // Status flip is the guard against double approval.
-      const flipped = await db.payoutRequest.updateMany({ where: { id: r.id, status: "PENDING" }, data: { status: action === "approve" ? "PAID" : "REJECTED", note: note || null, resolvedAt: new Date() } });
-      if (flipped.count !== 1) return error("This request was already resolved.", 409);
-      if (action === "approve") {
-        await db.user.update({ where: { id: r.userId }, data: { sellerPaidOutCents: { increment: r.amountCents } } });
-      } else {
-        await db.user.update({ where: { id: r.userId }, data: { sellerBalanceCents: { increment: r.amountCents } } });
-      }
-      console.info(`[admin] ${adminEmail} ${action}d payout ${r.id} (${r.amountCents}c) for user ${r.userId}`);
+      if (action === "approve" && !note) return error("Add the payment reference or transaction hash before marking a payout paid.");
+      const result = await db.$transaction(async (tx) => {
+        const found = await tx.payoutRequest.findUnique({ where: { id: requestId } });
+        if (!found) return null;
+        await tx.$queryRaw`SELECT "id" FROM "User" WHERE "id" = ${found.userId} FOR UPDATE`;
+        const r = await tx.payoutRequest.findUniqueOrThrow({ where: { id: requestId } });
+        if (r.status !== "PENDING") return null;
+        const flipped = await tx.payoutRequest.updateMany({ where: { id: r.id, status: "PENDING" }, data: { status: action === "approve" ? "PAID" : "REJECTED", note: note || null, resolvedAt: new Date() } });
+        if (!flipped.count) return null;
+        await tx.user.update({ where: { id: r.userId }, data: action === "approve" ? { sellerPaidOutCents: { increment: r.amountCents } } : { sellerBalanceCents: { increment: r.amountCents } } });
+        return r;
+      });
+      if (!result) return error("This request was not found or was already resolved.", 409);
+      console.info(`[admin] ${adminEmail} ${action}d payout ${result.id}`);
       return json({ ok: true, status: action === "approve" ? "PAID" : "REJECTED" });
     }
+
     if (affiliateId) {
       const res = await db.affiliateCommission.updateMany({ where: { affiliateId, status: "PENDING" }, data: { status: "PAID", paidAt: new Date() } });
       console.info(`[admin] ${adminEmail} marked ${res.count} affiliate commissions paid for ${affiliateId}`);

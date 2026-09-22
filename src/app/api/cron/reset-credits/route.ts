@@ -1,5 +1,5 @@
 import { db } from "@/lib/db";
-import { renewalBalance } from "@/lib/credits";
+import { renewCreditsIfDue } from "@/lib/credits";
 
 /**
  * Monthly credit renewal. Runs daily (Vercel Cron, see vercel.json) and renews
@@ -24,12 +24,7 @@ export async function GET(req: Request) {
 
   let renewed = 0;
   for (const u of due) {
-    const r = renewalBalance(u);
-    await db.$transaction([
-      db.user.update({ where: { id: u.id }, data: { credits: r.next, purchasedCredits: r.purchased, creditsResetAt: now } }),
-      db.creditLedger.create({ data: { userId: u.id, delta: r.next - u.credits, reason: `renewal:${r.plan.id}${r.rollover ? `+rollover:${r.rollover}` : ""}` } }),
-    ]);
-    renewed++;
+    if (await renewCreditsIfDue(u.id, now)) renewed++;
   }
   return Response.json({ ok: true, renewed, checkedAt: now.toISOString() });
 }

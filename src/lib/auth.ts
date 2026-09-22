@@ -5,7 +5,7 @@ import bcrypt from "bcryptjs";
 import { db } from "./db";
 import type { PlanId } from "./plans";
 import { isPlanId } from "./plans";
-import { renewalBalance } from "./credits";
+import { renewCreditsIfDue } from "./credits";
 
 const COOKIE = "idaevia_session";
 const secret = () => {
@@ -43,7 +43,7 @@ async function readSession(): Promise<{ userId: string; ver: number } | null> {
   const token = store.get(COOKIE)?.value;
   if (!token) return null;
   try {
-    const { payload } = await jwtVerify(token, secret());
+    const { payload } = await jwtVerify(token, secret(), { algorithms: ["HS256"] });
     if (typeof payload.sub !== "string") return null;
     return { userId: payload.sub, ver: typeof payload.ver === "number" ? payload.ver : 0 };
   } catch {
@@ -52,7 +52,7 @@ async function readSession(): Promise<{ userId: string; ver: number } | null> {
 }
 
 export async function getSessionUserId(): Promise<string | null> {
-  return (await readSession())?.userId ?? null;
+  return (await getCurrentUser())?.id ?? null;
 }
 
 export type SessionUser = {
@@ -86,18 +86,7 @@ export async function getCurrentUser(): Promise<SessionUser | null> {
   const next = new Date(user.creditsResetAt);
   next.setMonth(next.getMonth() + 1);
   if (new Date() >= next) {
-    const r = renewalBalance(user);
-    const before = user.credits;
-    // Conditional update: concurrent requests (layout + page) renew at most once.
-    const done = await db.user.updateMany({
-      where: { id, creditsResetAt: user.creditsResetAt },
-      data: { credits: r.next, purchasedCredits: r.purchased, creditsResetAt: new Date() },
-    });
-    if (done.count === 1) {
-      await db.creditLedger.create({
-        data: { userId: id, delta: r.next - before, reason: `renewal:${r.plan.id}${r.rollover ? `+rollover:${r.rollover}` : ""}` },
-      });
-    }
+    await renewCreditsIfDue(id);
     user = await db.user.findUniqueOrThrow({ where: { id } });
   }
 
@@ -109,7 +98,7 @@ export async function getCurrentUser(): Promise<SessionUser | null> {
     role: user.role,
     plan: isPlanId(user.plan) ? user.plan : "FREE",
     credits: user.credits,
-    purchasedCredits: Math.min(user.purchasedCredits, user.credits),
+    purchasedCredits: Math.max(0, Math.min(user.purchasedCredits, user.credits)),
     creditsResetAt: user.creditsResetAt,
     createdAt: user.createdAt,
     whopUserId: user.whopUserId,

@@ -71,30 +71,34 @@ export async function estimateCreditsDetailed(opts: Parameters<typeof estimateCr
  * balance is corrected by the difference (release when under the hold, extra charge when over).
  */
 export async function finalizeCredits(opts: { userId: string; ledgerId: string; hold: number; byClassCredits: number; costUsd: number; k: number; purchasedHeld?: number; note: string; meta: Record<string, unknown> }): Promise<number> {
-  const due = Math.max(opts.byClassCredits, Math.ceil(opts.costUsd * opts.k));
-  const diff = opts.hold - due; // > 0: release, < 0: charge more
-  await db.$transaction(async (tx) => {
-    if (diff > 0) {
-      const purchased = Math.max(0, Math.min(opts.purchasedHeld ?? 0, diff));
-      await tx.user.update({ where: { id: opts.userId }, data: { credits: { increment: diff }, ...(purchased ? { purchasedCredits: { increment: purchased } } : {}) } });
-    } else if (diff < 0) {
-      await tx.$executeRaw`UPDATE "User" SET "credits" = GREATEST(0, "credits" + ${diff}), "purchasedCredits" = LEAST("purchasedCredits", GREATEST(0, "credits" + ${diff})) WHERE "id" = ${opts.userId}`;
-    }
-    await tx.creditLedger.update({ where: { id: opts.ledgerId }, data: { delta: -due, note: opts.note, meta: JSON.stringify({ ...opts.meta, estimatedHold: opts.hold, finalCredits: due }) } });
-  });
-  return due;
+  return settleCredits(opts, Math.max(opts.byClassCredits, Math.ceil(opts.costUsd * opts.k)), "final", opts.meta);
 }
 
-/** A failed run: give back everything (or keep `keep` credits for malformed output) and annotate the ledger row. */
-export async function releaseCredits(opts: { userId: string; ledgerId: string; hold: number; keep: number; purchasedHeld?: number; note: string }) {
-  const back = Math.max(0, opts.hold - opts.keep);
-  await db.$transaction(async (tx) => {
-    if (back > 0) {
-      const purchased = Math.max(0, Math.min(opts.purchasedHeld ?? 0, back));
-      await tx.user.update({ where: { id: opts.userId }, data: { credits: { increment: back }, ...(purchased ? { purchasedCredits: { increment: purchased } } : {}) } });
-    }
-    await tx.creditLedger.update({ where: { id: opts.ledgerId }, data: { delta: -opts.keep, note: opts.note } });
+/** Settle against the ledger's CURRENT debit, not the original hold. Retrying or
+ * failing after finalization can never return the same reserved credits twice. */
+async function settleCredits(opts: { userId: string; ledgerId: string; purchasedHeld?: number; note: string }, target: number, status: "final" | "refunded", meta: Record<string, unknown> = {}) {
+  if (!Number.isSafeInteger(target) || target < 0) throw new Error("Invalid credit settlement");
+  return db.$transaction(async (tx) => {
+    await tx.$queryRaw`SELECT "id" FROM "User" WHERE "id" = ${opts.userId} FOR UPDATE`;
+    const row = await tx.creditLedger.findFirstOrThrow({ where: { id: opts.ledgerId, userId: opts.userId } });
+    const previous = JSON.parse(row.meta ?? "{}") as Record<string, unknown>;
+    const spent = Math.max(0, -row.delta);
+    if (previous.settlement === "refunded" || (status === "final" && previous.settlement === "final")) return spent;
+    const user = await tx.user.findUniqueOrThrow({ where: { id: opts.userId } });
+    const due = Math.min(target, spent + Math.max(0, user.credits));
+    const diff = spent - due;
+    const purchasedUsed = typeof previous.purchasedUsed === "number" ? previous.purchasedUsed : opts.purchasedHeld ?? 0;
+    const restored = diff > 0 ? Math.min(purchasedUsed, diff) : 0;
+    const credits = user.credits + diff;
+    const purchasedCredits = Math.max(0, Math.min(Math.max(0, credits), user.purchasedCredits + restored));
+    await tx.user.update({ where: { id: user.id }, data: { credits, purchasedCredits } });
+    await tx.creditLedger.update({ where: { id: row.id }, data: { delta: -due, note: opts.note, meta: JSON.stringify({ ...previous, ...meta, finalCredits: due, settlement: status, purchasedUsed: purchasedUsed - restored + Math.max(0, user.purchasedCredits - purchasedCredits) }) } });
+    return due;
   });
+}
+
+export async function releaseCredits(opts: { userId: string; ledgerId: string; hold: number; keep: number; purchasedHeld?: number; note: string }) {
+  return settleCredits(opts, opts.keep, "refunded");
 }
 
 /**
@@ -103,6 +107,7 @@ export async function releaseCredits(opts: { userId: string; ledgerId: string; h
  * Returns how many purchased credits this reservation consumed (so a refund can restore them).
  */
 export async function reserveCredits(userId: string, amount: number, reason: string, projectId?: string, note?: string): Promise<{ purchasedSpent: number; ledgerId: string }> {
+  if (!Number.isSafeInteger(amount) || amount <= 0) throw new Error("Invalid credit amount");
   return db.$transaction(async (tx) => {
     const rows = await tx.$queryRaw<{ credits: number; purchasedBefore: number; purchasedAfter: number }[]>`
       UPDATE "User" u
@@ -129,7 +134,7 @@ export function renewalBalance(user: { plan: string; credits: number; purchasedC
   const purchased = Math.max(0, Math.min(user.purchasedCredits, user.credits));
   const unusedPlan = Math.max(0, user.credits - purchased);
   const rollover = Math.min(plan.credits, Math.floor((unusedPlan * plan.rolloverPct) / 100));
-  return { plan, rollover, purchased, next: plan.credits + rollover + purchased };
+  return { plan, rollover, purchased, next: plan.credits + rollover + purchased + Math.min(0, user.credits) };
 }
 
 export async function refundCredits(userId: string, amount: number, reason: string, projectId?: string, opts: { purchased?: number } = {}) {
@@ -149,4 +154,19 @@ export async function grantCredits(userId: string, amount: number, reason: strin
     }),
     db.creditLedger.create({ data: { userId, delta: amount, reason } }),
   ]);
+}
+
+/** Renewal and its audit row share the user lock with spending/top-ups. */
+export async function renewCreditsIfDue(userId: string, now = new Date()) {
+  return db.$transaction(async (tx) => {
+    await tx.$queryRaw`SELECT "id" FROM "User" WHERE "id" = ${userId} FOR UPDATE`;
+    const user = await tx.user.findUniqueOrThrow({ where: { id: userId } });
+    const next = new Date(user.creditsResetAt);
+    next.setMonth(next.getMonth() + 1);
+    if (now < next) return false;
+    const r = renewalBalance(user);
+    await tx.user.update({ where: { id: userId }, data: { credits: r.next, purchasedCredits: r.purchased, creditsResetAt: now } });
+    await tx.creditLedger.create({ data: { userId, delta: r.next - user.credits, reason: `renewal:${r.plan.id}${r.rollover ? `+rollover:${r.rollover}` : ""}` } });
+    return true;
+  });
 }

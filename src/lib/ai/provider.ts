@@ -1,3 +1,4 @@
+import "server-only";
 import Anthropic from "@anthropic-ai/sdk";
 import OpenAI from "openai";
 import type { ModelConfig } from "../settings";
@@ -26,6 +27,7 @@ export interface GenerateResult {
   inputTokens: number;
   outputTokens: number;
   cacheReadTokens?: number;
+  cacheCreationTokens?: number;
   stopReason?: string | null;
 }
 
@@ -105,7 +107,8 @@ export const anthropicProvider: AIProvider = {
       text,
       model: final.model,
       provider: "anthropic",
-      inputTokens: final.usage.input_tokens,
+      inputTokens: final.usage.input_tokens + (final.usage.cache_read_input_tokens ?? 0) + (final.usage.cache_creation_input_tokens ?? 0),
+      cacheCreationTokens: final.usage.cache_creation_input_tokens ?? 0,
       outputTokens: final.usage.output_tokens,
       cacheReadTokens: final.usage.cache_read_input_tokens ?? 0,
       stopReason: final.stop_reason,

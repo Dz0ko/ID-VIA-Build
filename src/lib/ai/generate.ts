@@ -134,7 +134,8 @@ export async function runAgent(opts: RunOptions) {
       signal: opts.signal,
     });
     const costUsd = resolved.provider.id === "mock" && !result.fellBack ? 0 : estimateUsd(result.model, result);
-    // Profit guarantee: final charge = max(class price, real cost × creditsPerUsd); the rest of the hold is released.
+    await db.agentRun.update({ where: { id: run.id }, data: { costUsd, model: result.model, inputTokens: result.inputTokens, outputTokens: result.outputTokens } });
+    // Final charge = max(class price, real cost × creditsPerUsd); the rest of the hold is released.
     const outK = Math.round(result.outputTokens / 1000);
     const creditsCharged = await finalizeCredits({ userId: opts.userId, ledgerId, hold: est.hold, byClassCredits: credits, costUsd, k: est.k, purchasedHeld: purchasedSpent, note: `${noteBase} · ${outK}k tokens generated${result.fellBack ? " · provider fallback" : ""}`, meta: { ...meta, model: result.model, inputTokens: result.inputTokens, outputTokens: result.outputTokens, costUsd: Number(costUsd.toFixed(4)) } });
     const usage = {

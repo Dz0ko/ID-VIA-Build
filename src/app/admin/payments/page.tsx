@@ -1,3 +1,5 @@
+import { getFinanceStats } from "@/lib/finance";
+import { FinancePanel } from "@/components/admin/FinancePanel";
 import { db } from "@/lib/db";
 import { PLANS, PLAN_ORDER, isPlanId, CREDIT_PACKS } from "@/lib/plans";
 import { whopConfigured } from "@/lib/whop";
@@ -7,7 +9,9 @@ export const dynamic = "force-dynamic";
 
 const usd = (n: number) => `$${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
-export default async function AdminPaymentsPage() {
+export default async function AdminPaymentsPage({ searchParams }: PageProps<"/admin/payments">) {
+  const period = (await searchParams).period === "30d" ? "30d" : "all";
+  const finance = await getFinanceStats(period);
   const [planGroups, memberships, packs, webhooks, upgrades] = await Promise.all([
     db.user.groupBy({ by: ["plan"], _count: true }),
     db.membership.findMany({ orderBy: { updatedAt: "desc" }, take: 100, include: { user: { select: { email: true, name: true } } } }),
@@ -22,6 +26,7 @@ export default async function AdminPaymentsPage() {
 
   return (
     <div className="space-y-6">
+      <FinancePanel stats={finance} />
       <section className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <div className="card p-4"><div className="label">MRR (list prices)</div><div className="mt-1 text-2xl font-semibold">{usd(mrr)}</div><div className="text-[11px] text-ash">ARR {usd(mrr * 12)}</div></div>
         <div className="card p-4"><div className="label">Active subscriptions</div><div className="mt-1 text-2xl font-semibold">{active}</div><div className="text-[11px] text-ash">{memberships.length - active} inactive</div></div>

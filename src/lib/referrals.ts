@@ -1,9 +1,8 @@
+import { signReferral, verifyReferral } from "./referral-cookie";
 import { customAlphabet } from "nanoid";
 import { cookies } from "next/headers";
 import { db } from "./db";
-import { grantCredits } from "./credits";
 import { getSettings } from "./settings";
-import { PLANS, type PlanId } from "./plans";
 
 /**
  * Referrals (every user) and affiliates (admin-managed partners).
@@ -25,8 +24,8 @@ export async function ensureReferralCode(userId: string) {
   for (let i = 0; i < 5; i++) {
     const code = makeCode();
     try {
-      await db.user.update({ where: { id: userId }, data: { referralCode: code } });
-      return code;
+      const assigned = await db.user.updateMany({ where: { id: userId, referralCode: null }, data: { referralCode: code } });
+      return assigned.count ? code : (await db.user.findUniqueOrThrow({ where: { id: userId } })).referralCode!;
     } catch { /* collision, retry */ }
   }
   throw new Error("Could not allocate a referral code");
@@ -45,18 +44,14 @@ export async function resolveCode(code: string) {
 
 export async function setAttributionCookie(ref: { kind: "affiliate" | "user"; id: string }) {
   const store = await cookies();
-  store.set(COOKIE, `${ref.kind === "affiliate" ? "a" : "u"}:${ref.id}`, {
+  store.set(COOKIE, signReferral(ref.kind, ref.id), {
     httpOnly: true, sameSite: "lax", path: "/", maxAge: COOKIE_DAYS * 86_400, secure: process.env.NODE_ENV === "production",
   });
 }
 
 async function readAttribution() {
   const store = await cookies();
-  const raw = store.get(COOKIE)?.value;
-  if (!raw) return null;
-  const [k, id] = raw.split(":");
-  if (!id) return null;
-  return k === "a" ? { kind: "affiliate" as const, id } : k === "u" ? { kind: "user" as const, id } : null;
+  return verifyReferral(store.get(COOKIE)?.value);
 }
 
 const REFERRAL_SIGNUP_CAP = 10;
@@ -80,17 +75,22 @@ export async function applyReferralOnSignup(newUserId: string) {
     return;
   }
 
-  const referrer = await db.user.findUnique({ where: { id: ref.id }, select: { id: true } });
-  if (!referrer) return;
-  await db.user.update({ where: { id: newUserId }, data: { referredById: referrer.id } });
-  if (s.referredSignupCredits > 0) await grantCredits(newUserId, s.referredSignupCredits, "referral_welcome", { purchased: true });
-  // Anti-farming: a referrer earns signup credits for at most REFERRAL_SIGNUP_CAP referrals per 30 days.
-  // Paid-conversion rewards (onPaidConversion) are uncapped, since they require a real payment.
-  if (s.referrerSignupCredits > 0) {
+  await db.$transaction(async (tx) => {
+    await tx.$queryRaw`SELECT "id" FROM "User" WHERE "id" = ${ref.id} FOR UPDATE`;
+    const referrer = await tx.user.findUnique({ where: { id: ref.id } });
+    if (!referrer) return;
+    const linked = await tx.user.updateMany({ where: { id: newUserId, referredById: null, affiliateId: null }, data: { referredById: referrer.id } });
+    if (!linked.count) return;
+    async function reward(userId: string, amount: number, reason: string) {
+      if (amount <= 0) return;
+      await tx.user.update({ where: { id: userId }, data: { credits: { increment: amount }, purchasedCredits: { increment: amount } } });
+      await tx.creditLedger.create({ data: { userId, delta: amount, reason } });
+    }
+    await reward(newUserId, s.referredSignupCredits, "referral_welcome");
     const since = new Date(Date.now() - 30 * 86400000);
-    const recent = await db.creditLedger.count({ where: { userId: referrer.id, reason: "referral_signup", createdAt: { gte: since } } });
-    if (recent < REFERRAL_SIGNUP_CAP) await grantCredits(referrer.id, s.referrerSignupCredits, "referral_signup", { purchased: true });
-  }
+    const recent = await tx.creditLedger.count({ where: { userId: ref.id, reason: "referral_signup", createdAt: { gte: since } } });
+    if (recent < REFERRAL_SIGNUP_CAP) await reward(ref.id, s.referrerSignupCredits, "referral_signup");
+  });
 }
 
 /**
@@ -105,46 +105,22 @@ export async function applyAttributionOnLogin(userId: string) {
   const store = await cookies();
   store.delete(COOKIE);
   if (ref.kind !== "affiliate" || ref.id === userId) return;
-  const user = await db.user.findUnique({ where: { id: userId }, select: { affiliateId: true } });
-  if (!user || user.affiliateId) return;
+  const user = await db.user.findUnique({ where: { id: userId }, select: { affiliateId: true, referredById: true } });
+  if (!user || user.affiliateId || user.referredById) return;
   const aff = await db.affiliate.findFirst({ where: { id: ref.id, active: true }, select: { id: true } });
   if (!aff) return;
   await db.user.update({ where: { id: userId }, data: { affiliateId: aff.id } });
 }
 
-/**
- * Called whenever a user pays for a plan (Whop webhook, or the dev plan switcher).
- * Records the affiliate commission and pays the referrer's one-time paid bonus.
- */
-export async function onPaidConversion(userId: string, opts: { plan?: PlanId; amountCents?: number; reason: string }) {
-  const user = await db.user.findUnique({ where: { id: userId }, select: { affiliateId: true, referredById: true, referralPaidRewarded: true } });
-  if (!user) return;
-  const amountCents = opts.amountCents ?? (opts.plan ? PLANS[opts.plan].price * 100 : 0);
-
-  if (user.affiliateId && amountCents > 0) {
-    const aff = await db.affiliate.findUnique({ where: { id: user.affiliateId } });
-    if (aff && aff.active) {
-      const commissionCents = Math.round((amountCents * aff.commissionPct) / 100);
-      if (commissionCents > 0) {
-        await db.affiliateCommission.create({ data: { affiliateId: aff.id, userId, amountCents, commissionCents, pct: aff.commissionPct, reason: opts.reason } });
-      }
-    }
-  }
-
-  if (user.referredById && !user.referralPaidRewarded) {
-    const s = (await getSettings()).referral;
-    await db.user.update({ where: { id: userId }, data: { referralPaidRewarded: true } });
-    if (s.referrerPaidCredits > 0) await grantCredits(user.referredById, s.referrerPaidCredits, "referral_paid", { purchased: true });
-  }
-}
-
 /** Stats for the profile "Invite friends" card. */
 export async function referralStats(userId: string) {
-  const [code, invited, converted, earned] = await Promise.all([
+  const [code, invited, converted, earned, cash, history] = await Promise.all([
     ensureReferralCode(userId),
     db.user.count({ where: { referredById: userId } }),
     db.user.count({ where: { referredById: userId, referralPaidRewarded: true } }),
-    db.creditLedger.aggregate({ _sum: { delta: true }, where: { userId, reason: { in: ["referral_signup", "referral_paid"] } } }),
+    db.creditLedger.aggregate({ _sum: { delta: true }, where: { userId, reason: { in: ["referral_signup", "referral_paid", "referral_adjustment"] } } }),
+    db.referralCommission.aggregate({ where: { referrerId: userId }, _sum: { commissionCents: true, reversedCents: true } }),
+    db.referralCommission.findMany({ where: { referrerId: userId }, orderBy: { createdAt: "desc" }, take: 20, select: { id: true, amountCents: true, commissionCents: true, reversedCents: true, createdAt: true } }),
   ]);
-  return { code, url: referralUrl(code), invited, converted, creditsEarned: earned._sum.delta ?? 0 };
+  return { cashEarnedCents: (cash._sum.commissionCents ?? 0) - (cash._sum.reversedCents ?? 0), history, code, url: referralUrl(code), invited, converted, creditsEarned: earned._sum.delta ?? 0 };
 }

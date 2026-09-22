@@ -28,6 +28,9 @@ export async function PATCH(req: Request) {
     if (body.data.name !== undefined) data.name = body.data.name;
     if (body.data.avatarUrl !== undefined) data.avatarUrl = body.data.avatarUrl || null;
     if (body.data.newPassword) {
+      const limited = await rateLimit(`pwchange:user:${user.id}`, 5, 3600);
+      if (limited) return limited;
+
       const row = await db.user.findUniqueOrThrow({ where: { id: user.id }, select: { passwordHash: true } });
       if (row.passwordHash) {
         if (!body.data.currentPassword || !(await verifyPassword(body.data.currentPassword, row.passwordHash))) return error("Current password is incorrect.", 403);
@@ -36,8 +39,6 @@ export async function PATCH(req: Request) {
     }
     if (!Object.keys(data).length) return error("Nothing to update.");
     if (data.passwordHash) {
-      const limited = await rateLimit(`pwchange:user:${user.id}`, 5, 3600);
-      if (limited) return limited;
       // Invalidate every other session and re-issue this one.
       const updated = await db.user.update({ where: { id: user.id }, data: { ...data, sessionVersion: { increment: 1 } } });
       await createSession(updated.id, updated.sessionVersion);

@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { Trash2 } from "@/components/icons";
-import { MARKETPLACE_FEE_PCT } from "@/lib/marketplace";
+import { MARKETPLACE_FEE_PCT } from "@/lib/marketplace-constants";
 
 type Item = { id: string; type: string; title: string; category: string; price: number; authorName: string; installs: number; sales: number; published: boolean; createdAt: string };
 type Order = { id: string; item: string; buyer: string; seller: string; priceCents: number; feeCents: number; sellerCents: number; status: string; createdAt: string; paidAt: string | null };

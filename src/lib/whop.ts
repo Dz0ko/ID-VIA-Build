@@ -64,7 +64,7 @@ export async function createWhopCheckoutSession(input: WhopCheckoutInput): Promi
         : {}),
     }),
   });
-  if (!res.ok) throw new Error(`Whop checkout failed (${res.status}): ${await res.text()}`);
+  if (!res.ok) throw new Error(`Whop checkout failed (${res.status}).`);
   const data = (await res.json()) as { id: string; purchase_url?: string };
   const url = data.purchase_url
     ? data.purchase_url.startsWith("http") ? data.purchase_url : `https://whop.com${data.purchase_url}`
@@ -231,4 +231,17 @@ export function extractWhop(ev: WhopWebhookEvent) {
   const email =
     d.email ?? (typeof d.user === "object" && d.user ? d.user.email : undefined);
   return { membershipId: d.id, planId, userId, email, status: d.status, valid: d.valid };
+}
+
+/** Server-to-server verification; never expose the returned payment object to clients. */
+export async function retrieveWhopPayment(id: string): Promise<Record<string, unknown>> {
+  if (!/^pay_[a-zA-Z0-9]+$/.test(id)) throw new Error("Invalid payment ID");
+  const res = await fetch(`https://api.whop.com/api/v1/payments/${encodeURIComponent(id)}`, {
+    headers: { Authorization: `Bearer ${process.env.WHOP_API_KEY}` }, cache: "no-store", signal: AbortSignal.timeout(15000),
+  });
+  if (!res.ok) throw new Error(`Payment verification failed (${res.status})`);
+  const data = await res.json() as Record<string, unknown>;
+  const company = typeof data.company === "object" && data.company ? (data.company as { id?: unknown }).id : data.company_id ?? data.company;
+  if (data.id !== id || company !== process.env.WHOP_COMPANY_ID) throw new Error("Payment identity mismatch");
+  return data;
 }

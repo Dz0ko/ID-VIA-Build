@@ -41,7 +41,7 @@ export default function Terms() {
       </Section>
 
       <Section title="7. Referral and affiliate programme">
-        <p>Referral links grant bonus credits to you and the people you refer, as shown in the app. Affiliates approved by us earn a commission on payments made by users they refer, at the rate shown in their affiliate dashboard, paid out through Whop. Self-referrals, fake accounts, misleading promotion, spam and bidding on our brand terms are prohibited and lead to forfeiture of rewards and termination. We may change or end the programme with notice.</p>
+        <p>Referral links grant bonus credits to you and the people you refer, as shown in the app. For friends who sign up through your link, you also earn 5% of successfully paid plan payments, including renewals, excluding taxes, credit packs and marketplace purchases. Refunds and disputes adjust cash and paid-conversion rewards. Cash rewards accumulate in your wallet and can be requested via Crypto or PayPal from $10, subject to admin review. Affiliates approved by us earn commissions at their agreed rate; friend and affiliate cash commissions do not stack on the same payment. Self-referrals, fake accounts, misleading promotion, spam and bidding on our brand terms are prohibited and lead to forfeiture of rewards and termination. We may change or end the programme with notice.</p>
       </Section>
 
       <Section title="8. Our intellectual property">

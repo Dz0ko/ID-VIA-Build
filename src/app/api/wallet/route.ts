@@ -6,17 +6,20 @@ import { MIN_PAYOUT_CENTS, describePayout, parsePayoutDetails, payoutDetailsSche
 /** Seller wallet: balance, payout destination and payout history. */
 export async function GET() {
   return withUser(async (user) => {
-    const [row, requests, earned] = await Promise.all([
+    const [row, requests, earned, referral] = await Promise.all([
       db.user.findUniqueOrThrow({ where: { id: user.id }, select: { sellerBalanceCents: true, sellerPaidOutCents: true, payoutMethod: true, payoutDetails: true } }),
       db.payoutRequest.findMany({ where: { userId: user.id }, orderBy: { createdAt: "desc" }, take: 50 }),
       db.purchase.aggregate({ _sum: { sellerCents: true }, where: { sellerId: user.id, status: "PAID" } }),
+      db.referralCommission.aggregate({ where: { referrerId: user.id }, _sum: { commissionCents: true, reversedCents: true } }),
     ]);
     const details = parsePayoutDetails(row.payoutMethod, row.payoutDetails);
     const pending = requests.find((r) => r.status === "PENDING");
     return json({
       balanceCents: row.sellerBalanceCents,
       paidOutCents: row.sellerPaidOutCents,
-      earnedCents: earned._sum.sellerCents ?? 0,
+      marketplaceEarnedCents: earned._sum.sellerCents ?? 0,
+      referralEarnedCents: (referral._sum.commissionCents ?? 0) - (referral._sum.reversedCents ?? 0),
+      earnedCents: (earned._sum.sellerCents ?? 0) + (referral._sum.commissionCents ?? 0) - (referral._sum.reversedCents ?? 0),
       pendingCents: pending?.amountCents ?? 0,
       minPayoutCents: MIN_PAYOUT_CENTS,
       payout: details,
@@ -42,25 +45,22 @@ export async function POST() {
   return withUser(async (user) => {
     const limited = await rateLimit(`payout:user:${user.id}`, 5, 3600);
     if (limited) return limited;
-    const row = await db.user.findUniqueOrThrow({ where: { id: user.id }, select: { sellerBalanceCents: true, payoutMethod: true, payoutDetails: true } });
-    const details = parsePayoutDetails(row.payoutMethod, row.payoutDetails);
-    if (!details) return error("Add a payout destination (crypto wallet or PayPal) first.");
-    if (row.sellerBalanceCents < MIN_PAYOUT_CENTS) return error(`The minimum payout is $${MIN_PAYOUT_CENTS / 100}.`);
-    const open = await db.payoutRequest.findFirst({ where: { userId: user.id, status: "PENDING" } });
-    if (open) return error("You already have a payout request waiting for approval.", 409);
-
-    const request = await db.$transaction(async (tx) => {
-      // Atomically move the whole balance into the request so it cannot be requested twice.
-      const rows = await tx.$queryRaw<{ amount: number }[]>`
-        UPDATE "User" SET "sellerBalanceCents" = 0
-        WHERE "id" = ${user.id} AND "sellerBalanceCents" >= ${MIN_PAYOUT_CENTS}
-        RETURNING (SELECT "sellerBalanceCents" FROM "User" u2 WHERE u2."id" = ${user.id}) AS amount`;
-      if (!rows.length) throw new Error("BALANCE_CHANGED");
-      const { method, ...rest } = details;
-      return tx.payoutRequest.create({ data: { userId: user.id, amountCents: Number(rows[0].amount), method, details: JSON.stringify(rest) } });
-    }).catch((e) => (e instanceof Error && e.message === "BALANCE_CHANGED" ? null : Promise.reject(e)));
-    if (!request) return error("Your balance changed, please try again.", 409);
-    console.info(`[wallet] payout requested ${request.amountCents}c by ${user.email} via ${request.method}`);
-    return json({ ok: true, request });
+    try {
+      const request = await db.$transaction(async (tx) => {
+        await tx.$queryRaw`SELECT "id" FROM "User" WHERE "id" = ${user.id} FOR UPDATE`;
+        const row = await tx.user.findUniqueOrThrow({ where: { id: user.id } });
+        const details = parsePayoutDetails(row.payoutMethod, row.payoutDetails);
+        if (!details) throw new Error("Add a payout destination (crypto wallet or PayPal) first.");
+        if (row.sellerBalanceCents < MIN_PAYOUT_CENTS) throw new Error(`The minimum payout is $${MIN_PAYOUT_CENTS / 100}.`);
+        if (await tx.payoutRequest.findFirst({ where: { userId: user.id, status: "PENDING" } })) throw new Error("You already have a payout request waiting for approval.");
+        const { method, ...rest } = details;
+        await tx.user.update({ where: { id: user.id }, data: { sellerBalanceCents: 0 } });
+        return tx.payoutRequest.create({ data: { userId: user.id, amountCents: row.sellerBalanceCents, method, details: JSON.stringify(rest) } });
+      });
+      return json({ ok: true, request: { id: request.id, amountCents: request.amountCents, status: request.status } });
+    } catch (e) {
+      if (e instanceof Error && /^(Add a payout|The minimum|You already)/.test(e.message)) return error(e.message, 409);
+      throw e;
+    }
   });
 }

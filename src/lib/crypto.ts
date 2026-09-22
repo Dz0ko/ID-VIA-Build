@@ -1,3 +1,4 @@
+import "server-only";
 import { createCipheriv, createDecipheriv, createHash, randomBytes } from "node:crypto";
 
 /** AES-256-GCM key derived from INTEGRATIONS_KEY (preferred) or AUTH_SECRET. */

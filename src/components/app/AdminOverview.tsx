@@ -1,7 +1,7 @@
 import Link from "next/link";
 import type { AdminStats } from "@/lib/admin-stats";
 import { PLANS } from "@/lib/plans";
-import { MARKETPLACE_FEE_PCT } from "@/lib/marketplace";
+import { MARKETPLACE_FEE_PCT } from "@/lib/marketplace-constants";
 
 const usd = (n: number) => `$${n.toLocaleString(undefined, { maximumFractionDigits: n < 100 ? 2 : 0 })}`;
 const num = (n: number) => n.toLocaleString();

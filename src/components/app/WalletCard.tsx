@@ -5,7 +5,7 @@ import { CRYPTO_NETWORKS } from "@/lib/wallet";
 import { BrandIcon } from "@/components/BrandIcon";
 
 type Wallet = {
-  balanceCents: number; paidOutCents: number; earnedCents: number; pendingCents: number; minPayoutCents: number;
+  marketplaceEarnedCents: number; referralEarnedCents: number; balanceCents: number; paidOutCents: number; earnedCents: number; pendingCents: number; minPayoutCents: number;
   payout: { method: "crypto"; network: string; address: string } | { method: "paypal"; email: string } | null;
   payoutLabel: string;
   requests: { id: string; amountCents: number; method: string; status: string; note: string | null; createdAt: string; resolvedAt: string | null }[];
@@ -57,8 +57,8 @@ export function WalletCard() {
   return (
     <section className="card overflow-hidden">
       <div className="px-6 py-4 border-b border-graphite flex items-center justify-between gap-3">
-        <div className="flex items-center gap-2"><BrandIcon name="wallet" size={16} /><h2 className="text-sm font-medium">Seller wallet</h2></div>
-        <span className="text-[11px] text-ash">Marketplace earnings · 90% of every sale</span>
+        <div className="flex items-center gap-2"><BrandIcon name="wallet" size={16} /><h2 className="text-sm font-medium">Wallet & payouts</h2></div>
+        <span className="text-[11px] text-ash">Marketplace earnings + 5% referral rewards</span>
       </div>
       <div className="p-6 grid md:grid-cols-[1.2fr_1fr] gap-6">
         <div>
@@ -67,7 +67,7 @@ export function WalletCard() {
             <div><div className="label">Pending payout</div><div className="mt-1 text-2xl font-semibold">{usd(w.pendingCents)}</div></div>
             <div><div className="label">Paid out</div><div className="mt-1 text-2xl font-semibold text-ash">{usd(w.paidOutCents)}</div></div>
           </div>
-          <div className="mt-2 text-[11px] text-ash">Earned in total {usd(w.earnedCents)} · minimum payout {usd(w.minPayoutCents)}</div>
+          <div className="mt-2 text-[11px] text-ash">Marketplace {usd(w.marketplaceEarnedCents)} · referrals {usd(w.referralEarnedCents)} · minimum payout {usd(w.minPayoutCents)}</div>
           <div className="mt-5 flex flex-wrap gap-2 items-center">
             <button disabled={!canRequest || busy} onClick={request} className="btn btn-primary btn-sm">Request payout {w.balanceCents > 0 ? `· ${usd(w.balanceCents)}` : ""}</button>
             {!w.payout && <span className="text-xs text-warning">Add a payout destination first.</span>}

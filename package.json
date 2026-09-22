@@ -14,7 +14,9 @@
     "setup": "prisma db push --skip-generate && tsx prisma/seed.ts",
     "tauri": "tauri",
     "vercel-build": "prisma generate && prisma db push --skip-generate && next build",
-    "db:migrate": "prisma db push --skip-generate"
+    "db:migrate": "prisma db push --skip-generate",
+    "test:security": "tsx --test tests/payment-math.test.ts tests/desktop-security.test.ts",
+    "test:financial-security": "node scripts/test-financial-security.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.127.0",
@@ -31,6 +33,7 @@
     "openai": "^7.20.0",
     "react": "19.2.8",
     "react-dom": "19.2.8",
+    "server-only": "^0.0.1",
     "tempo-sdk": "^0.0.45",
     "three": "^0.186.0",
     "zod": "^4.6.5"
@@ -48,5 +51,11 @@
     "tailwindcss": "^4",
     "tsx": "^4.23.15",
     "typescript": "^5"
+  },
+  "overrides": {
+    "dompurify": "^3.4.15",
+    "@prisma/config": {
+      "deepmerge-ts": "^8.0.2"
+    }
   }
 }

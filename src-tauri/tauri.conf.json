@@ -9,7 +9,7 @@
     "beforeDevCommand": "npm run dev"
   },
   "app": {
-    "withGlobalTauri": true,
+    "withGlobalTauri": false,
     "windows": [
       {
         "title": "IDÆVIA Build",
@@ -20,11 +20,15 @@
         "resizable": true,
         "fullscreen": false,
         "center": true,
-        "theme": "Dark"
+        "theme": "Dark",
+        "url": "/app",
+        "userAgent": "Mozilla/5.0 AppleWebKit/605.1.15 (KHTML, like Gecko) IDAEVIA-Desktop/0.1.0",
+        "devtools": false
       }
     ],
     "security": {
-      "csp": null
+      "csp": null,
+      "capabilities": []
     }
   },
   "bundle": {

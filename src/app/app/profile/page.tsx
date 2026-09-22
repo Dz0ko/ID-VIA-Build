@@ -9,7 +9,10 @@ import { WalletCard } from "@/components/app/WalletCard";
 import { referralStats } from "@/lib/referrals";
 import { getSettings } from "@/lib/settings";
 
-export default async function Profile() {
+export default async function Profile({ searchParams }: PageProps<"/app/profile">) {
+  const sections = [{ id: "account", label: "Account" }, { id: "plan", label: "Plan & billing" }, { id: "credits", label: "Credits & usage" }, { id: "wallet", label: "Wallet & payouts" }, { id: "referrals", label: "Referrals" }, { id: "security", label: "Password & security" }];
+  const requested = (await searchParams).section;
+  const section = typeof requested === "string" && sections.some((s) => s.id === requested) ? requested : "account";
   const user = await requireUser();
   const plan = PLANS[user.plan];
   const monthStart = new Date(user.creditsResetAt);
@@ -42,7 +45,7 @@ export default async function Profile() {
 
   return (
     <>
-      <PageHeader title="Your profile" subtitle="Account, sign-in methods and usage" />
+      <PageHeader title="Your profile" subtitle="Your account, billing, earnings and security in one place" />
       <div className="flex-1 overflow-y-auto p-6 space-y-6">
         <section className="card p-6 flex flex-col md:flex-row md:items-center gap-6">
           {user.avatarUrl ? (
@@ -66,7 +69,11 @@ export default async function Profile() {
           <Link href="/app/settings" className="btn btn-outline btn-sm shrink-0">Plan & billing</Link>
         </section>
 
-        <section className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <nav aria-label="Profile sections" className="flex flex-wrap gap-2 border-b border-graphite pb-4">
+          {sections.map((s) => <Link key={s.id} href={`/app/profile?section=${s.id}`} aria-current={section === s.id ? "page" : undefined} data-active={section === s.id} className="px-4 py-2.5 rounded-lg text-sm text-ash hover:text-paper hover:bg-ink data-[active=true]:bg-signal/10 data-[active=true]:text-signal-soft data-[active=true]:ring-1 data-[active=true]:ring-signal/30">{s.label}</Link>)}
+        </nav>
+        {section === "plan" && <section className="card p-6 space-y-4"><h2 className="text-lg font-semibold">{plan.name} plan</h2><p className="text-sm text-ash">{plan.credits.toLocaleString()} monthly credits · ${plan.price}/month · top tier: {TIER_LABELS[plan.maxTier]}</p><p className="text-sm text-ash">Manage your plan, buy a credit pack and view your subscription status.</p><Link href="/app/settings" className="btn btn-primary">Manage plan & billing</Link></section>}
+        {(section === "account" || section === "credits") && <section className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
           <div className="card p-4">
             <div className="label">Credits left</div>
             <div className="mt-1 text-2xl font-semibold">{user.credits.toLocaleString()} <span className="text-sm text-ash font-normal">/ {plan.credits.toLocaleString()}</span></div>
@@ -76,9 +83,9 @@ export default async function Profile() {
           <div className="card p-4"><div className="label">Used this cycle</div><div className="mt-1 text-2xl font-semibold">{used.toLocaleString()}</div><div className="mt-1 text-[11px] text-ash">{(usedAllTime._sum.creditsUsed ?? 0).toLocaleString()} credits all time</div></div>
           <div className="card p-4"><div className="label">Projects</div><div className="mt-1 text-2xl font-semibold">{projects}</div><div className="mt-1 text-[11px] text-ash">{plan.projectLimit === "unlimited" ? "Unlimited on your plan" : `${plan.projectLimit} allowed on ${plan.name}`}</div></div>
           <div className="card p-4"><div className="label">Agent runs</div><div className="mt-1 text-2xl font-semibold">{runs.toLocaleString()}</div><div className="mt-1 text-[11px] text-ash">Top model: {TIER_LABELS[plan.maxTier]}</div></div>
-        </section>
+        </section>}
 
-        <section className="card overflow-hidden">
+        {section === "credits" && <section className="card overflow-hidden">
           <div className="px-6 py-4 border-b border-graphite flex items-center justify-between gap-3">
             <div><h2 className="text-sm font-medium">Credit usage</h2><p className="text-[11px] text-ash mt-0.5">Every run is charged for the work it actually did: which agent, which model tier, how large the document was and how much the model generated. Deep-reasoning models (Opus, Fable, Astra) cost more per run.</p></div>
             <div className="text-right shrink-0"><div className="label">Used this month</div><div className="text-lg font-semibold">{used.toLocaleString()}</div></div>
@@ -99,13 +106,13 @@ export default async function Profile() {
               </tbody>
             </table>
           </div>
-        </section>
-        <WalletCard />
-        <ReferralCard url={ref.url} invited={ref.invited} converted={ref.converted} creditsEarned={ref.creditsEarned} rewards={settings.referral} />
+        </section>}
+        {section === "wallet" && <WalletCard />}
+        {section === "referrals" && <ReferralCard url={ref.url} invited={ref.invited} converted={ref.converted} creditsEarned={ref.creditsEarned} rewards={settings.referral} cashEarnedCents={ref.cashEarnedCents} history={ref.history.map((h) => ({ ...h, createdAt: h.createdAt.toISOString() }))} />}
 
-        <ProfileForm name={user.name ?? ""} avatarUrl={user.avatarUrl ?? ""} hasPassword={user.providers.password} />
+        {(section === "account" || section === "security") && <ProfileForm mode={section === "security" ? "security" : "profile"} name={user.name ?? ""} avatarUrl={user.avatarUrl ?? ""} hasPassword={user.providers.password} />}
 
-        <section className="card overflow-hidden">
+        {section === "account" && <section className="card overflow-hidden">
           <div className="px-4 py-3 border-b border-graphite flex items-center justify-between"><span className="text-sm font-medium">Recent projects</span><Link href="/app/projects" className="text-xs text-signal-soft hover:underline">All projects →</Link></div>
           <table className="w-full text-xs">
             <tbody>
@@ -120,7 +127,7 @@ export default async function Profile() {
               {recent.length === 0 && <tr><td className="p-4 text-ash" colSpan={4}>No projects yet. <Link href="/app/projects" className="underline">Create your first one.</Link></td></tr>}
             </tbody>
           </table>
-        </section>
+        </section>}
       </div>
     </>
   );

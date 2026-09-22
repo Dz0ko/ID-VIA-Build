@@ -2,7 +2,8 @@ import { db } from "./db";
 import { CRYPTO_PAYMENT_METHODS, createWhopCheckoutSession, rememberCheckout } from "./whop";
 
 /** Platform commission on every marketplace sale, in percent. */
-export const MARKETPLACE_FEE_PCT = 10;
+export { MARKETPLACE_FEE_PCT } from "./marketplace-constants";
+import { MARKETPLACE_FEE_PCT } from "./marketplace-constants";
 /** Sellers must price paid items at least this much (USD cents) so fees stay meaningful. */
 export const MARKETPLACE_MIN_PRICE_CENTS = 500;
 export const MARKETPLACE_MAX_PRICE_CENTS = 500_000;

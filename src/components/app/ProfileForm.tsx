@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 
-export function ProfileForm({ name, avatarUrl, hasPassword }: { name: string; avatarUrl: string; hasPassword: boolean }) {
+export function ProfileForm({ name, avatarUrl, hasPassword, mode = "profile" }: { mode?: "profile" | "security"; name: string; avatarUrl: string; hasPassword: boolean }) {
   const router = useRouter();
   const [form, setForm] = useState({ name, avatarUrl });
   const [pw, setPw] = useState({ currentPassword: "", newPassword: "", confirm: "" });
@@ -22,15 +22,15 @@ export function ProfileForm({ name, avatarUrl, hasPassword }: { name: string; av
   }
 
   return (
-    <div className="grid lg:grid-cols-2 gap-4">
-      <form className="card p-5 space-y-3" onSubmit={(e) => { e.preventDefault(); save({ name: form.name, avatarUrl: form.avatarUrl }); }}>
+    <div className="max-w-2xl">
+      {mode === "profile" && <form className="card p-5 space-y-3" onSubmit={(e) => { e.preventDefault(); save({ name: form.name, avatarUrl: form.avatarUrl }); }}>
         <h2 className="text-sm font-medium">Profile</h2>
         <label className="block text-sm"><span className="label">Display name</span><input className="input mt-1" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} minLength={2} maxLength={60} required /></label>
         <label className="block text-sm"><span className="label">Avatar URL</span><input className="input mt-1" value={form.avatarUrl} onChange={(e) => setForm({ ...form, avatarUrl: e.target.value })} placeholder="https://… (leave empty for initials)" /></label>
         <div className="flex items-center gap-3"><button disabled={busy} className="btn btn-primary btn-sm">Save profile</button>{msg && <span className={`text-xs ${msg.ok ? "text-success" : "text-error"}`}>{msg.text}</span>}</div>
-      </form>
+      </form>}
 
-      <form className="card p-5 space-y-3" onSubmit={(e) => {
+      {mode === "security" && <form className="card p-5 space-y-3" onSubmit={(e) => {
         e.preventDefault();
         if (pw.newPassword !== pw.confirm) return setMsg({ ok: false, text: "Passwords do not match." });
         save({ currentPassword: pw.currentPassword, newPassword: pw.newPassword }).then(() => setPw({ currentPassword: "", newPassword: "", confirm: "" }));
@@ -41,7 +41,9 @@ export function ProfileForm({ name, avatarUrl, hasPassword }: { name: string; av
         <label className="block text-sm"><span className="label">New password</span><input type="password" className="input mt-1" value={pw.newPassword} onChange={(e) => setPw({ ...pw, newPassword: e.target.value })} minLength={8} autoComplete="new-password" required /></label>
         <label className="block text-sm"><span className="label">Confirm</span><input type="password" className="input mt-1" value={pw.confirm} onChange={(e) => setPw({ ...pw, confirm: e.target.value })} minLength={8} autoComplete="new-password" required /></label>
         <button disabled={busy} className="btn btn-outline btn-sm">{hasPassword ? "Update password" : "Set password"}</button>
-      </form>
+        <p className="text-xs text-ash">Changing your password signs out all other sessions.</p>
+        {msg && <p role="status" className="text-sm text-signal-soft">{msg.text}</p>}
+      </form>}
     </div>
   );
 }

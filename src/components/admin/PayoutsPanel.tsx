@@ -10,18 +10,20 @@ const usd = (c: number) => `$${(c / 100).toFixed(2)}`;
 
 export function PayoutsPanel() {
   const [data, setData] = useState<{ requests: Req[]; sellers: Seller[]; sales: Sale[]; affiliates: Aff[] } | null>(null);
+  const [error, setError] = useState("");
   const [busy, setBusy] = useState<string | null>(null);
   const load = useCallback(async () => setData(await fetch("/api/admin/payouts").then((r) => r.json())), []);
   useEffect(() => { const t = setTimeout(load, 0); return () => clearTimeout(t); }, [load]);
 
   async function resolve(r: Req, action: "approve" | "reject") {
     const note = action === "approve"
-      ? prompt(`Confirm you have SENT ${usd(r.amountCents)} to:\n${r.destination}\n\nOptional note (transaction hash / reference):`, "")
-      : prompt(`Reject the ${usd(r.amountCents)} request from ${r.email}? The balance goes back to the seller.\n\nReason shown to the seller:`, "");
+      ? prompt(`Confirm you have SENT ${usd(r.amountCents)} to:\n${r.destination}\n\nRequired transaction hash / payment reference:`, "")
+      : prompt(`Reject the ${usd(r.amountCents)} request from ${r.email}? The balance goes back to the user.\n\nReason shown to the seller:`, "");
     if (note === null) return;
-    setBusy(r.id);
-    await fetch("/api/admin/payouts", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ requestId: r.id, action, note }) });
+    setBusy(r.id); setError("");
+    const response = await fetch("/api/admin/payouts", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ requestId: r.id, action, note }) });
     setBusy(null);
+    if (!response.ok) { setError((await response.json()).error ?? "Could not update payout."); return; }
     load();
   }
   async function payAffiliate(a: Aff) {
@@ -39,9 +41,10 @@ export function PayoutsPanel() {
 
   return (
     <div className="space-y-6">
+      {error && <p role="alert" className="text-sm text-error">{error}</p>}
       <section className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <div className="card p-4"><div className="label">Payout requests</div><div className={`mt-1 text-2xl font-semibold ${pending.length ? "text-warning" : ""}`}>{pending.length}</div><div className="text-[11px] text-ash">{usd(pendingCents)} waiting for your approval</div></div>
-        <div className="card p-4"><div className="label">Seller balances</div><div className="mt-1 text-2xl font-semibold">{usd(sellersOwed)}</div><div className="text-[11px] text-ash">not yet requested</div></div>
+        <div className="card p-4"><div className="label">User wallet balances</div><div className="mt-1 text-2xl font-semibold">{usd(sellersOwed)}</div><div className="text-[11px] text-ash">not yet requested</div></div>
         <div className="card p-4"><div className="label">Owed to affiliates</div><div className={`mt-1 text-2xl font-semibold ${affOwed ? "text-warning" : ""}`}>{usd(affOwed)}</div><div className="text-[11px] text-ash">{data.affiliates.filter((a) => a.owedCents > 0).length} partners waiting</div></div>
         <div className="card p-4"><div className="label">Paid out so far</div><div className="mt-1 text-2xl font-semibold text-success">{usd(paidOut)}</div></div>
       </section>
@@ -52,7 +55,7 @@ export function PayoutsPanel() {
         <div className="px-4 py-3 border-b border-graphite text-sm font-medium flex items-center justify-between"><span>Payout requests</span>{pending.length > 0 && <span className="pill text-[10px] border-warning/40 text-warning">{pending.length} pending</span>}</div>
         <div className="overflow-x-auto">
           <table className="w-full text-xs">
-            <thead className="text-ash border-b border-graphite"><tr><th className="text-left p-3 font-medium">Seller</th><th className="text-left p-3 font-medium">Amount</th><th className="text-left p-3 font-medium">Send to</th><th className="text-left p-3 font-medium">Requested</th><th className="text-left p-3 font-medium">Status</th><th className="p-3" /></tr></thead>
+            <thead className="text-ash border-b border-graphite"><tr><th className="text-left p-3 font-medium">User</th><th className="text-left p-3 font-medium">Amount</th><th className="text-left p-3 font-medium">Send to</th><th className="text-left p-3 font-medium">Requested</th><th className="text-left p-3 font-medium">Status</th><th className="p-3" /></tr></thead>
             <tbody>
               {data.requests.map((r) => (
                 <tr key={r.id} className="border-b border-graphite/60 align-top">
@@ -85,7 +88,7 @@ export function PayoutsPanel() {
         <div className="px-4 py-3 border-b border-graphite text-sm font-medium">Marketplace sales</div>
         <div className="overflow-x-auto">
           <table className="w-full text-xs">
-            <thead className="text-ash border-b border-graphite"><tr><th className="text-left p-3 font-medium">Item</th><th className="text-left p-3 font-medium">Buyer</th><th className="text-left p-3 font-medium">Seller</th><th className="text-left p-3 font-medium">Price</th><th className="text-left p-3 font-medium">Seller share</th><th className="text-left p-3 font-medium">Platform fee</th><th className="text-left p-3 font-medium">Status</th><th className="text-left p-3 font-medium">Date</th></tr></thead>
+            <thead className="text-ash border-b border-graphite"><tr><th className="text-left p-3 font-medium">Item</th><th className="text-left p-3 font-medium">Buyer</th><th className="text-left p-3 font-medium">User</th><th className="text-left p-3 font-medium">Price</th><th className="text-left p-3 font-medium">Seller share</th><th className="text-left p-3 font-medium">Platform fee</th><th className="text-left p-3 font-medium">Status</th><th className="text-left p-3 font-medium">Date</th></tr></thead>
             <tbody>
               {data.sales.map((s) => (
                 <tr key={s.id} className="border-b border-graphite/60">
@@ -104,7 +107,7 @@ export function PayoutsPanel() {
       <section className="card overflow-hidden">
         <div className="px-4 py-3 border-b border-graphite text-sm font-medium">Seller wallets</div>
         <table className="w-full text-xs">
-          <thead className="text-ash border-b border-graphite"><tr><th className="text-left p-3 font-medium">Seller</th><th className="text-left p-3 font-medium">Sales</th><th className="text-left p-3 font-medium">Balance</th><th className="text-left p-3 font-medium">Paid out</th><th className="text-left p-3 font-medium">Payout destination</th></tr></thead>
+          <thead className="text-ash border-b border-graphite"><tr><th className="text-left p-3 font-medium">User</th><th className="text-left p-3 font-medium">Sales</th><th className="text-left p-3 font-medium">Balance</th><th className="text-left p-3 font-medium">Paid out</th><th className="text-left p-3 font-medium">Payout destination</th></tr></thead>
           <tbody>
             {data.sellers.map((s) => (
               <tr key={s.id} className="border-b border-graphite/60">
