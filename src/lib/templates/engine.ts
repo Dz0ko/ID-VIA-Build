@@ -37,6 +37,8 @@ export interface SiteConfig {
   contact?: boolean;
   lang?: string;
   dark?: boolean;
+  /** Hand-written document (interactive mini-apps); when set, renderSite is skipped. */
+  html?: string;
 }
 
 export const PALETTES: Record<string, Palette> = {

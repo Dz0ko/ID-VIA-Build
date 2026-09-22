@@ -1,4 +1,5 @@
 import { PALETTES, renderSite, type SiteConfig } from "./engine";
+import { INTERACTIVE_TEMPLATES } from "./interactive";
 
 const t = (c: SiteConfig) => c;
 
@@ -587,13 +588,15 @@ export const TEMPLATES: SiteConfig[] = [
   }),
 ];
 
+TEMPLATES.push(...INTERACTIVE_TEMPLATES);
+
 export const TEMPLATE_MAP = new Map(TEMPLATES.map((t) => [t.id, t]));
 export const TEMPLATE_CATEGORIES = Array.from(new Set(TEMPLATES.map((t) => t.category)));
 
 export function renderTemplate(id: string) {
   const t = TEMPLATE_MAP.get(id);
   if (!t) return null;
-  return renderSite(t);
+  return t.html ?? renderSite(t);
 }
 
 export { renderSite, PALETTES };

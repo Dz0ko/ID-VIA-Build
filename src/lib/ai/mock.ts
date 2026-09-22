@@ -140,5 +140,5 @@ No AI provider key is configured, so this is a deterministic placeholder generat
   if (/\bdark\b/i.test(request)) cfg.palette = { ...PALETTES.dark, accent: cfg.palette.accent };
   if (/\blight\b/i.test(request)) cfg.palette = { ...PALETTES.light, accent: cfg.palette.accent };
   if (/macedonian|\bmk\b/i.test(request)) cfg.lang = "mk";
-  return renderSite(cfg);
+  return cfg.html ?? renderSite(cfg);
 }
