@@ -5,7 +5,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { BrandIcon, type BrandIconName } from "@/components/BrandIcon";
 
 /** Native scrolling drives the steps; wheel, touch and keyboard input stay with the browser. */
-function useStepScroll(count: number) {
+function useStepScroll(count: number, allowTallPanel = false) {
   const ref = useRef<HTMLDivElement>(null);
   const [index, setIndex] = useState(0);
   const navigate = useRef<((i: number) => void) | null>(null);
@@ -20,59 +20,69 @@ function useStepScroll(count: number) {
     let distance = 0;
     let current = 0;
     let reservedHeight = 0;
+    let stickyTop = 64;
     const select = (next: number) => {
       if (next !== current) { current = next; setIndex(next); }
     };
     const update = () => {
       frame = 0;
       if (!enabled) return;
-      const progress = (64 - track.getBoundingClientRect().top) / distance;
+      const progress = (stickyTop - track.getBoundingClientRect().top) / distance;
       select(Math.max(0, Math.min(count - 1, Math.floor(progress + 0.5))));
     };
     const onScroll = () => { if (!frame) frame = requestAnimationFrame(update); };
     const measure = () => {
-      // A panel taller than the available screen must remain freely scrollable.
+      // Tall team panels scroll their heading out of view before pinning the agent list.
       const height = panel.getBoundingClientRect().height;
-      enabled = media.matches && height <= window.innerHeight - 64;
+      enabled = media.matches && (allowTallPanel || height <= window.innerHeight - 64);
       if (enabled) {
         reservedHeight = Math.max(reservedHeight, height);
+        stickyTop = allowTallPanel ? Math.min(64, window.innerHeight - reservedHeight - 16) : 64;
+        if (allowTallPanel) panel.style.minHeight = `${reservedHeight}px`;
         distance = Math.max(320, window.innerHeight * 0.6);
         track.style.height = `${reservedHeight + (count - 1) * distance}px`;
         panel.style.position = "sticky";
-        panel.style.top = "64px";
+        panel.style.top = `${stickyTop}px`;
         update();
       } else {
         reservedHeight = 0;
         track.style.removeProperty("height");
         panel.style.removeProperty("position");
         panel.style.removeProperty("top");
+        if (allowTallPanel) panel.style.removeProperty("min-height");
       }
     };
     navigate.current = (next) => {
       select(next);
       if (enabled) {
-        const top = window.scrollY + track.getBoundingClientRect().top - 64 + next * distance;
+        const top = window.scrollY + track.getBoundingClientRect().top - stickyTop + next * distance;
         window.scrollTo({ top, behavior: "instant" });
       }
     };
+    const onResize = () => {
+      reservedHeight = 0;
+      if (allowTallPanel) panel.style.removeProperty("min-height");
+      measure();
+    };
     const observer = new ResizeObserver(measure);
     observer.observe(panel);
-    media.addEventListener("change", measure);
-    window.addEventListener("resize", measure);
+    media.addEventListener("change", onResize);
+    window.addEventListener("resize", onResize);
     window.addEventListener("scroll", onScroll, { passive: true });
     measure();
     return () => {
       observer.disconnect();
-      media.removeEventListener("change", measure);
-      window.removeEventListener("resize", measure);
+      media.removeEventListener("change", onResize);
+      window.removeEventListener("resize", onResize);
       window.removeEventListener("scroll", onScroll);
       cancelAnimationFrame(frame);
       navigate.current = null;
       track.style.removeProperty("height");
       panel.style.removeProperty("position");
       panel.style.removeProperty("top");
+      if (allowTallPanel) panel.style.removeProperty("min-height");
     };
-  }, [count]);
+  }, [count, allowTallPanel]);
 
   const set = (i: number) => {
     if (navigate.current) navigate.current(i);
@@ -212,7 +222,7 @@ const TEAM: { name: string; role: string; text: string; icon: BrandIconName }[] 
 
 export function AgentAccordion({ open, onOpen }: { open: number; onOpen: (i: number) => void }) {
   return (
-    <div className="space-y-3" data-stagger>
+    <div className="team-accordion space-y-3" data-stagger>
       {TEAM.map((t, i) => (
         <button key={t.name} onClick={() => onOpen(i)} className={`w-full text-left rounded-2xl border px-5 py-4 transition ${open === i ? "border-white/15 bg-[#141416]" : "border-graphite bg-[#0f0f11] hover:border-white/15"}`}>
           <div className="flex items-center gap-3"><span className={`w-9 h-9 rounded-full grid place-items-center ${open === i ? "bg-signal/20 text-signal-soft" : "bg-white/5 text-fog"}`}><BrandIcon name={t.icon} size={16} strokeWidth={1.7} /></span><span className="text-lg font-medium">{t.name}</span><span className="text-xs text-ash">· {t.role}</span></div>
@@ -228,7 +238,7 @@ const TEAM_FRAMES: ReactNode[] = [<WorkspaceFrame key="w" />, <WorkspaceFrame ke
 
 /** Sticky, scroll-driven "Your team" section: scrolling advances Builder → Designer → … */
 export function AgentTeamSection({ heading, intro, catalogHref, count }: { heading: ReactNode; intro: string; catalogHref: string; count: number }) {
-  const { ref, index, set } = useStepScroll(TEAM.length);
+  const { ref, index, set } = useStepScroll(TEAM.length, true);
   return (
     <div ref={ref}>
       <div className="grid lg:grid-cols-[1fr_1.15fr] gap-10 lg:gap-16 items-center lg:min-h-[calc(100vh-9rem)] py-2">

@@ -623,3 +623,9 @@ body {
 /* Native scrolling keeps the sticky showcases and long sections reachable. */
 html.landing-html { scroll-padding-top: 4rem; }
 html.landing-html body { overflow-x: clip; }
+
+/* Keep all five team controls readable when the panel pins on a short desktop. */
+@media (min-width: 1024px) and (max-height: 700px) {
+  .team-accordion { display: flex; flex-direction: column; gap: 8px; }
+  .team-accordion > button { margin-block: 0; padding-block: 10px; }
+}
