@@ -5,9 +5,9 @@ import * as THREE from "three";
 
 /**
  * Glossy liquid-metal sphere rendered with three.js. Slowly rotates, morphs with 3D noise
- * and tilts toward the mouse. With `roam` it drifts around the whole viewport on a smooth
- * path (left edge, top right, bottom, ...), nudged by scrolling, and is pushed away and
- * ripples harder when the pointer gets close.
+ * and tilts toward the mouse. With `roam` it drifts around its positioned host (the hero
+ * section) on a smooth path (left edge, top right, bottom, ...), nudged by scrolling, and is
+ * pushed away and ripples harder when the pointer gets close.
  */
 export function LiquidBlob({ className, roam = false }: { className?: string; roam?: boolean }) {
   const ref = useRef<HTMLDivElement>(null);
@@ -122,11 +122,14 @@ export function LiquidBlob({ className, roam = false }: { className?: string; ro
     const place = (t: number) => {
       if (!roam) return;
       const w = el.clientWidth, h = el.clientHeight;
-      const vw = window.innerWidth, vh = window.innerHeight;
+      // Roam inside the nearest positioned ancestor (the hero section), not the whole page.
+      const host = (el.parentElement?.offsetParent as HTMLElement | null) ?? el.parentElement!;
+      const hb = host.getBoundingClientRect();
+      const vw = hb.width, vh = hb.height;
       const phase = t * 0.11 + window.scrollY * 0.0012; // scrolling advances the path too
       const cx = vw / 2 + (vw / 2 - w * 0.35) * Math.sin(phase);
       const cy = vh / 2 + (vh / 2 - h * 0.35) * Math.sin(phase * 0.73 + 1.4);
-      const dx = pointer.x - cx, dy = pointer.y - cy;
+      const dx = pointer.x - (hb.left + cx), dy = pointer.y - (hb.top + cy); // pointer is in viewport space
       const d = Math.hypot(dx, dy);
       const R = w * 0.75;
       near += ((d < R ? 1 - d / R : 0) - near) * 0.08;

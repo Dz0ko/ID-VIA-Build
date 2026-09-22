@@ -25,8 +25,6 @@ export default async function Home() {
   return (
     <div className="min-h-screen bg-void text-paper landing">
       <LandingFx />
-      {/* Roaming 3D blob: fixed layer behind the content, flies around the whole page and reacts to the pointer */}
-      <div className="hidden lg:block fixed left-0 top-0 w-[340px] h-[340px] xl:w-[400px] xl:h-[400px] opacity-70 pointer-events-none z-0 will-change-transform"><HeroBlob roam className="absolute inset-0 [&>canvas]:w-full [&>canvas]:h-full" /></div>
 
       <header className="sticky top-0 z-40 bg-void/80 backdrop-blur-xl border-b border-graphite/70">
         <div className="max-w-[1400px] mx-auto px-8 md:px-12 h-16 flex items-center justify-between">
@@ -50,6 +48,8 @@ export default async function Home() {
         {/* HERO */}
         <section className="relative overflow-hidden stars snap-section lg:min-h-[calc(100vh-4rem)] flex flex-col justify-center">
           <div className="guide-x" />
+          {/* Roaming 3D blob: flies around inside the hero only (left edge, top right, bottom...) and reacts to the pointer */}
+          <div className="hidden lg:block absolute left-0 top-0 w-[340px] h-[340px] xl:w-[400px] xl:h-[400px] opacity-70 pointer-events-none z-0 will-change-transform"><HeroBlob roam className="absolute inset-0 [&>canvas]:w-full [&>canvas]:h-full" /></div>
           <div className="relative z-10 max-w-[1400px] mx-auto px-8 md:px-12 pt-20 md:pt-24 pb-14 md:pb-20 text-center">
             <h1 className="display-hero max-w-6xl mx-auto">
               <span className="word" style={{ animationDelay: "100ms" }}>Where</span>{" "}
