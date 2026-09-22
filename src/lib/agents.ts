@@ -1,5 +1,6 @@
 import type { ModelTier, PlanId } from "./plans";
 import { PLANS, planRank } from "./plans";
+import { designSkill } from "./ai/design-skill";
 
 export interface AgentDef {
   id: string;
@@ -19,7 +20,9 @@ export interface AgentDef {
 const BASE_RULES = `You are part of the IDÆVIA Build AI team. You work on a single-file website project.
 The project is one self-contained HTML document that uses Tailwind CSS via the CDN script tag, Google Fonts, and inline <script> for interactions.
 When you output the website, output ONLY the complete HTML document, starting with <!DOCTYPE html> and ending with </html>. No markdown fences, no commentary.
-Never use external CSS or JS files other than CDNs. Keep everything responsive and accessible.`;
+Never use external CSS or JS files other than CDNs. Keep everything responsive and accessible.
+
+${designSkill("html")}`;
 
 export const AGENTS: AgentDef[] = [
   {
