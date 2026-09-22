@@ -9,13 +9,14 @@ const COOKIES = [
   { name: "idaevia_ref", purpose: "Remembers the referral or affiliate code you arrived with so the referrer is credited when you sign up.", duration: "30 days", type: "Strictly necessary (functional)" },
   { name: "oauth_state, oauth_next", purpose: "Protect Google and GitHub sign-in against cross-site request forgery and return you to the page you came from. Set only during sign-in.", duration: "10 minutes", type: "Strictly necessary" },
   { name: "idaevia_cookie_notice", purpose: "Remembers that you have dismissed the cookie notice.", duration: "12 months", type: "Preference" },
+  { name: "Whop analytics (t.whop.tw)", purpose: "Aggregated page-view and conversion analytics provided by our payment processor Whop, so we can see how visitors move from the landing page to checkout. No advertising profiles are built.", duration: "Up to 13 months", type: "Analytics" },
 ];
 
 export default function Cookies() {
   return (
     <LegalPage
       title="Cookie Policy"
-      intro="Cookies are small text files stored in your browser. IDÆVIA Build uses only the cookies needed to run the Service. We do not use advertising, tracking or third-party analytics cookies."
+      intro="Cookies are small text files stored in your browser. IDÆVIA Build uses the cookies needed to run the Service plus one analytics pixel from our payment processor Whop. We do not use advertising cookies."
     >
       <Section title="1. Cookies we set">
         <div className="overflow-x-auto rounded-xl border border-graphite">
@@ -35,7 +36,7 @@ export default function Cookies() {
             </tbody>
           </table>
         </div>
-        <p>Because all of these cookies are necessary for the Service to work or store a choice you made, they do not require consent under the ePrivacy rules. The notice shown on your first visit is informational.</p>
+        <p>The IDÆVIA cookies are necessary for the Service to work or store a choice you made. The Whop analytics pixel measures traffic and conversions in aggregate; you can opt out of it by blocking third-party cookies or the domain t.whop.tw in your browser, and the Service keeps working normally.</p>
       </Section>
 
       <Section title="2. Local storage">

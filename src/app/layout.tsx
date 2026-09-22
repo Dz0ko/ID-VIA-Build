@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import localFont from "next/font/local";
 import "./globals.css";
 import { CookieNotice } from "@/components/CookieNotice";
+import { WhopPixel } from "@/components/WhopPixel";
 
 // Self-hosted variable fonts (no network fetch at dev/build start).
 const grotesk = localFont({
@@ -41,6 +42,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       <body className="min-h-full flex flex-col bg-void text-paper">
         {children}
         <CookieNotice />
+        <WhopPixel />
       </body>
     </html>
   );

@@ -5,6 +5,7 @@ import { planPurchasable, whopApiConfigured, whopConfigured } from "@/lib/whop";
 import { providerStatus } from "@/lib/ai/router";
 import { PageHeader } from "@/components/app/PageHeader";
 import { PlanSwitcher } from "@/components/app/PlanSwitcher";
+import { TrackEvent } from "@/components/TrackEvent";
 
 export default async function Settings({ searchParams }: PageProps<"/app/settings">) {
   const user = await requireUser();
@@ -30,10 +31,16 @@ export default async function Settings({ searchParams }: PageProps<"/app/setting
           <div className="rounded-lg border border-warning/40 bg-warning/10 px-4 py-3 text-sm text-warning">Credit packs are available on paid plans. Choose a plan first.</div>
         )}
         {sp.checkout === "plan" && (
-          <div className="rounded-lg border border-success/40 bg-success/10 px-4 py-3 text-sm text-success">Thanks! Your {String(sp.plan)} plan activates within a minute after Whop confirms the payment. Refresh this page.</div>
+          <>
+            <TrackEvent event="purchase_return" props={{ kind: "plan", plan: String(sp.plan) }} />
+            <div className="rounded-lg border border-success/40 bg-success/10 px-4 py-3 text-sm text-success">Thanks! Your {String(sp.plan)} plan activates within a minute after Whop confirms the payment. Refresh this page.</div>
+          </>
         )}
         {sp.checkout === "pack" && (
-          <div className="rounded-lg border border-success/40 bg-success/10 px-4 py-3 text-sm text-success">Thanks! {String(sp.credits)} credits are added within a minute after Whop confirms the payment.</div>
+          <>
+            <TrackEvent event="purchase_return" props={{ kind: "pack", credits: Number(sp.credits) }} />
+            <div className="rounded-lg border border-success/40 bg-success/10 px-4 py-3 text-sm text-success">Thanks! {String(sp.credits)} credits are added within a minute after Whop confirms the payment.</div>
+          </>
         )}
         <section>
           <div className="flex items-center justify-between mb-3">

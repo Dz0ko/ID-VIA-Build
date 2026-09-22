@@ -34,7 +34,7 @@ export default function Privacy() {
         <ul className="list-disc pl-5 space-y-1">
           <li><strong className="text-paper">Vercel</strong> (hosting and edge network, EU region), including error and access logs.</li>
           <li><strong className="text-paper">Supabase</strong> (PostgreSQL database, hosted in the EU, London region).</li>
-          <li><strong className="text-paper">Whop</strong> (payment processing, subscriptions and payouts). Whop is an independent controller for the payment data you enter with them; see their privacy policy.</li>
+          <li><strong className="text-paper">Whop</strong> (payment processing, subscriptions, payouts and aggregated traffic/conversion analytics via the Whop pixel). Whop is an independent controller for the payment data you enter with them; see their privacy policy.</li>
           <li><strong className="text-paper">Anthropic and OpenAI</strong> (AI model inference, United States).</li>
           <li><strong className="text-paper">Google and GitHub</strong> (optional sign-in). They only receive that you are signing in to IDÆVIA Build.</li>
         </ul>

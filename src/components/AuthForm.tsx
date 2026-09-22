@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
+import { whopTrack } from "@/components/WhopPixel";
 
 type Providers = { google: boolean; github: boolean };
 
@@ -62,6 +63,7 @@ export function AuthForm({ mode, providers }: { mode: "login" | "signup"; provid
     const data = await res.json().catch(() => ({}));
     setLoading(false);
     if (!res.ok) return setError(data.error ?? "Something went wrong.");
+    whopTrack(mode === "signup" ? "signup" : "login", { method: "email" });
     router.push(next);
     router.refresh();
   }

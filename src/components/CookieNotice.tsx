@@ -29,7 +29,7 @@ export function CookieNotice() {
   };
   return (
     <div role="dialog" aria-label="Cookie notice" className="fixed bottom-4 left-4 right-4 sm:left-auto sm:right-6 sm:max-w-sm z-[90] rounded-2xl border border-graphite bg-ink/95 backdrop-blur p-4 shadow-2xl text-sm">
-      <p className="text-fog">We only use cookies that are needed to sign you in and run the app. No ads, no tracking.{" "}
+      <p className="text-fog">We use cookies to sign you in and run the app, plus anonymous traffic analytics from Whop. No ads.{" "}
         <Link href="/cookies" className="text-paper underline">Cookie Policy</Link>
       </p>
       <div className="mt-3 flex justify-end">
