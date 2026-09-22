@@ -3,31 +3,47 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 
 /**
- * Maps scroll progress through a tall sticky section to an index (0..n-1). While the section
- * is pinned, scrolling advances the active item; a click still works and wins until the next scroll.
+ * Step-through on scroll: while the section fills the screen, each wheel / arrow / PageDown
+ * moves exactly one step (with a short lock so a single flick cannot skip steps). Past the last
+ * step (or before the first) the page scrolls normally to the next section. Disabled under 1024px.
  */
-function useScrollIndex(count: number, enabled = true) {
+function useStepScroll(count: number) {
   const ref = useRef<HTMLDivElement>(null);
   const [index, setIndex] = useState(0);
-  const manual = useRef(false);
+  const idx = useRef(0);
   useEffect(() => {
-    if (!enabled) return;
-    const onScroll = () => {
-      const el = ref.current; if (!el) return;
-      const rect = el.getBoundingClientRect();
-      const total = rect.height - window.innerHeight;
-      if (total <= 0) return;
-      // Progress through the tall wrapper: 0 when its top reaches the header, 1 when its bottom reaches the viewport bottom.
-      const p = Math.min(1, Math.max(0, (-rect.top + 80) / total));
-      if (rect.top > 80 || rect.bottom < window.innerHeight - 40) return; // not pinned yet / already passed
-      manual.current = false;
-      setIndex(Math.min(count - 1, Math.floor(p * count)));
+    const el = ref.current; if (!el) return;
+    let lock = false; let acc = 0;
+    const inView = () => { const r = el.getBoundingClientRect(); return window.innerWidth >= 1024 && r.top <= 110 && r.top >= -80; };
+    const step = (dir: 1 | -1) => {
+      if (lock) return;
+      const next = idx.current + dir;
+      if (next < 0 || next >= count) return;
+      lock = true; idx.current = next; setIndex(next);
+      setTimeout(() => { lock = false; }, 900);
     };
-    window.addEventListener("scroll", onScroll, { passive: true });
-    onScroll();
-    return () => window.removeEventListener("scroll", onScroll);
-  }, [count, enabled]);
-  const set = (i: number) => { manual.current = true; setIndex(i); };
+    const onWheel = (e: WheelEvent) => {
+      if (!inView()) return;
+      const dir: 1 | -1 = e.deltaY > 0 ? 1 : -1;
+      if ((dir > 0 && idx.current >= count - 1) || (dir < 0 && idx.current <= 0)) return; // release to normal scrolling
+      e.preventDefault();
+      if (lock) return;
+      acc += e.deltaY;
+      if (Math.abs(acc) < 24) return;
+      acc = 0; step(dir);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (!inView()) return;
+      const dir: 1 | -1 | 0 = e.key === "ArrowDown" || e.key === "PageDown" ? 1 : e.key === "ArrowUp" || e.key === "PageUp" ? -1 : 0;
+      if (!dir) return;
+      if ((dir > 0 && idx.current >= count - 1) || (dir < 0 && idx.current <= 0)) return;
+      e.preventDefault(); step(dir);
+    };
+    window.addEventListener("wheel", onWheel, { passive: false });
+    window.addEventListener("keydown", onKey);
+    return () => { window.removeEventListener("wheel", onWheel); window.removeEventListener("keydown", onKey); };
+  }, [count]);
+  const set = (i: number) => { idx.current = i; setIndex(i); };
   return { ref, index, set };
 }
 import { BrandIcon, type BrandIconName } from "@/components/BrandIcon";
@@ -180,16 +196,16 @@ const TEAM_FRAMES: ReactNode[] = [<WorkspaceFrame key="w" />, <WorkspaceFrame ke
 
 /** Sticky, scroll-driven "Your team" section: scrolling advances Builder → Designer → … */
 export function AgentTeamSection({ heading, intro, catalogHref, count }: { heading: ReactNode; intro: string; catalogHref: string; count: number }) {
-  const { ref, index, set } = useScrollIndex(TEAM.length);
+  const { ref, index, set } = useStepScroll(TEAM.length);
   return (
-    <div ref={ref} className="lg:min-h-[300vh]">
-      <div className="lg:sticky lg:top-20 grid lg:grid-cols-[1fr_1.15fr] gap-10 lg:gap-16 items-center lg:h-[calc(100vh-5rem)] py-4">
+    <div ref={ref}>
+      <div className="grid lg:grid-cols-[1fr_1.15fr] gap-10 lg:gap-16 items-center lg:min-h-[calc(100vh-9rem)] py-2">
         <div>
           <p className="label reveal">Your team</p>
           <h2 className="heading mt-3 reveal-text">{heading}</h2>
           <p className="mt-5 text-lg text-fog/90 max-w-xl reveal" style={{ transitionDelay: "120ms" }}>{intro}</p>
           <div className="mt-8"><AgentAccordion open={index} onOpen={set} /></div>
-          <a href={catalogHref} className="inline-flex mt-6 text-sm text-signal-soft hover:underline">See all {count} agents in the catalog →</a>
+          <div className="mt-6 flex items-center justify-between gap-4"><a href={catalogHref} className="text-sm text-signal-soft hover:underline">See all {count} agents in the catalog →</a><span className="hidden lg:inline text-[11px] text-ash">Scroll to step through · {index + 1}/{TEAM.length}</span></div>
         </div>
         <div key={index} className="hidden lg:block pop-in">{TEAM_FRAMES[index]}</div>
         <div className="lg:hidden"><WorkspaceFrame /></div>
@@ -207,11 +223,11 @@ const ROLES: { id: string; label: string; title: string; text: string; frame: Re
 ];
 
 export function RoleTabs() {
-  const { ref, index, set } = useScrollIndex(ROLES.length);
+  const { ref, index, set } = useStepScroll(ROLES.length);
   const r = ROLES[index];
   return (
-    <div ref={ref} className="lg:min-h-[240vh]">
-      <div className="lg:sticky lg:top-20 grid lg:grid-cols-[260px_1fr] gap-8 lg:gap-14 items-center lg:h-[calc(100vh-5rem)] py-4">
+    <div ref={ref}>
+      <div className="grid lg:grid-cols-[260px_1fr] gap-8 lg:gap-14 items-center lg:min-h-[calc(100vh-9rem)] py-2">
         <div className="flex lg:flex-col gap-4 lg:gap-6 lg:pt-12 overflow-x-auto">
           {ROLES.map((x, i) => (
             <button key={x.id} onClick={() => set(i)} className={`relative flex items-center gap-3 whitespace-nowrap text-left text-xl font-medium transition ${index === i ? "text-paper" : "text-ash hover:text-fog"}`}>

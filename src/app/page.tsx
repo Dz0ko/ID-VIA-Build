@@ -73,15 +73,15 @@ export default async function Home() {
         </section>
 
         {/* AGENT TEAM (scroll-driven) */}
-        <section id="agents" className="py-16 md:py-20 border-t border-graphite/70 guides snap-section">
-          <div className="max-w-[1400px] mx-auto px-8 md:px-12">
+        <section id="agents" className="py-12 md:py-14 border-t border-graphite/70 guides snap-section lg:min-h-[calc(100vh-4rem)] flex flex-col justify-center">
+          <div className="max-w-[1400px] mx-auto px-8 md:px-12 w-full">
             <AgentTeamSection heading={<>Give every idea<br />a team of {AGENTS.length} agents</>} intro="Assign work like you would to teammates. The Router picks the right specialist, each agent says what it will do, does it, and reports back in the chat." catalogHref={user ? "/app/agents" : "/signup"} count={AGENTS.length} />
           </div>
         </section>
 
         {/* FOR WHOM */}
-        <section id="features" className="py-16 md:py-20 border-t border-graphite/70 guides snap-section">
-          <div className="max-w-[1400px] mx-auto px-8 md:px-12">
+        <section id="features" className="py-12 md:py-14 border-t border-graphite/70 guides snap-section lg:min-h-[calc(100vh-4rem)] flex flex-col justify-center">
+          <div className="max-w-[1400px] mx-auto px-8 md:px-12 w-full">
             <RoleTabs />
           </div>
         </section>

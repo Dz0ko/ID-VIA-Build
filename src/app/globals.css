@@ -623,6 +623,6 @@ body {
 html.landing-html { scroll-behavior: smooth; }
 html.landing-html body { overflow-x: clip; } /* clip (not hidden) keeps position: sticky working */
 @media (min-width: 1024px) and (prefers-reduced-motion: no-preference) {
-  html.landing-html { scroll-snap-type: y proximity; scroll-padding-top: 4rem; }
+  html.landing-html { scroll-snap-type: y mandatory; scroll-padding-top: 4rem; }
   .snap-section { scroll-snap-align: start; }
 }
