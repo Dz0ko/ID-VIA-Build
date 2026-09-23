@@ -26,6 +26,11 @@ async function owned(id: string) {
 function failure(error: unknown) {
   return Response.json({ error: error instanceof ShellError ? error.message : "Terminal request failed. Check the runtime connection and E2B quota." }, { status: 409 });
 }
+async function foregroundProcess(sandbox: Awaited<ReturnType<typeof connectShell>>["sandbox"], pid: number) {
+  const result = await sandbox.commands.run(`ps -o tpgid=,pgid= -p ${pid}`, { timeoutMs: 5000 });
+  const [foreground, shell] = result.stdout.trim().split(/\s+/);
+  return { foreground, shell, running: Boolean(foreground && shell && foreground !== shell) };
+}
 
 export async function POST(req: Request, ctx: RouteContext<"/api/projects/[id]/shell">) {
   const { id } = await ctx.params;
@@ -57,10 +62,19 @@ export async function POST(req: Request, ctx: RouteContext<"/api/projects/[id]/s
       await syncSavedShell(sandbox, state, access.project);
     } else if (action.action === "input" || action.action === "command") {
       if (action.action === "command") {
-        // Do not accidentally send a chat request into an interactive child process.
-        const result = await sandbox.commands.run(`ps -o tpgid=,pgid= -p ${state.pid}`, { timeoutMs: 5000 });
-        const [foreground, shell] = result.stdout.trim().split(/\s+/);
-        if (!foreground || foreground !== shell) throw new ShellError("A command is already running. Use the terminal to answer it or press Ctrl+C first.");
+        // A queued UI command is a request to start a new shell command. If a
+        // previous preview/build is still in the foreground, interrupt only
+        // that process first. Raw keyboard input remains available through the
+        // input action, so interactive commands can still be answered normally.
+        const process = await foregroundProcess(sandbox, state.pid);
+        if (process.running) {
+          await sandbox.pty.sendInput(state.pid, new Uint8Array([3]));
+          for (let attempt = 0; attempt < 10; attempt++) {
+            await new Promise((resolve) => setTimeout(resolve, 100));
+            if (!(await foregroundProcess(sandbox, state.pid)).running) break;
+          }
+          if ((await foregroundProcess(sandbox, state.pid)).running) throw new ShellError("The running command did not stop. Press Ctrl+C in the terminal and try again.");
+        }
         await syncSavedShell(sandbox, state, access.project);
       }
       await sandbox.pty.sendInput(state.pid, new TextEncoder().encode(action.data + (action.action === "command" ? "\n" : "")));
