@@ -30,7 +30,7 @@ export function AdminShell({ user, children }: { user: SessionUser; children: Re
   }
 
   return (
-    <div className="admin-theme h-screen flex">
+    <div className="admin-theme h-dvh flex">
       <aside className="w-48 xl:w-56 shrink-0 border-r border-graphite bg-ink flex flex-col p-4">
         <Link href="/admin" className="px-3 py-5 text-lg font-semibold tracking-tight">IDÆVIA <span className="text-xs text-ash font-normal">Admin</span></Link>
         <nav aria-label="Admin sections" className="space-y-1 mt-4">
@@ -48,7 +48,7 @@ export function AdminShell({ user, children }: { user: SessionUser; children: Re
           <h1 className="text-2xl font-semibold tracking-tight">{current.label}</h1>
           <p className="text-sm text-fog mt-1">{current.hint}</p>
         </header>
-        <main className="flex-1 overflow-y-auto p-8">{children}</main>
+        <main className="admin-content flex-1 overflow-y-auto p-8">{children}</main>
       </div>
     </div>
   );

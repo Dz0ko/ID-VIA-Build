@@ -62,20 +62,19 @@ function ShellLayout({ user, children }: { user: SessionUser; children: React.Re
 
   return (
     <NavigationContext.Provider value={{ open: menuOpen, toggle: () => setMenuOpen((open) => !open) }}>
-    <div className="h-dvh flex bg-void">
-      {menuOpen && <aside id="workspace-navigation" className="w-[232px] shrink-0 border-r border-graphite flex flex-col bg-void">
-        <div className="h-14 flex items-center px-4 border-b border-graphite"><Logo href="/app" size={24} /></div>
-        <nav className="flex-1 px-2 py-3 space-y-4 overflow-y-auto">
+    <div className="app-theme h-dvh flex bg-void">
+      {menuOpen && <aside id="workspace-navigation" className="workspace-sidebar w-[224px] shrink-0 border-r border-graphite flex flex-col">
+        <div className="h-[76px] flex items-center px-5"><Logo href="/app" size={24} /></div>
+        <nav aria-label="Workspace sections" className="flex-1 px-3 py-2 space-y-5 overflow-y-auto">
           {GROUPS.map((g) => (
             <div key={g.title}>
-              <div className="px-3 mb-1 text-[10px] font-mono uppercase tracking-[0.14em] text-ash/70">{g.title}</div>
+              <div className="nav-group-label">{g.title}</div>
               <div className="space-y-px">
                 {g.items.map((n) => {
                   const active = n.exact ? pathname === n.href : pathname.startsWith(n.href);
                   const locked = n.minPlan && !planAtLeast(user.plan, n.minPlan);
                   return (
-                    <Link key={n.href} href={n.href} className={`relative flex items-center gap-2.5 rounded-md px-3 py-[7px] text-[13px] transition ${active ? "bg-graphite/80 text-paper" : "text-fog/90 hover:bg-ink hover:text-paper"}`}>
-                      {active && <span className="absolute left-0 top-1/2 -translate-y-1/2 h-4 w-0.5 rounded-full bg-signal" />}
+                    <Link key={n.href} href={n.href} className="workspace-nav-link" aria-current={active ? "page" : undefined}>
                       <BrandIcon name={n.icon} size={16} className={active ? "text-paper" : "text-ash"} />
                       <span className="flex-1 truncate">{n.label}</span>
                       {locked && <BrandIcon name="lock" size={12} className="text-ash/70" />}
@@ -86,12 +85,12 @@ function ShellLayout({ user, children }: { user: SessionUser; children: React.Re
             </div>
           ))}
           {user.role === "ADMIN" && (
-            <Link href="/admin" className="flex items-center gap-2.5 rounded-md px-3 py-[7px] text-[13px] text-fog/90 hover:bg-ink hover:text-paper transition">
+            <Link href="/admin" className="workspace-nav-link">
               <BrandIcon name="admin" size={16} className="text-ash" /><span className="flex-1">Admin console</span><span className="text-[10px] text-ash">↗</span>
             </Link>
           )}
         </nav>
-        <div className="p-3 border-t border-graphite space-y-3">
+        <div className="sidebar-account p-4 border-t border-graphite space-y-4">
           <div>
             <div className="flex items-center justify-between text-xs">
               <span className="text-fog flex items-center gap-1.5"><BrandIcon name="credits" size={13} className="text-ash" />{user.credits.toLocaleString()} credits</span>
@@ -115,7 +114,7 @@ function ShellLayout({ user, children }: { user: SessionUser; children: React.Re
           </div>
         </div>
       </aside>}
-      <div className="flex-1 min-w-0 flex flex-col overflow-hidden">{children}</div>
+      <div className="workspace-content flex-1 min-w-0 flex flex-col overflow-hidden">{children}</div>
     </div>
     </NavigationContext.Provider>
   );

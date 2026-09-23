@@ -67,10 +67,10 @@ export function ComponentCatalog({ selected, onToggle }: { selected?: string[]; 
       {!filtered.length && <div className="card p-10 text-center"><h3 className="font-medium">No matching components</h3><p className="text-sm text-ash mt-2 mb-4">Try another name or category.</p><button className="btn btn-ghost btn-sm" onClick={reset}>Clear filters</button></div>}
       <div className="grid sm:grid-cols-2 xl:grid-cols-3 gap-4">
         {visible.map((c) => {
-          return <article key={c.id} className="card p-3 flex flex-col gap-3" data-component-id={c.id}>
+          return <article key={c.id} className="card catalog-card flex flex-col" data-component-id={c.id}>
             <LivePreview html={c.html} title={c.name} height={220} />
-            <div className="px-1 flex-1"><div className="flex items-center justify-between gap-2 mb-2"><span className="label">{c.category}</span><span className="text-xs text-ash">{c.technology}</span></div><h3 className="font-medium text-sm">{c.name}</h3><p className="text-xs text-ash mt-1.5 leading-relaxed">{c.description}</p></div>
-            <div className="flex flex-wrap justify-between gap-2 px-1 pb-1"><button type="button" className="btn btn-ghost btn-sm" onClick={() => { setCopyState(""); setCode(c); }}>View code</button>{onToggle ? <button type="button" className="btn btn-primary btn-sm" aria-pressed={selected?.includes(c.id) ?? false} disabled={!selected?.includes(c.id) && (selected?.length ?? 0) >= 3} onClick={() => onToggle(c.id)}>{selected?.includes(c.id) ? "Selected ✓" : "Select component"}</button> : <UseInProject prompt={`${c.prompt}${c.prompt.includes("[COMPONENT:") ? "" : ` [COMPONENT:${c.id}]`}`} label="Add to project" />}</div>
+            <div className="catalog-card-copy flex-1"><div className="flex items-center justify-between gap-2 mb-2"><span className="label">{c.category}</span><span className="text-xs text-ash">{c.technology}</span></div><h3 className="font-medium text-sm">{c.name}</h3><p className="text-xs text-ash mt-1.5 leading-relaxed">{c.description}</p></div>
+            <div className="catalog-card-footer flex flex-wrap justify-between gap-2"><button type="button" className="btn btn-ghost btn-sm" onClick={() => { setCopyState(""); setCode(c); }}>View code</button>{onToggle ? <button type="button" className="btn btn-primary btn-sm" aria-pressed={selected?.includes(c.id) ?? false} disabled={!selected?.includes(c.id) && (selected?.length ?? 0) >= 3} onClick={() => onToggle(c.id)}>{selected?.includes(c.id) ? "Selected ✓" : "Select component"}</button> : <UseInProject prompt={`${c.prompt}${c.prompt.includes("[COMPONENT:") ? "" : ` [COMPONENT:${c.id}]`}`} label="Add to project" />}</div>
           </article>;
         })}
       </div>

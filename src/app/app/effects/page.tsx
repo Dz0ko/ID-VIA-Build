@@ -22,13 +22,13 @@ export default function Effects() {
               {effects.filter((e) => e.group === g).map((e) => {
                 const html = e.html;
                 return (
-                  <div key={e.id} className="card p-3 flex flex-col gap-3">
+                  <div key={e.id} className="card catalog-card flex flex-col">
                     {html && <LivePreview html={html} title={e.name} height={220} />}
-                    <div className="px-1 flex-1">
+                    <div className="catalog-card-copy flex-1">
                       <div className="font-medium text-sm">{e.name}</div>
                       <p className="text-xs text-ash mt-1">{e.description}</p>
                     </div>
-                    <div className="flex justify-end px-1 pb-1"><UseInProject prompt={e.prompt} agent="animation" label="Add to project" /></div>
+                    <div className="catalog-card-footer flex justify-end"><UseInProject prompt={e.prompt} agent="animation" label="Add to project" /></div>
                   </div>
                 );
               })}
