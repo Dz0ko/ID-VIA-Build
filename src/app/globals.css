@@ -663,7 +663,7 @@ html.landing-html body { overflow-x: clip; }
 /* Branded composer controls; menus render above the workspace's clipped panels. */
 .workspace-composer textarea.input {
   min-width: 0;
-  height: clamp(116px, 18dvh, 190px);
+  height: clamp(64px, 9dvh, 96px);
   padding: 14px 16px;
   font-size: 14px;
   line-height: 1.65;

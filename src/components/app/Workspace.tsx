@@ -7,6 +7,8 @@ import Link from "next/link";
 import {
   ArrowLeft, Rocket, Download, Monitor, Tablet, Smartphone, Code2, Eye, History, MessageSquare, TerminalSquare, AlertTriangle, Lock, Play, RotateCcw, Save, Activity, ExternalLink, Users, FileCode2, Folder, ChevronRight, Image as ImageIcon, X, Share2, Link2, Trash2, CheckCircle2,
 } from "@/components/icons";
+import { shellIntent } from "@/lib/shell-intent";
+import { runtimeCommand } from "@/lib/runtime-command";
 import { ComposerSelect } from "./ComposerSelect";
 import { WorkspaceMenuButton } from "./Shell";
 import type { AgentDef } from "@/lib/agents";
@@ -15,6 +17,7 @@ import { MODEL_TIERS } from "@/lib/plans";
 import type { AuditResult } from "@/lib/audit";
 
 const MonacoEditor = dynamic(() => import("@monaco-editor/react").then((m) => m.default), { ssr: false });
+const ShellTerminal = dynamic(() => import("./ShellTerminal").then((m) => m.ShellTerminal), { ssr: false });
 const AppSandbox = dynamic(() => import("./AppSandbox").then((m) => m.AppSandbox), { ssr: false });
 
 type Version = { id: string; number: number; message: string; createdAt: string };
@@ -74,7 +77,7 @@ export function Workspace(p: WorkspaceProps) {
   const [credits, setCredits] = useState(p.credits);
   const [showFiles, setShowFiles] = useState(false);
   const [showTeam, setShowTeam] = useState(false);
-  const [expandedPanel, setExpandedPanel] = useState(false);
+  const [expandedPanel, setExpandedPanel] = useState(true);
   const [fileQuery, setFileQuery] = useState("");
   const [view, setView] = useState<"preview" | "code">("preview");
   const [device, setDevice] = useState<"desktop" | "tablet" | "mobile">("desktop");
@@ -87,6 +90,15 @@ export function Workspace(p: WorkspaceProps) {
   const [busy, setBusy] = useState<string | null>(null);
   const [stream, setStream] = useState("");
   const [logs, setLogs] = useState<LogLine[]>([{ t: now(), text: "Workspace ready.", kind: "info" }]);
+  const [runtimePreview, setRuntimePreview] = useState<{ url: string; source: string } | null>(null);
+  const runtimeSource = isApp ? JSON.stringify(files) : html;
+  const runtimeUrl = runtimePreview?.source === runtimeSource ? runtimePreview.url : null;
+  const terminalAction = useRef<((cmd: string) => Promise<void>) | null>(null);
+  const terminalRunning = useRef(false);
+  const terminalAbort = useRef<AbortController | null>(null);
+  const buildAfterRun = useRef(false);
+  const [shellCommand, setShellCommand] = useState<{ id: number; text: string } | null>(null);
+  const [shellOpened, setShellOpened] = useState(false);
   const [termBusy, setTermBusy] = useState(false);
   const [audit, setAudit] = useState<AuditResult | null>(p.project.health ? JSON.parse(p.project.health) : null);
   const [publishing, setPublishing] = useState(false);
@@ -98,6 +110,7 @@ export function Workspace(p: WorkspaceProps) {
   const [linkForm, setLinkForm] = useState({ label: "", password: "" });
   const terminalEnd = useRef<HTMLDivElement>(null);
   const chatEnd = useRef<HTMLDivElement>(null);
+  const followChat = useRef(true);
   const autoRan = useRef(false);
   const abortRef = useRef<AbortController | null>(null);
   const busyRef = useRef<string | null>(null);
@@ -114,10 +127,10 @@ export function Workspace(p: WorkspaceProps) {
   const previewSrc = useMemo(() => html || `<!DOCTYPE html><html><body style="margin:0;height:100vh;display:grid;place-items:center;font-family:system-ui;background:#0a0a0b;color:#8a8a93">Describe what to build in the chat below.</body></html>`, [html]);
   const log = useCallback((text: string, kind: LogLine["kind"] = "info") => setLogs((l) => [...l, { t: now(), text, kind }]), []);
 
-  useEffect(() => { const el = chatEnd.current?.parentElement; if (el) el.scrollTop = el.scrollHeight; }, [messages, stream, bottom]);
+  useEffect(() => { const el = chatEnd.current?.parentElement; if (el && followChat.current) el.scrollTop = el.scrollHeight; }, [messages, stream, busy, bottom]);
   useEffect(() => { const el = terminalEnd.current?.parentElement; if (el) el.scrollTop = el.scrollHeight; }, [termLines, bottom]);
   useEffect(() => {
-    const t = setTimeout(() => setTermLines(["IDÆVIA terminal · commands run on the server with full logs. Type `help`.", "Try: status · preview · publish · git push · deploy vercel · env set KEY=VALUE · supabase link"]), 0);
+    const t = setTimeout(() => setTermLines(["IDÆVIA terminal · project commands and isolated builds. Type `help`.", "Try: npm run build · preview · stop · status · git push · deploy vercel"]), 0);
     return () => clearTimeout(t);
   }, []);
 
@@ -128,6 +141,8 @@ export function Workspace(p: WorkspaceProps) {
     setBusy(agentToRun);
     setStream("");
     setBottom("chat");
+    setExpandedPanel(true);
+    followChat.current = true;
     setMessages((m) => [...m, { id: `tmp-${Date.now()}`, role: "user", content: imgs.length ? `${request}\n[${imgs.length} image(s) attached]` : request, agentId: agentToRun, creditsUsed: 0, model: null, createdAt: new Date().toISOString() }]);
     log(`▶ ${agentToRun}: ${request.slice(0, 80)}${imgs.length ? ` (+${imgs.length} img)` : ""}`);
     const ac = new AbortController();
@@ -165,6 +180,11 @@ export function Workspace(p: WorkspaceProps) {
           else if (ev.type === "done") {
             completed = true;
             if (ev.mode === "rewrite") {
+              // A code-writing agent hands off to the isolated terminal after it
+              // finishes. The build is intentionally queued only once, after a
+              // chained workflow has completed, so every specialist can edit
+              // the same source without starting competing runtimes.
+              buildAfterRun.current = true;
               if (ev.files) { setFiles(ev.files); setSavedFiles(ev.files); setActiveFile((f) => (ev.files.some((x: ProjFile) => x.path === f) ? f : "/App.tsx")); }
               else { setHtml(ev.html); setSavedHtml(ev.html); }
               setVersions((v) => [{ id: `v${ev.versionNumber}`, number: ev.versionNumber, message: `${agentToRun}: ${request.slice(0, 120)}`, createdAt: new Date().toISOString() }, ...v]);
@@ -191,12 +211,23 @@ export function Workspace(p: WorkspaceProps) {
     }
   }, [allAgents, isApp, log, p.project.id, provider, router, tier]);
 
+  useEffect(() => { terminalAction.current = term; });
+
   const run = useCallback(async (request: string, agentToRun: string = agentId, chain: string[] = []) => {
-    if (!request.trim() || busyRef.current) return;
+    if (!request.trim() || busyRef.current || terminalRunning.current) return;
+    const command = shellIntent(request) ?? runtimeCommand(request);
+    if (command && !chain.length) { await terminalAction.current?.(command); return; }
     const imgs = images; setImages([]);
+    buildAfterRun.current = false;
+    let completed = true;
     for (const [i, id] of [agentToRun, ...chain].entries()) {
       const ok = await runOne(request, id, i === 0 ? imgs : []);
-      if (!ok) { setInput((current) => current || request); if (i === 0) setImages(imgs); break; }
+      if (!ok) { completed = false; setInput((current) => current || request); if (i === 0) setImages(imgs); break; }
+    }
+    if (completed && buildAfterRun.current) {
+      buildAfterRun.current = false;
+      log("↪ Code complete · handing off to Terminal for build and preview");
+      await term("npm run build");
     }
   }, [agentId, images, runOne]);
 
@@ -305,24 +336,39 @@ export function Workspace(p: WorkspaceProps) {
   }
 
   async function term(cmdRaw: string) {
-    const cmd = cmdRaw.trim();
+    const platformAction = /^platform:\s*/i.test(cmdRaw);
+    const cmd = cmdRaw.trim().replace(/^platform:\s*/i, "");
     const out: string[] = [`$ ${cmd}`];
     const push = (...l: string[]) => setTermLines((x) => [...x, ...l]);
-    if (!cmd || termBusy) return;
+    if (!cmd || terminalRunning.current || busyRef.current) return;
+    const execution = platformAction ? null : runtimeCommand(cmd);
+    const shell = platformAction ? null : shellIntent(cmd);
+    if (shell || execution) {
+      if (dirty) { try { await persistCode(false); } catch (e) { setError(e instanceof Error ? e.message : "Could not save source"); return; } }
+      const text = shell ?? (execution === "preview" ? (isApp ? "npm install && npm run dev -- --host 0.0.0.0 --port 3000" : "npm run dev") : execution === "stop" ? "\x03" : "npm run build");
+      setShellCommand({ id: Date.now(), text }); setShellOpened(true); setBottom("terminal"); setExpandedPanel(true);
+      return;
+    }
+    setBottom("terminal");
+    setExpandedPanel(true);
     if (cmd === "clear") { setTermLines([]); return; }
     if (cmd === "versions" || cmd === "git log") { push(...out, ...versions.map((v) => `v${String(v.number).padStart(2, "0")}  ${new Date(v.createdAt).toLocaleString()}  ${v.message}`)); return; }
     if (cmd.startsWith("git checkout v")) { const n = Number(cmd.replace("git checkout v", "")); restore(n); push(...out, `Restoring v${n}…`); return; }
     if (cmd === "export") { exportZip(); push(...out, "Exporting…"); return; }
     if (cmd === "agents") { push(...out, ...allAgents.map((a) => `${isAllowed(a.id) ? "●" : "○"} ${a.id.padEnd(18)} ${a.short}`)); return; }
-    if (cmd.startsWith("run ")) { const [id, ...rest] = cmd.slice(4).split(" "); run(rest.join(" ") || "Improve the project.", id); push(...out, `Running ${id}…`); return; }
+    if (!execution && cmd.startsWith("run ")) { const [id, ...rest] = cmd.slice(4).split(" "); run(rest.join(" ") || "Improve the project.", id); push(...out, `Running ${id}…`); return; }
     {
       // Project commands use the same authenticated server endpoint on web and desktop.
       // Web: real commands run on the server and stream their log lines (git push, deploy vercel, publish, env…).
       push(...out);
       setTermBusy(true);
+      terminalRunning.current = true;
+      const ac = new AbortController();
+      terminalAbort.current = ac;
+      if (execution) setRuntimePreview(null);
       try {
         if (dirty) await persistCode(false);
-        const res = await fetch(`/api/projects/${p.project.id}/terminal`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ cmd }) });
+        const res = await fetch(`/api/projects/${p.project.id}/terminal`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ cmd }), signal: ac.signal });
         if (!res.ok || !res.body) { const d = await res.json().catch(() => ({})); push(`✗ ${d.error ?? `HTTP ${res.status}`}`); setTermBusy(false); return; }
         const reader = res.body.getReader(); const dec = new TextDecoder(); let buf = "";
         for (;;) {
@@ -331,15 +377,21 @@ export function Workspace(p: WorkspaceProps) {
           const parts = buf.split("\n\n"); buf = parts.pop() ?? "";
           for (const part of parts) {
             const m = part.match(/^data: (.*)$/m); if (!m) continue;
-            try { const ev = JSON.parse(m[1]) as { kind: string; line: string }; if (ev.kind === "done") continue; push(ev.line); if (ev.kind === "ok") log(ev.line, "ok"); if (ev.kind === "err") log(ev.line, "err"); if (/^✓ Live at |^https:\/\//.test(ev.line) && cmd.startsWith("publish")) setStatus("PUBLISHED"); } catch { /* ignore */ }
+            try { const ev = JSON.parse(m[1]) as { kind: string; line: string }; if (ev.kind === "done") continue; if (ev.kind === "preview") { const url = new URL(ev.line); if (url.protocol === "https:" && url.hostname.endsWith(".e2b.app")) { setRuntimePreview({ url: url.href, source: runtimeSource }); setView("preview"); setExpandedPanel(false); } } push(ev.line); if (ev.kind === "ok") log(ev.line, "ok"); if (ev.kind === "err") log(ev.line, "err"); if (/^✓ Live at |^https:\/\//.test(ev.line) && cmd.startsWith("publish")) setStatus("PUBLISHED"); } catch { /* ignore */ }
           }
         }
       } catch (e) { push(`✗ ${e instanceof Error ? e.message : "terminal error"}`); }
-      setTermBusy(false);
+      finally { setTermBusy(false); terminalRunning.current = false; terminalAbort.current = null; }
       return;
     }
 
   }
+
+  useEffect(() => {
+    if (!runtimePreview) return;
+    const timer = setTimeout(() => setRuntimePreview(null), 15 * 60_000);
+    return () => clearTimeout(timer);
+  }, [runtimePreview]);
 
   const width = device === "desktop" ? "100%" : device === "tablet" ? 820 : 390;
   const fileTree = useMemo(() => files.filter((f) => f.path.toLowerCase().includes(fileQuery.toLowerCase())).sort((a, b) => a.path.localeCompare(b.path)), [files, fileQuery]);
@@ -355,9 +407,11 @@ export function Workspace(p: WorkspaceProps) {
           <div className="text-[11px] text-ash font-mono truncate">{status === "PUBLISHED" ? `live · /s/${p.project.slug}` : "draft"} · {credits.toLocaleString()} credits{clientStatus !== "NONE" && ` · client: ${clientStatus.toLowerCase().replace("_", " ")}`}</div>
         </div>
         <div className="mx-auto flex items-center gap-1 border border-graphite rounded-full p-0.5">
-          <button onClick={() => setView("preview")} className={`btn btn-sm ${view === "preview" ? "btn-primary" : "btn-ghost"}`}><Eye size={13} />Preview</button>
-          <button onClick={() => { setView("code"); setShowFiles(true); }} className={`btn btn-sm ${view === "code" ? "btn-primary" : "btn-ghost"}`}><Code2 size={13} />Code</button>
+          <button onClick={() => { setBottom("chat"); setExpandedPanel(true); }} className={`btn btn-sm ${expandedPanel && bottom === "chat" ? "btn-primary" : "btn-ghost"}`}><MessageSquare size={13} />Chat</button>
+          <button onClick={() => { setView("preview"); setExpandedPanel(false); }} className={`btn btn-sm ${!expandedPanel && view === "preview" ? "btn-primary" : "btn-ghost"}`}><Eye size={13} />Preview</button>
+          <button onClick={() => { setView("code"); setExpandedPanel(false); setShowFiles(true); }} className={`btn btn-sm ${!expandedPanel && view === "code" ? "btn-primary" : "btn-ghost"}`}><Code2 size={13} />Code</button>
         </div>
+        <button disabled={!!busy || termBusy} onClick={() => term(isApp ? "npm install && npm run build && npm run preview -- --host 0.0.0.0 --port 3000" : "npm run build && npm run preview")} className="btn btn-outline btn-sm"><Play size={13} />{termBusy ? "Running…" : "Build & preview"}</button>
         {!isApp && <div className="hidden lg:flex items-center gap-0.5 border border-graphite rounded-full p-0.5">
           {([["desktop", Monitor], ["tablet", Tablet], ["mobile", Smartphone]] as const).map(([d, I]) => (
             <button key={d} onClick={() => setDevice(d)} className={`btn btn-sm ${device === d ? "bg-graphite" : "btn-ghost"}`} title={d}><I size={13} /></button>
@@ -391,7 +445,7 @@ export function Workspace(p: WorkspaceProps) {
             </>
           ) : (
             <>
-              <button onClick={() => { setView("code"); setShowFiles(true); }} className={`w-full text-left px-2 py-1 pl-6 flex items-center gap-1.5 rounded ${view === "code" ? "bg-graphite text-paper" : "text-fog hover:bg-ink"}`}><FileCode2 size={12} className="text-signal-soft" />index.html{dirty && <span className="ml-auto w-1.5 h-1.5 rounded-full bg-warning" />}</button>
+              <button onClick={() => { setView("code"); setExpandedPanel(false); setShowFiles(true); }} className={`w-full text-left px-2 py-1 pl-6 flex items-center gap-1.5 rounded ${view === "code" ? "bg-graphite text-paper" : "text-fog hover:bg-ink"}`}><FileCode2 size={12} className="text-signal-soft" />index.html{dirty && <span className="ml-auto w-1.5 h-1.5 rounded-full bg-warning" />}</button>
 
             </>
           )}
@@ -407,9 +461,12 @@ export function Workspace(p: WorkspaceProps) {
 
         {/* Center */}
         <section className="min-w-0 min-h-0 flex-1 flex flex-col">
-          <div className="flex-1 min-h-0 bg-[#050506] p-3 overflow-auto">
+          <div className="flex-1 min-h-0 bg-[#050506] p-3 overflow-auto" hidden={expandedPanel}>
             {view === "preview" ? (
-              isApp ? (
+              runtimeUrl ? <div className="h-full flex flex-col">
+                <div className="shrink-0 flex items-center gap-3 pb-2 text-xs text-ash"><span className="truncate">{runtimeUrl}</span><a href={runtimeUrl} target="_blank" rel="noopener noreferrer" className="btn btn-ghost btn-sm">Open preview <ExternalLink size={12} /></a><button onClick={() => term("stop")} disabled={termBusy} className="btn btn-ghost btn-sm">Stop</button></div>
+                <iframe title="Built project preview" src={runtimeUrl} className="w-full flex-1 min-h-0 rounded-lg border border-graphite bg-white" sandbox="allow-scripts allow-forms allow-popups allow-modals allow-same-origin" />
+              </div> : isApp ? (
                 <div className="h-full rounded-lg overflow-hidden border border-graphite bg-white">
                   {files.length ? <AppSandbox files={files} /> : <div className="h-full grid place-items-center text-sm text-ash bg-void">Describe the app you want in the chat below: e.g. “Build an admin dashboard for a SaaS with sidebar, KPI cards, a revenue chart and a customers table.”</div>}
                 </div>
@@ -446,26 +503,34 @@ export function Workspace(p: WorkspaceProps) {
           </div>
 
           {/* Bottom panel */}
-          <div className="shrink-0 min-h-0 border-t border-graphite flex flex-col" style={{ height: expandedPanel ? "72%" : "46%", minHeight: "min(340px, 60dvh)" }}>
+          <div className="shrink-0 min-h-0 border-t border-graphite flex flex-col" style={{ height: expandedPanel ? "100%" : "55%", minHeight: "min(440px, 70dvh)" }}>
             <div className="h-10 shrink-0 flex items-center gap-1 px-2 border-b border-graphite text-xs overflow-x-auto">
               {([["chat", "AI Chat", MessageSquare], ["changes", "Changes", History], ["terminal", "Terminal", TerminalSquare], ["logs", "Logs", Activity], ["problems", "Problems", AlertTriangle], ["share", "Share / Client portal", Share2]] as const).map(([id, label, I]) => (
-                <button key={id} onClick={() => { setBottom(id); if (id === "share") loadShare(); }} className={`btn btn-sm ${bottom === id ? "bg-graphite text-paper" : "btn-ghost"}`}><I size={12} />{label}{id === "problems" && audit?.issues.length ? <span className="ml-1 text-[10px] text-warning">{audit.issues.length}</span> : null}</button>
+                <button key={id} onClick={() => { setBottom(id); if (id === "terminal") setShellOpened(true); if (id === "share") loadShare(); }} className={`btn btn-sm ${bottom === id ? "bg-graphite text-paper" : "btn-ghost"}`}><I size={12} />{label}{id === "problems" && audit?.issues.length ? <span className="ml-1 text-[10px] text-warning">{audit.issues.length}</span> : null}</button>
               ))}
-              <button onClick={() => setExpandedPanel(!expandedPanel)} aria-label={expandedPanel ? "Shrink panel" : "Expand panel"} aria-expanded={expandedPanel} className="btn btn-ghost btn-sm ml-auto">{expandedPanel ? "↓" : "↑"}</button>
+              <button onClick={() => setExpandedPanel(!expandedPanel)} aria-label={expandedPanel ? "Show preview and chat" : "Focus chat panel"} title={expandedPanel ? "Show preview and chat" : "Focus chat panel"} aria-expanded={expandedPanel} className="btn btn-ghost btn-sm ml-auto">{expandedPanel ? "↓" : "↑"}</button>
+              {termBusy && <button onClick={() => terminalAbort.current?.abort()} className="btn btn-ghost btn-sm">Cancel command</button>}
               {busy && <span className="ml-auto flex items-center gap-2 text-signal-soft whitespace-nowrap"><span className="w-1.5 h-1.5 rounded-full bg-signal pulse-dot" />{busy} working…<button onClick={() => abortRef.current?.abort()} className="text-ash hover:text-paper">stop</button></span>}
             </div>
 
             {bottom === "chat" && (
               <div className="flex-1 min-h-0 flex flex-col">
-                <div className="flex-1 min-h-0 overflow-y-auto p-3 space-y-2 text-sm">
+                <div onScroll={(e) => { const el = e.currentTarget; followChat.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80; }} className="flex-1 min-h-0 overflow-y-auto px-5 py-6 space-y-6 text-sm leading-7">
                   {messages.length === 0 && !stream && <div className="text-ash text-xs">{isApp ? "Describe the app. Example: “Build a CRM dashboard with sidebar, KPI cards, revenue chart and a deals table.”" : "Describe what you want. Example: “Build a dark SaaS landing page for an AI CRM with pricing and FAQ.”"}</div>}
                   {messages.map((m) => (
-                    <div key={m.id} className={`max-w-[85%] rounded-2xl px-3 py-2 ${m.role === "user" ? "ml-auto bg-graphite rounded-br-sm" : "border border-graphite rounded-bl-sm text-fog"}`}>
+                    <div key={m.id} className={`w-fit max-w-[90%] rounded-2xl px-5 py-3 ${m.role === "user" ? "ml-auto bg-graphite rounded-br-sm" : "border border-graphite rounded-bl-sm text-fog"}`}>
                       {m.role !== "user" && (() => { const a = allAgents.find((x) => x.id === m.agentId); return <div className="font-mono text-[10px] text-signal-soft mb-1">{a?.name ?? m.agentId ?? "IDÆVIA"}{a?.profession ? <span className="text-ash"> · {a.profession}</span> : null}{m.creditsUsed ? ` · ${m.creditsUsed} cr` : ""}</div>; })()}
                       <div className="whitespace-pre-wrap break-words">{m.content}</div>
                     </div>
                   ))}
-                  {stream && <div className="max-w-[85%] rounded-2xl px-3 py-2 border border-graphite rounded-bl-sm text-fog"><div className="font-mono text-[10px] text-signal-soft mb-1">{allAgents.find((x) => x.id === busy)?.name ?? busy} · working</div><pre className="font-mono text-[11px] whitespace-pre-wrap break-words max-h-32 overflow-hidden text-ash">{stream.slice(-1200)}</pre></div>}
+                  {busy && <div className="rounded-2xl border border-graphite p-5 text-fog space-y-3">
+                    <div role="status" className="flex items-center gap-2 text-sm text-signal-soft"><span className="w-2 h-2 rounded-full bg-signal pulse-dot" />{allAgents.find((x) => x.id === busy)?.name ?? busy} · {stream ? "Generating output" : "Preparing your request"}</div>
+                    <p className="text-sm text-ash">{stream ? `${stream.split("\n").length.toLocaleString()} lines received · The preview updates when the result is saved.` : "Waiting for the model to start responding…"}</p>
+                    {stream && <details open>
+                      <summary className="cursor-pointer text-sm text-fog">Live output</summary>
+                      <pre className="mt-3 font-mono text-xs leading-6 whitespace-pre-wrap break-words text-ash">{stream}</pre>
+                    </details>}
+                  </div>}
                   {error && <div className="text-error text-xs">{error}</div>}
                   <div ref={chatEnd} />
                 </div>
@@ -487,7 +552,7 @@ export function Workspace(p: WorkspaceProps) {
                       ...MODEL_CHOICES.map((c) => ({ value: c.value, label: c.label, group: "Choose a model", description: TIERS.indexOf(c.tier) > TIERS.indexOf(p.maxTier) ? "Upgrade your plan to use this model" : undefined, disabled: TIERS.indexOf(c.tier) > TIERS.indexOf(p.maxTier) })),
                     ]} />
                   </div>
-                  <textarea aria-label="Project prompt" value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); const r = input; if (!busyRef.current && r.trim()) { setInput(""); run(r); } } }} rows={6} className="input col-span-3 min-w-0 resize-none" placeholder={isAuto ? "Describe what to build or change. IDÆVIA picks the right agent." : agent.mode === "rewrite" ? "What should the AI build or change?" : `Ask ${agent.name} for a report…`} />
+                  <textarea aria-label="Project prompt" value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); const r = input; if (!busyRef.current && r.trim()) { setInput(""); run(r); } } }} rows={2} className="input col-span-3 min-w-0 resize-none" placeholder={isAuto ? "Describe what to build or change. IDÆVIA picks the right agent." : agent.mode === "rewrite" ? "What should the AI build or change?" : `Ask ${agent.name} for a report…`} />
                   <span className="text-[11px] text-ash self-center">Enter to send · Shift + Enter for a new line</span>
                   <input ref={fileInput} type="file" accept="image/png,image/jpeg,image/webp,image/gif" multiple hidden onChange={(e) => { attachImages(e.target.files); e.target.value = ""; }} />
                   <button type="button" onClick={() => (p.visionAllowed ? fileInput.current?.click() : setError("Screenshot → website (vision) is available from the Starter plan."))} title="Attach reference images (screenshot → website)" className={`btn btn-outline ${p.visionAllowed ? "" : "opacity-60"}`}><ImageIcon size={14} />{!p.visionAllowed && <Lock size={10} />}</button>
@@ -505,12 +570,14 @@ export function Workspace(p: WorkspaceProps) {
               </div>
             )}
 
-            {bottom === "terminal" && (
-              <div className="flex-1 min-h-0 flex flex-col font-mono text-xs bg-[#050506]">
-                <div className="flex-1 overflow-y-auto p-3 space-y-0.5 text-fog whitespace-pre-wrap break-words">{termLines.map((l, i) => <div key={i} className={l.startsWith("$") ? "text-paper" : ""}>{l}</div>)}<div ref={terminalEnd} /></div>
-                <form onSubmit={(e) => { e.preventDefault(); const c = termInput; setTermInput(""); term(c); }} className="flex items-center gap-2 px-3 py-2 border-t border-graphite"><span className="text-signal-soft truncate max-w-[40%]">$</span><input aria-label="Terminal command" value={termInput} disabled={termBusy} onChange={(e) => setTermInput(e.target.value)} className="flex-1 bg-transparent outline-none disabled:opacity-60" placeholder={termBusy ? "running…" : "help · git push · deploy vercel"} autoFocus /></form>
-              </div>
-            )}
+            {shellOpened && <div hidden={bottom !== "terminal"} className={bottom === "terminal" ? "flex-1 min-h-0 flex flex-col" : "hidden"}>
+              <ShellTerminal projectId={p.project.id} active={bottom === "terminal"} command={shellCommand} onConsumed={(id) => setShellCommand((current) => current?.id === id ? null : current)} onPreview={(url) => { setRuntimePreview({ url, source: runtimeSource }); setView("preview"); setExpandedPanel(false); }} />
+              <details className="shrink-0 border-t border-graphite text-xs">
+                <summary className="cursor-pointer px-3 py-2 text-ash">Platform actions · publish, connected GitHub push, deploy</summary>
+                <div className="max-h-32 overflow-y-auto px-3 font-mono whitespace-pre-wrap">{termLines.map((line, i) => <div key={i}>{line}</div>)}<div ref={terminalEnd} /></div>
+                <form onSubmit={(e) => { e.preventDefault(); const c = termInput; setTermInput(""); term(`platform: ${c}`); }} className="flex gap-2 px-3 py-2"><input aria-label="Platform action" value={termInput} disabled={termBusy} onChange={(e) => setTermInput(e.target.value)} className="input flex-1" placeholder="publish · deploy vercel · integrations" /><button className="btn btn-outline btn-sm" disabled={termBusy}>Run</button></form>
+              </details>
+            </div>}
 
             {bottom === "logs" && <div className="flex-1 overflow-y-auto p-3 font-mono text-xs space-y-0.5">{logs.map((l, i) => <div key={i} className={l.kind === "err" ? "text-error" : l.kind === "ok" ? "text-success" : "text-fog"}><span className="text-ash">{l.t}</span> {l.text}</div>)}</div>}
 

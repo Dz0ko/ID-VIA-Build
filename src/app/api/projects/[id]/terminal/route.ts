@@ -9,6 +9,11 @@ import { pushToGitHub } from "@/lib/github";
 import { deployToVercel } from "@/lib/vercel";
 import { auditHtml } from "@/lib/audit";
 
+import { runProjectBuild, stopProjectRuntime } from "@/lib/project-runtime";
+import { runtimeCommand } from "@/lib/runtime-command";
+
+export const maxDuration = 300;
+
 const schema = z.object({ cmd: z.string().min(1).max(500) });
 
 const HELP = [
@@ -16,7 +21,9 @@ const HELP = [
   "",
   "  status                      project, files, last push and deploys",
   "  ls / cat <file>             list or print project files",
-  "  preview                     check the site/app is renderable and show the preview URL",
+  "  npm run build | preview     build in an isolated runtime and open the built site",
+  "  npm run dev | npm start     build and serve a temporary preview (not HMR)",
+  "  stop                        stop the temporary preview",
   "  audit                       production audit (performance, SEO, a11y, security)",
   "  publish | unpublish         idaevia.app hosting for websites (/s/<slug>)",
   "  git push [owner/repo] [--public]   push all files to GitHub (creates the repo if needed)",
@@ -41,16 +48,26 @@ export async function POST(req: Request, ctx: RouteContext<"/api/projects/[id]/t
   const project = await db.project.findFirst({ where: { id, userId: user.id }, include: { files: true } });
   if (!project) return Response.json({ error: "Not found" }, { status: 404 });
 
+  const execution = runtimeCommand(body.data.cmd);
+  if (execution && execution !== "stop") {
+    const limit = await rateLimit(`runtime:user:${user.id}`, 12, 3600);
+    if (limit) return limit;
+  }
   const encoder = new TextEncoder();
   const stream = new ReadableStream({
     async start(controller) {
-      const send = (line: string, kind: "line" | "ok" | "err" | "done" = "line") => controller.enqueue(encoder.encode(`data: ${JSON.stringify({ kind, line })}\n\n`));
+      const send = (line: string, kind: "line" | "ok" | "err" | "done" | "preview" = "line") => { try { controller.enqueue(encoder.encode(`data: ${JSON.stringify({ kind, line })}\n\n`)); } catch { /* Disconnected client. */ } };
       const cmd = body.data.cmd.trim();
       const [name, ...args] = cmd.split(/\s+/);
       const appUrl = process.env.APP_URL ?? new URL(req.url).origin;
       const env = readProjectEnv(project);
       try {
-        if (name === "help") HELP.forEach((l) => send(l));
+        if (execution === "stop") { await stopProjectRuntime(id); send("Preview stopped.", "ok"); }
+        else if (execution) {
+          const result = await runProjectBuild(project, (line) => send(line), req.signal);
+          send(result.url, "preview");
+        }
+        else if (name === "help") HELP.forEach((l) => send(l));
         else if (name === "status") {
           const deploys = await db.deployment.findMany({ where: { projectId: id }, orderBy: { createdAt: "desc" }, take: 5 });
           send(`Project   ${project.name} (${project.kind}) · ${project.status}`);
@@ -68,19 +85,6 @@ export async function POST(req: Request, ctx: RouteContext<"/api/projects/[id]/t
           const f = files.find((x) => x.path === args[0] || x.path === `/${args[0]}` || x.path === `src${args[0]}`);
           if (!f) send(`No such file: ${args[0] ?? ""}`, "err");
           else f.content.split("\n").slice(0, 400).forEach((l) => send(l));
-        } else if (name === "preview") {
-          if (project.kind === "app") {
-            const app = project.files.find((f) => f.path === "/App.tsx");
-            if (!app) send("✗ /App.tsx is missing; ask the Builder to regenerate the app.", "err");
-            else { send(`✓ ${project.files.length} files, entry /App.tsx (${(app.content.length / 1024).toFixed(1)} KB)`); send("Live preview runs in the workspace sandbox. Deploy with `deploy vercel` to get a public URL.", "ok"); }
-          } else {
-            if (!/<html[\s>]/i.test(project.html)) send("✗ The project has no HTML document yet.", "err");
-            else {
-              const a = auditHtml(project.html);
-              send(`✓ HTML document ${(project.html.length / 1024).toFixed(1)} KB · audit score ${a.overall}/100`);
-              send(project.status === "PUBLISHED" ? `Live: ${appUrl}/s/${project.slug}` : "Not published yet: run `publish` for a public preview link.", "ok");
-            }
-          }
         } else if (name === "audit") {
           if (project.kind === "app") send("Audit is available for website projects.", "err");
           else {
@@ -183,7 +187,7 @@ export async function POST(req: Request, ctx: RouteContext<"/api/projects/[id]/t
           send(`Unknown command: ${name}. Type \`help\`.`, "err");
         }
       } catch (e) {
-        send(`✗ ${e instanceof Error ? e.message : "command failed"}`, "err");
+        send(`✗ ${execution ? (e instanceof Error && /runtime is not configured|already running|no \/App|no website|previous runtime/.test(e.message) ? e.message : "Build or preview failed. Check the command output above; the platform owner can check runtime configuration and quota.") : e instanceof Error ? e.message : "command failed"}`, "err");
       } finally {
         send("", "done");
         controller.close();

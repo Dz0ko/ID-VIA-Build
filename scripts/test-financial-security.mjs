@@ -3,6 +3,7 @@ import { config } from 'dotenv';
 import { spawn } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
 config({ quiet: true });
+const shellOnly = process.argv.includes('--shell') || process.env.TEST_SHELL_ONLY;
 const source = process.env.DIRECT_URL || process.env.DATABASE_URL;
 if (!source) throw new Error('A database connection is required for isolated-schema tests');
 const schema = `security_test_${randomBytes(6).toString('hex')}`;
@@ -26,8 +27,8 @@ try {
   await base.$executeRawUnsafe(`CREATE SCHEMA "${schema}"`);
   console.log('Created isolated test schema. Production tables are not used.');
   await run(['node_modules/prisma/build/index.js', 'db', 'push', '--skip-generate']);
-  console.log('Running transaction, replay, refund and access-control tests…');
-  await run(['--conditions=react-server', '--import', 'tsx', '--test', ...(process.env.TEST_NAME_PATTERN ? ['--test-name-pattern', process.env.TEST_NAME_PATTERN] : []), 'tests/financial-security.test.ts']);
+  console.log(shellOnly ? 'Running live terminal and access-control tests…' : 'Running transaction, replay, refund and access-control tests…');
+  await run(['--conditions=react-server', '--import', 'tsx', '--test', ...(process.env.TEST_NAME_PATTERN ? ['--test-name-pattern', process.env.TEST_NAME_PATTERN] : []), shellOnly ? 'tests/shell-http.test.ts' : 'tests/financial-security.test.ts']);
 } catch (e) { console.error(e.message); process.exitCode = 1; }
 finally {
   await base.$executeRawUnsafe(`DROP SCHEMA IF EXISTS "${schema}" CASCADE`);

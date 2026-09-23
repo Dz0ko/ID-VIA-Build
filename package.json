@@ -16,7 +16,10 @@
     "vercel-build": "prisma generate && prisma db push --skip-generate && next build",
     "db:migrate": "prisma db push --skip-generate",
     "test:security": "tsx --test tests/payment-math.test.ts tests/desktop-security.test.ts",
-    "test:financial-security": "node scripts/test-financial-security.mjs"
+    "test:financial-security": "node scripts/test-financial-security.mjs",
+    "test:terminal": "tsx --test tests/runtime.test.ts",
+    "test:terminal:live": "node --env-file=.env --import tsx scripts/test-shell-live.ts",
+    "test:terminal:http": "node scripts/test-financial-security.mjs --shell"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.127.0",
@@ -24,7 +27,10 @@
     "@monaco-editor/react": "^4.7.0",
     "@prisma/client": "^6.19.3",
     "@types/three": "^0.186.0",
+    "@xterm/addon-fit": "^0.11.0",
+    "@xterm/xterm": "^6.0.0",
     "bcryptjs": "^3.0.3",
+    "e2b": "^2.51.0",
     "jose": "^6.2.12",
     "jszip": "^3.10.2",
     "lucide-react": "^1.47.0",

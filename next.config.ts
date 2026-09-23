@@ -24,7 +24,7 @@ const securityHeaders = [
       "img-src 'self' data: blob: https:",
       "media-src 'self' data: blob: https:",
       "connect-src 'self' https: wss:",
-      "frame-src 'self' blob: data: https://*.codesandbox.io https://*.csb.app https://whop.com https://*.whop.com",
+      "frame-src 'self' blob: data: https://*.e2b.app https://*.codesandbox.io https://*.csb.app https://whop.com https://*.whop.com",
       "worker-src 'self' blob:",
       "object-src 'none'",
       "base-uri 'self'",
