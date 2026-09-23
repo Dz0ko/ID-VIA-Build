@@ -13,6 +13,7 @@ import {
   parseFileManifest,
 } from "./prompts";
 import { identityPrompt, personaFor } from "../personas";
+import { protectProjectNavigation } from "../project-navigation";
 import { classifyTask, friendlyAiError, generateWithFallback, resolveModel, tierForTask, type TaskClass } from "./router";
 import type { InputImage } from "./provider";
 import { estimateUsd } from "./cost";
@@ -165,7 +166,7 @@ export async function runAgent(opts: RunOptions) {
     }
 
     if (agent.mode === "rewrite") {
-      const html = extractHtml(result.text);
+      const html = protectProjectNavigation(extractHtml(result.text));
       if (!/<html[\s>]/i.test(html)) throw new Error("Model did not return an HTML document.");
       const last = await db.version.findFirst({ where: { projectId: project.id }, orderBy: { number: "desc" } });
       const number = (last?.number ?? 0) + 1;

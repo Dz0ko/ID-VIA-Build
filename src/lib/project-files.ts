@@ -1,6 +1,7 @@
 import type { Project, ProjectFile } from "@prisma/client";
 import { decryptJson, encryptJson } from "./crypto";
 import { db } from "./db";
+import { protectProjectNavigation } from "./project-navigation";
 
 export type FileMap = { path: string; content: string }[];
 
@@ -36,7 +37,7 @@ export function buildProjectFiles(project: Project & { files: ProjectFile[] }, e
     out.push({ path: ".gitignore", content: "node_modules\ndist\n.env\n.env.local\n" });
     out.push({ path: "README.md", content: `# ${project.name}\n\nBuilt with IDÆVIA Build (React + Vite).\n\n\`\`\`bash\nnpm install\nnpm run dev\nnpm run build   # → dist/\n\`\`\`\n` });
   } else {
-    out.push({ path: "index.html", content: project.html });
+    out.push({ path: "index.html", content: protectProjectNavigation(project.html) });
     out.push({ path: "vercel.json", content: JSON.stringify({ cleanUrls: true }, null, 2) + "\n" });
     out.push({ path: "README.md", content: `# ${project.name}\n\nBuilt with IDÆVIA Build.\n\nStatic site: open \`index.html\` or deploy the folder to any static host (Vercel, Netlify, Cloudflare Pages, GitHub Pages).\n` });
   }

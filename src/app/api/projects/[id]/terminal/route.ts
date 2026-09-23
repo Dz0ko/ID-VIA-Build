@@ -8,6 +8,7 @@ import { buildProjectFiles, readProjectEnv, writeProjectEnv } from "@/lib/projec
 import { pushToGitHub } from "@/lib/github";
 import { deployToVercel } from "@/lib/vercel";
 import { auditHtml } from "@/lib/audit";
+import { protectProjectNavigation } from "@/lib/project-navigation";
 
 import { runProjectBuild, stopProjectRuntime } from "@/lib/project-runtime";
 import { runtimeCommand } from "@/lib/runtime-command";
@@ -97,7 +98,7 @@ export async function POST(req: Request, ctx: RouteContext<"/api/projects/[id]/t
           if (project.kind === "app") send("React apps are deployed with `deploy vercel` (or export the ZIP).", "err");
           else if (!project.html.trim()) send("Nothing to publish yet.", "err");
           else {
-            let html = project.html;
+            let html = protectProjectNavigation(project.html);
             if (user.plan === "FREE") html = html.replace("</body>", `<a href="${appUrl}" target="_blank" rel="noopener" style="position:fixed;bottom:12px;right:12px;z-index:9999;font:500 11px/1 ui-monospace,monospace;letter-spacing:.12em;text-transform:uppercase;background:#0a0a0b;color:#f5f5f7;border:1px solid #1c1c1f;border-radius:999px;padding:8px 12px;text-decoration:none">Made with IDÆVIA</a></body>`);
             await db.project.update({ where: { id }, data: { status: "PUBLISHED", publishedHtml: html, publishedAt: new Date() } });
             await db.deployment.create({ data: { projectId: id, provider: "idaevia", status: "READY", url: `${appUrl}/s/${project.slug}`, log: "Published to IDÆVIA hosting", finishedAt: new Date() } });

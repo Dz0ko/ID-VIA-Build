@@ -12,6 +12,7 @@ Rules:
 - Design quality bar: premium, modern, dark-or-light per request, strong hierarchy, generous whitespace, consistent radius/shadows, hover states, subtle reveal-on-scroll animations using IntersectionObserver (respect prefers-reduced-motion).
 - Every page must be fully responsive (mobile nav with a working toggle), accessible (semantic landmarks, alt text, focus states) and have proper <title>, meta description and Open Graph tags.
 - Interactivity must work without a build step: vanilla JS in a <script> at the end of <body>.
+- This is a standalone customer project, not IDÆVIA itself. Never link to IDÆVIA paths such as /app, /login, /signup, /admin, /pricing or /api. Use working #section anchors and local interactions instead of sending visitors to the platform login.
 - When EDITING an existing document, preserve everything not related to the request and return the complete updated document.
 - When REFERENCE IMAGES are attached, recreate their layout, hierarchy, spacing, typography and colour system faithfully as an original implementation; do not copy logos or protected content, use placeholders.
 - Keep the document under ~1400 lines.
@@ -40,6 +41,7 @@ Rules:
 - Always include /App.tsx (default export a React component). Never output /index.tsx or package.json, the sandbox provides them.
 - Split UI into sensible files under /components, /lib, /pages. Keep each file focused.
 - Use TypeScript, functional components, hooks. No server code, no Node APIs, no fetch to private APIs; mock data lives in /lib/data.ts.
+- This is a standalone customer project, not IDÆVIA itself. Never use IDÆVIA paths such as /app, /login, /signup, /admin, /pricing or /api. For multiple screens, use local React state and working buttons/links inside the generated app.
 - Design quality bar: premium, modern, responsive, accessible; real copy, no lorem ipsum.
 - When EDITING: you receive the current files; return the COMPLETE set of files that should exist after the change (unchanged files may be omitted ONLY if you add a line "<<<KEEP /path>>>" for each file you want to keep as-is).
 - After the last file block, add one line: <<<NOTE>>> one or two first-person sentences saying what you changed and why (no code) <<<END NOTE>>>

@@ -15,6 +15,7 @@ import type { AgentDef } from "@/lib/agents";
 import type { PlanId, ModelTier } from "@/lib/plans";
 import { MODEL_TIERS } from "@/lib/plans";
 import type { AuditResult } from "@/lib/audit";
+import { protectProjectNavigation } from "@/lib/project-navigation";
 
 const MonacoEditor = dynamic(() => import("@monaco-editor/react").then((m) => m.default), { ssr: false });
 const ShellTerminal = dynamic(() => import("./ShellTerminal").then((m) => m.ShellTerminal), { ssr: false });
@@ -126,7 +127,7 @@ export function Workspace(p: WorkspaceProps) {
   const agent = allAgents.find((a) => a.id === agentId) ?? allAgents[0];
   const isAuto = agentId === "auto";
   const isAllowed = useCallback((id: string) => (id === "auto" ? true : id.startsWith("custom:") ? p.customAgentsAllowed : p.allowedAgentIds.includes(id)), [p.allowedAgentIds, p.customAgentsAllowed]);
-  const previewSrc = useMemo(() => html || `<!DOCTYPE html><html><body style="margin:0;height:100vh;display:grid;place-items:center;font-family:system-ui;background:#0a0a0b;color:#8a8a93">Describe what to build in the chat below.</body></html>`, [html]);
+  const previewSrc = useMemo(() => protectProjectNavigation(html || `<!DOCTYPE html><html><body style="margin:0;height:100vh;display:grid;place-items:center;font-family:system-ui;background:#0a0a0b;color:#8a8a93">Describe what to build in the chat below.</body></html>`), [html]);
   const log = useCallback((text: string, kind: LogLine["kind"] = "info") => setLogs((l) => [...l, { t: now(), text, kind }]), []);
 
   useEffect(() => { const el = chatEnd.current?.parentElement; if (el && followChat.current) el.scrollTop = el.scrollHeight; }, [messages, stream, busy, bottom]);

@@ -1,5 +1,6 @@
 import { db } from "@/lib/db";
 import { error, json, withUser } from "@/lib/api";
+import { protectProjectNavigation } from "@/lib/project-navigation";
 
 export async function POST(_req: Request, ctx: RouteContext<"/api/projects/[id]/publish">) {
   const { id } = await ctx.params;
@@ -8,7 +9,7 @@ export async function POST(_req: Request, ctx: RouteContext<"/api/projects/[id]/
     if (!project) return error("Not found", 404);
     if (project.kind === "app") return error("React app projects are deployed by exporting the ZIP (Vite project) to Vercel/Netlify/Cloudflare. One-click hosting for apps is coming.", 400, { code: "APP_EXPORT" });
     if (!project.html.trim()) return error("Nothing to publish yet: generate the site first.");
-    let html = project.html;
+    let html = protectProjectNavigation(project.html);
     if (user.plan === "FREE") {
       html = html.replace(
         "</body>",
