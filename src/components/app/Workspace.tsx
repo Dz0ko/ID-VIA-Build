@@ -30,6 +30,30 @@ type Comment = { id: string; authorName: string; body: string; kind: string; res
 type CustomAgent = { id: string; name: string; description: string; tier: string; mode: string };
 type RefImage = { name: string; mediaType: "image/png" | "image/jpeg" | "image/webp" | "image/gif"; data: string };
 type AgentActivity = { id: string; label: string; detail: string; status: "running" | "done" };
+type DiffLine = { kind: "context" | "add" | "remove"; text: string };
+type DiffFile = { path: string; lines: DiffLine[]; added: number; removed: number };
+
+function makeDiff(before: string, after: string, path: string): DiffFile {
+  const oldLines = before.split("\n");
+  const newLines = after.split("\n");
+  let prefix = 0;
+  while (prefix < oldLines.length && prefix < newLines.length && oldLines[prefix] === newLines[prefix]) prefix++;
+  let suffix = 0;
+  while (suffix < oldLines.length - prefix && suffix < newLines.length - prefix && oldLines[oldLines.length - 1 - suffix] === newLines[newLines.length - 1 - suffix]) suffix++;
+  const changed: DiffLine[] = [
+    ...oldLines.slice(Math.max(prefix, 0), oldLines.length - suffix).map((text) => ({ kind: "remove" as const, text })),
+    ...newLines.slice(Math.max(prefix, 0), newLines.length - suffix).map((text) => ({ kind: "add" as const, text })),
+  ];
+  const contextBefore = oldLines.slice(Math.max(0, prefix - 3), prefix).map((text) => ({ kind: "context" as const, text }));
+  const contextAfter = oldLines.slice(oldLines.length - suffix, Math.min(oldLines.length, oldLines.length - suffix + 3)).map((text) => ({ kind: "context" as const, text }));
+  const lines = [...contextBefore, ...changed, ...contextAfter];
+  return { path, lines: lines.length > 260 ? [...lines.slice(0, 260), { kind: "context", text: "… more changed lines hidden" }] : lines, added: changed.filter((line) => line.kind === "add").length, removed: changed.filter((line) => line.kind === "remove").length };
+}
+
+function makeDiffs(beforeFiles: ProjFile[], afterFiles: ProjFile[]): DiffFile[] {
+  const before = new Map(beforeFiles.map((file) => [file.path, file.content]));
+  return afterFiles.map((file) => makeDiff(before.get(file.path) ?? "", file.content, file.path)).filter((file) => file.added || file.removed);
+}
 
 export interface WorkspaceProps {
   project: {
@@ -92,6 +116,7 @@ export function Workspace(p: WorkspaceProps) {
   const [busy, setBusy] = useState<string | null>(null);
   const [stream, setStream] = useState("");
   const [activity, setActivity] = useState<AgentActivity[]>([]);
+  const [diffs, setDiffs] = useState<DiffFile[]>([]);
   const [logs, setLogs] = useState<LogLine[]>([{ t: now(), text: "Workspace ready.", kind: "info" }]);
   const [runtimePreview, setRuntimePreview] = useState<{ url: string; source: string } | null>(null);
   const runtimeSource = isApp ? JSON.stringify(files) : html;
@@ -113,6 +138,7 @@ export function Workspace(p: WorkspaceProps) {
   const terminalEnd = useRef<HTMLDivElement>(null);
   const chatEnd = useRef<HTMLDivElement>(null);
   const followChat = useRef(true);
+  const lastWorkDetail = useRef("Preparing the agent workspace");
   const autoRan = useRef(false);
   const abortRef = useRef<AbortController | null>(null);
   const busyRef = useRef<string | null>(null);
@@ -135,6 +161,26 @@ export function Workspace(p: WorkspaceProps) {
     const t = setTimeout(() => setTermLines(["IDÆVIA terminal · project commands and isolated builds. Type `help`.", "Try: npm run build · preview · stop · status · git push · deploy vercel"]), 0);
     return () => clearTimeout(t);
   }, []);
+  useEffect(() => {
+    if (!busy) return;
+    const phases = isApp
+      ? ["reading the project files", "updating components and interactions", "checking imports and routes", "reviewing the result"]
+      : ["reading index.html", "applying design changes", "checking buttons and interactions", "reviewing responsive behaviour"];
+    let index = 0;
+    const tick = () => {
+      setActivity((items) => {
+        const running = items.findIndex((item) => item.label === "Work in progress" && item.status === "running");
+        const fallback = items.findIndex((item) => item.status === "running");
+        const target = running >= 0 ? running : fallback;
+        if (target < 0) return items;
+        const detail = `${lastWorkDetail.current} · ${phases[index++ % phases.length]}`;
+        return items.map((item, i) => i === target ? { ...item, detail } : item);
+      });
+    };
+    tick();
+    const timer = window.setInterval(tick, 2200);
+    return () => window.clearInterval(timer);
+  }, [busy, isApp]);
 
   const runOne = useCallback(async (request: string, agentToRun: string, imgs: RefImage[] = []) => {
     if (!request.trim() || busyRef.current) return false;
@@ -142,6 +188,8 @@ export function Workspace(p: WorkspaceProps) {
     busyRef.current = agentToRun;
     setBusy(agentToRun);
     setStream("");
+    setDiffs([]);
+    lastWorkDetail.current = "Preparing the agent workspace";
     setActivity([{ id: `activity-${Date.now()}`, label: "Start task", detail: "Preparing the agent workspace", status: "running" }]);
     setBottom("chat");
     setExpandedPanel(true);
@@ -188,6 +236,7 @@ export function Workspace(p: WorkspaceProps) {
             const detail = isApp
               ? `Working on ${fileMatch ?? "project files"} · updating components and interactions`
               : "Working on index.html · applying changes and checking interactions";
+            lastWorkDetail.current = detail;
             setActivity((items) => {
               const current = items.find((item) => item.label === "Work in progress" && item.status === "running");
               if (current) return items.map((item) => item.id === current.id ? { ...item, detail } : item);
@@ -199,8 +248,8 @@ export function Workspace(p: WorkspaceProps) {
             setActivity((items) => [...items.map((item) => ({ ...item, status: "done" as const })), { id: `activity-${Date.now()}`, label: "Save result", detail: ev.mode === "rewrite" ? `Version ${ev.versionNumber} saved` : "Report ready", status: "done" }]);
             if (ev.mode === "rewrite") {
               rewrote = true;
-              if (ev.files) { setFiles(ev.files); setSavedFiles(ev.files); setActiveFile((f) => (ev.files.some((x: ProjFile) => x.path === f) ? f : "/App.tsx")); }
-              else { setHtml(ev.html); setSavedHtml(ev.html); }
+              if (ev.files) { setDiffs(makeDiffs(savedFiles, ev.files)); setFiles(ev.files); setSavedFiles(ev.files); setActiveFile((f) => (ev.files.some((x: ProjFile) => x.path === f) ? f : "/App.tsx")); }
+              else { setDiffs([makeDiff(savedHtml, ev.html ?? "", "index.html")].filter((file) => file.added || file.removed)); setHtml(ev.html); setSavedHtml(ev.html); }
               setVersions((v) => [{ id: `v${ev.versionNumber}`, number: ev.versionNumber, message: `${agentToRun}: ${request.slice(0, 120)}`, createdAt: new Date().toISOString() }, ...v]);
               setMessages((m) => [...m, { id: `a-${Date.now()}`, role: "assistant", content: ev.note ?? `Updated the ${isApp ? "app" : "project"} (v${ev.versionNumber}).`, agentId: busyRef.current ?? agentToRun, creditsUsed: ev.creditsUsed, model: null, createdAt: new Date().toISOString() }]);
               setView("preview");
@@ -224,7 +273,7 @@ export function Workspace(p: WorkspaceProps) {
     } finally {
       busyRef.current = null; setBusy(null); abortRef.current = null; router.refresh();
     }
-  }, [allAgents, isApp, log, p.project.id, provider, router, tier]);
+  }, [allAgents, isApp, log, p.project.id, provider, router, savedFiles, savedHtml, tier]);
 
   useEffect(() => { terminalAction.current = term; });
 
@@ -569,8 +618,16 @@ export function Workspace(p: WorkspaceProps) {
             )}
 
             {bottom === "changes" && (
-              <div className="flex-1 overflow-y-auto p-3 text-xs">
-                {runs.length === 0 && <div className="text-ash">No agent runs yet.</div>}
+              <div className="flex-1 overflow-y-auto p-3 text-xs space-y-4">
+                {busy && <div className="rounded-lg border border-signal/30 bg-signal/5 px-3 py-2 text-signal-soft"><span className="inline-block mr-2 w-1.5 h-1.5 rounded-full bg-signal pulse-dot" />Live changes are being prepared while the agent works.</div>}
+                {diffs.length > 0 && <div className="space-y-3">
+                  <div className="flex items-center justify-between"><div className="font-medium text-fog">Live code changes</div><div className="flex gap-3 font-mono text-[10px]"><span className="text-error">− {diffs.reduce((n, file) => n + file.removed, 0)}</span><span className="text-success">+ {diffs.reduce((n, file) => n + file.added, 0)}</span></div></div>
+                  {diffs.map((file) => <div key={file.path} className="overflow-hidden rounded-lg border border-graphite bg-void">
+                    <div className="flex items-center justify-between border-b border-graphite px-3 py-2 font-mono text-[11px] text-fog"><span className="flex items-center gap-2"><FileCode2 size={12} className="text-signal-soft" />{file.path}</span><span><span className="text-error">−{file.removed}</span> <span className="text-success">+{file.added}</span></span></div>
+                    <pre className="max-h-72 overflow-auto py-1 font-mono text-[10px] leading-5">{file.lines.map((line, i) => <div key={`${file.path}-${i}`} className={`whitespace-pre-wrap px-3 ${line.kind === "remove" ? "bg-error/10 text-error" : line.kind === "add" ? "bg-success/10 text-success" : "text-ash"}`}><span className="mr-2 inline-block w-3 select-none text-right opacity-70">{line.kind === "remove" ? "−" : line.kind === "add" ? "+" : " "}</span>{line.text || " "}</div>)}</pre>
+                  </div>)}
+                </div>}
+                {runs.length === 0 && diffs.length === 0 && <div className="text-ash">No agent runs yet.</div>}
                 <table className="w-full"><tbody>{runs.map((r) => (
                   <tr key={r.id} className="border-b border-graphite/60"><td className="py-1.5 pr-3 font-mono text-signal-soft">{r.agentId}</td><td className="py-1.5 pr-3 text-fog truncate max-w-[380px]">{r.task}</td><td className="py-1.5 pr-3 text-ash">{r.output?.startsWith("v") ? r.output : r.status}</td><td className="py-1.5 pr-3 text-ash">{r.creditsUsed} cr</td><td className="py-1.5 text-ash">{new Date(r.startedAt).toLocaleTimeString()}</td></tr>
                 ))}</tbody></table>
