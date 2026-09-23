@@ -61,7 +61,7 @@ export function ComponentCatalog({ selected, onToggle }: { selected?: string[]; 
         </div>
       </section>
       <div className="flex flex-wrap gap-3 items-end mb-5">
-        <label className="flex-1 min-w-48"><span className="label block mb-1.5">Search components</span><input className="input w-full" type="search" value={query} onChange={(e) => { setQuery(e.target.value); setPage(1); }} placeholder="Try orb, glass, SVG or shader…" /></label>
+        <label className="flex-1 min-w-48"><span className="label block mb-1.5">Search components</span><input className="input w-full" type="search" value={query} onChange={(e) => { setQuery(e.target.value); setPage(1); }} placeholder="Try planet, scroll, spotlight or typography…" /></label>
         <p className="text-xs text-ash pb-3" role="status">{filtered.length} result{filtered.length === 1 ? "" : "s"}</p>
       </div>
       {!filtered.length && <div className="card p-10 text-center"><h3 className="font-medium">No matching components</h3><p className="text-sm text-ash mt-2 mb-4">Try another name or category.</p><button className="btn btn-ghost btn-sm" onClick={reset}>Clear filters</button></div>}

@@ -1,3 +1,5 @@
+import { demo, example } from "./component-demo";
+import { MODERN_COMPONENTS } from "./modern-components";
 import { COMPONENTS } from "./library";
 import { componentPreview } from "./previews";
 /** Original IDÆVIA examples informed by the linked references; no third-party source is bundled. */
@@ -8,19 +10,9 @@ export const COMPONENT_SOURCES = [
   { id: "loaders", name: "Circle Loaders", url: "https://circleloaders.dominikakissi.com/", description: "Circular motion for loading, thinking, listening and progress states.", note: "Original SVG/CSS loaders inspired by the circular status-animation collection." },
   { id: "threeui", name: "ThreeUI", url: "https://threeui.com/", description: "Spatial interfaces, 3D objects and atmospheric shader backgrounds.", note: "Original CSS 3D and WebGL studies. No ThreeUI Pro source is included." },
 ] as const;
-export type ComponentSource = typeof COMPONENT_SOURCES[number]["id"];
-export type ComponentCategory = "Motion" | "Orbs" | "Glass" | "Loaders" | "3D & shaders";
+export type ComponentSource = typeof COMPONENT_SOURCES[number]["id"] | "native";
+export type ComponentCategory = "Motion" | "Orbs" | "Glass" | "Loaders" | "3D & shaders" | "Space & planets" | "Scroll animations" | "Backgrounds" | "Typography" | "Interactive effects";
 export interface ComponentExample { id: string; name: string; description: string; category: ComponentCategory; source: ComponentSource; technology: string; html: string; prompt: string }
-
-const base = `*{box-sizing:border-box}html,body{margin:0;min-height:100%;background:#090b12;color:#edf0fa;font:14px/1.5 system-ui,sans-serif}body{overflow-x:hidden}button,input{font:inherit}button{cursor:pointer;color:inherit;background:#ffffff12;border:1px solid #ffffff25;padding:9px 16px;border-radius:99px}button:focus-visible,a:focus-visible,input:focus-visible{outline:2px solid #b5b8ff;outline-offset:4px}.stage{min-height:100dvh;display:flex;align-items:center;justify-content:center;gap:18px;flex-direction:column;padding:24px;position:relative;isolation:isolate;overflow:hidden}h1,h2,p{margin:0}h2{font-size:20px;letter-spacing:-.04em}.caption{font-size:11px;color:#a3aec7;letter-spacing:.08em;text-transform:uppercase}.row{display:flex;gap:12px;align-items:center;justify-content:center}.surface{border:1px solid #ffffff25;border-radius:20px;background:#ffffff09;padding:22px}.muted{color:#a3aec7}svg{max-width:100%}a{color:inherit}button:hover{background:#ffffff24}@keyframes spin{to{transform:rotate(360deg)}}@keyframes breathe{50%{transform:scale(.88);opacity:.4}}@keyframes rise{from{transform:translateY(22px);opacity:0}to{transform:translateY(0);opacity:1}}`;
-
-function demo(name: string, body: string, css = "", js = "") {
-  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; base-uri 'none'; form-action 'none'"><title>${name}</title><style>${base}${css}\n@media(prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important;scroll-behavior:auto!important}}html[data-paused] *,html[data-paused] *::before,html[data-paused] *::after{animation-play-state:paused!important}</style></head><body><main class="stage">${body}</main><script>const reduced=matchMedia('(prefers-reduced-motion: reduce)');document.addEventListener('visibilitychange',()=>{document.documentElement.toggleAttribute('data-paused',document.hidden);});${js}</script></body></html>`;
-}
-
-function example(id: string, name: string, description: string, category: ComponentCategory, source: ComponentSource, technology: string, html: string): ComponentExample {
-  return { id, name, description, category, source, technology, html, prompt: `Add the ${name} component to my project: ${description} Match my existing design, preserve working features, respect reduced motion, and keep it responsive. [COMPONENT:${id}]` };
-}
 
 const motion: ComponentExample[] = [
   example("motion-stagger", "Stagger grid", "A ripple of tiles that unfolds from the center. Replay to explore the timing.", "Motion", "anime", "CSS animation", demo("Stagger grid", `<div class="tiles">${Array.from({ length: 25 }, (_, i) => `<i style="--delay:${(Math.abs(i % 5 - 2) + Math.abs(Math.floor(i / 5) - 2)) * 90}ms"></i>`).join("")}</div><button id="replay">Replay wave</button>`, `.tiles{display:grid;grid-template-columns:repeat(5,23px);gap:7px}.tiles i{height:23px;background:#afa7ff;border-radius:6px;animation:tile 2s var(--delay) infinite both}@keyframes tile{0%,100%{transform:scale(.55) rotate(-12deg);opacity:.2}45%{transform:scale(1) rotate(0);opacity:1}}`, `document.querySelector('#replay').onclick=()=>{for(const a of document.getAnimations())a.currentTime=0};`)),
@@ -67,7 +59,7 @@ const spatial: ComponentExample[] = [
   example("shader-waves", "Contour waves", "Fine luminous contours flow across a lightweight shader surface, with a static fallback.", "3D & shaders", "threeui", "WebGL shader", shaderDemo("waves")),
 ];
 
-export const COMPONENT_EXAMPLES: ComponentExample[] = [...motion, ...orbs, ...glass, ...loaders, ...spatial];
+export const COMPONENT_EXAMPLES: ComponentExample[] = [...MODERN_COMPONENTS, ...motion, ...orbs, ...glass, ...loaders, ...spatial];
 
 /** Resolve a small stable marker server-side, keeping full source out of navigation URLs. */
 export function componentReference(request: string): string {

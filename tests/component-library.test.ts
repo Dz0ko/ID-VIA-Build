@@ -3,9 +3,9 @@ import { test } from 'node:test';
 import { Script } from 'node:vm';
 import { COMPONENT_EXAMPLES, COMPONENT_SOURCES, componentReference } from '../src/lib/component-examples';
 
-test('all five collections have original self-contained, executable examples', () => {
-  assert.equal(COMPONENT_EXAMPLES.length, 24);
-  assert.equal(new Set(COMPONENT_EXAMPLES.map((x) => x.id)).size, 24);
+test('all categories have original self-contained, executable examples', () => {
+  assert.equal(COMPONENT_EXAMPLES.length, 44);
+  assert.equal(new Set(COMPONENT_EXAMPLES.map((x) => x.id)).size, 44);
   for (const source of COMPONENT_SOURCES) assert.ok(COMPONENT_EXAMPLES.some((x) => x.source === source.id));
   for (const item of COMPONENT_EXAMPLES) {
     assert.match(item.html, /^<!doctype html>/);
