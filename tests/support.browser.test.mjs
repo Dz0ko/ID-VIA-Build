@@ -22,8 +22,8 @@ before(async () => {
   let ready = false;
   for (let i = 0; i < 100; i++) { try { if ((await fetch(`${base}/login`)).ok) { ready = true; break; } } catch {} await new Promise(r => setTimeout(r, 100)); }
   assert.ok(ready, 'Test app must be ready');
-  const targets = await (await fetch(`${process.env.TEMPO_CDP_URL || 'http://127.0.0.1:50316'}/json/list`)).json();
-  const target = targets.find(t => t.type === 'webview' && t.url === 'https://glass.samasante.com/' && !t.title.startsWith('INTERNAL'));
+  const targets = await (await fetch(`${process.env.UI_TEST_CDP_URL || process.env.TEMPO_CDP_URL || 'http://127.0.0.1:50316'}/json/list`)).json();
+  const target = targets.find(t => !t.title.startsWith('INTERNAL') && (process.env.UI_TEST_CDP_URL ? t.type === 'page' && t.url === 'about:blank' : t.type === 'webview' && t.url === 'https://glass.samasante.com/'));
   assert.ok(target, 'Open the requested Liquid Glass reference in a Tempo Browser tab before running this visual test');
   originalUrl = target.url;
   ws = new WebSocket(target.webSocketDebuggerUrl); await new Promise(r => ws.addEventListener('open', r, { once: true }));
@@ -68,7 +68,7 @@ test('support handoff and manager replies arrive live, persist and appear in adm
   await click('Talk to a person');
   await until("document.body?.innerText.includes('Waiting for a manager')");
   const thread = await db.supportThread.findUniqueOrThrow({ where: { userId: customerId } });
-  await type('#support-message', 'I need help connecting my project to GitHub.');
+  await type('[aria-label="Support conversation"] textarea', 'I need help connecting my project to GitHub.');
   await click('Send message');
   await until("document.querySelector('[role=log]').innerText.includes('I need help connecting')");
   await adminPost(thread.id, '', 'claim');
@@ -83,7 +83,7 @@ test('support handoff and manager replies arrive live, persist and appear in adm
   await until("document.body?.innerText.includes('Support Preview')");
   await evaluate("[...document.querySelectorAll('button')].find(b=>b.textContent.includes('Support Preview')).click()");
   await until("document.querySelector('[role=log]')?.innerText.includes('I need help connecting')");
-  await type('#support-message', 'Is the repository visible now?');
+  await type('[aria-label="Support conversation"] textarea', 'Is the repository visible now?');
   await click('Send message');
   await until("document.querySelector('[role=log]').innerText.includes('Is the repository visible now?')");
   await rpc('Page.captureScreenshot', { format: 'png' }).then(x => writeFile('.next/support-admin.png', Buffer.from(x.data, 'base64')));

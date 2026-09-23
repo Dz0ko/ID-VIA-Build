@@ -1,5 +1,6 @@
 "use client";
 
+import { SupportWidget } from "@/components/support/SupportWidget";
 import { createContext, useContext, useState } from "react";
 import { Menu } from "@/components/icons";
 import Link from "next/link";
@@ -23,7 +24,6 @@ const GROUPS: { title: string; items: Item[] }[] = [
     { href: "/app/projects", label: "Projects", icon: "projects" },
     { href: "/app/assistant", label: "IDÆVIA Agent", icon: "agent" },
     { href: "/app/import", label: "Import", icon: "import" },
-    { href: "/app/support", label: "Live support", icon: "agent" },
   ] },
   { title: "Library", items: [
     { href: "/app/templates", label: "Templates", icon: "templates" },
@@ -43,7 +43,7 @@ const GROUPS: { title: string; items: Item[] }[] = [
 
 export function Shell(props: { user: SessionUser; children: React.ReactNode }) {
   const pathname = usePathname();
-  return <ShellLayout key={pathname} {...props} />;
+  return <div className="app-theme"><ShellLayout key={pathname} {...props} /><SupportWidget /></div>;
 }
 
 function ShellLayout({ user, children }: { user: SessionUser; children: React.ReactNode }) {
@@ -62,7 +62,7 @@ function ShellLayout({ user, children }: { user: SessionUser; children: React.Re
 
   return (
     <NavigationContext.Provider value={{ open: menuOpen, toggle: () => setMenuOpen((open) => !open) }}>
-    <div className="app-theme h-dvh flex bg-void">
+    <div className="h-dvh flex bg-void">
       {menuOpen && <aside id="workspace-navigation" className="workspace-sidebar w-[224px] shrink-0 border-r border-graphite flex flex-col">
         <div className="h-[76px] flex items-center px-5"><Logo href="/app" size={24} /></div>
         <nav aria-label="Workspace sections" className="flex-1 px-3 py-2 space-y-5 overflow-y-auto">

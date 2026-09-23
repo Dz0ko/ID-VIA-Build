@@ -1,7 +1,7 @@
 "use client";
 
 import { Markdown } from "@/components/Markdown";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
 
 type Message = { id: string; role: string; content: string; authorName: string | null; createdAt: string };
 type Snapshot = { thread: { id: string; status: string; supportTier: string; assignedTo?: string; botPending: boolean; user?: { name: string | null; email: string } }; messages: Message[]; hasMore: boolean };
@@ -13,7 +13,8 @@ async function request(url: string, init?: RequestInit) {
   return body;
 }
 
-export function SupportChat({ threadId, adminId }: { threadId?: string; adminId?: string }) {
+export function SupportChat({ threadId, adminId, active = true }: { threadId?: string; adminId?: string; active?: boolean }) {
+  const inputId = useId();
   const [data, setData] = useState<Snapshot | null>(null);
   const [older, setOlder] = useState<Message[]>([]);
   const [more, setMore] = useState(false);
@@ -38,7 +39,7 @@ export function SupportChat({ threadId, adminId }: { threadId?: string; adminId?
   }, [threadId, apply, attempt]);
   const id = data?.thread.id;
   useEffect(() => {
-    if (!id) return;
+    if (!id || !active) return;
     let source: EventSource | null = null;
     const connect = () => {
       source?.close(); source = null;
@@ -50,7 +51,7 @@ export function SupportChat({ threadId, adminId }: { threadId?: string; adminId?
     };
     connect(); document.addEventListener("visibilitychange", connect);
     return () => { source?.close(); document.removeEventListener("visibilitychange", connect); };
-  }, [id, apply]);
+  }, [id, apply, active]);
   const lastId = data?.messages.at(-1)?.id;
   useEffect(() => { if (follow.current && scroll.current) scroll.current.scrollTop = scroll.current.scrollHeight; }, [lastId, data?.thread.botPending]);
 
@@ -91,7 +92,7 @@ export function SupportChat({ threadId, adminId }: { threadId?: string; adminId?
     </div>
     <form className="p-4 border-t border-graphite" onSubmit={event => { event.preventDefault(); void send(); }}>
       {error && <p role="alert" className="text-sm text-red-400 mb-3">{error} {!data && <button type="button" className="underline" onClick={() => setAttempt(x => x + 1)}>Retry</button>}</p>}
-      <label htmlFor="support-message" className="sr-only">Message support</label><textarea id="support-message" value={text} onChange={event => setText(event.target.value)} maxLength={4000} disabled={busy} placeholder={adminId ? "Reply to the customer…" : "How can we help?"} rows={3} className="input w-full resize-none" />
+      <label htmlFor={inputId} className="sr-only">Message support</label><textarea id={inputId} value={text} onChange={event => setText(event.target.value)} maxLength={4000} disabled={busy} placeholder={adminId ? "Reply to the customer…" : "How can we help?"} rows={3} className="input w-full resize-none" />
       <div className="flex justify-between items-center gap-3 mt-3"><span role="status" className="text-xs text-ash">{connection}</span><button className="btn btn-primary btn-sm" disabled={!data || busy || !text.trim() || ownedByOther || (!adminId && data.thread.botPending)}>{busy ? "Sending…" : "Send message"}</button></div>
     </form>
   </section>;

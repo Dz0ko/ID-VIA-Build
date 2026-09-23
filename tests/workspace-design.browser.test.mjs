@@ -22,8 +22,8 @@ before(async () => {
   let ready = false;
   for (let i = 0; i < 100; i++) { try { if ((await fetch(`${base}/login`)).ok) { ready = true; break; } } catch {} await new Promise(r => setTimeout(r, 100)); }
   assert.ok(ready, 'Test app must be ready');
-  const targets = await (await fetch(`${process.env.TEMPO_CDP_URL || 'http://127.0.0.1:50316'}/json/list`)).json();
-  const target = targets.find(t => t.type === 'webview' && t.url === 'https://glass.samasante.com/' && !t.title.startsWith('INTERNAL'));
+  const targets = await (await fetch(`${process.env.UI_TEST_CDP_URL || process.env.TEMPO_CDP_URL || 'http://127.0.0.1:50316'}/json/list`)).json();
+  const target = targets.find(t => !t.title.startsWith('INTERNAL') && (process.env.UI_TEST_CDP_URL ? t.type === 'page' && t.url === 'about:blank' : t.type === 'webview' && t.url === 'https://glass.samasante.com/'));
   assert.ok(target, 'Open the requested Liquid Glass reference in a Tempo Browser tab before running this visual test');
   originalUrl = target.url;
   ws = new WebSocket(target.webSocketDebuggerUrl); await new Promise(r => ws.addEventListener('open', r, { once: true }));
@@ -54,8 +54,12 @@ after(async () => {
 
 
 test('workspace hierarchy, navigation and common actions remain usable across desktop sizes', async () => {
+  assert.equal(await evaluate("getComputedStyle(document.querySelector('.app-theme')).getPropertyValue('--void').trim()"), '#080809');
+  assert.ok(await evaluate("getComputedStyle(document.querySelector('.app-theme')).fontFamily.toLowerCase().includes('grotesk')"));
+  assert.equal(await evaluate("document.querySelectorAll('.workspace-nav-link[href=\"/app/support\"]').length"), 0);
+  assert.equal(await evaluate("document.querySelectorAll('#support-widget-panel').length"), 0);
   await new Promise(r => setTimeout(r, 700));
-  await rpc('Page.captureScreenshot', { format: 'png' }).then(x => writeFile('.next/workspace-overview.png', Buffer.from(x.data, 'base64')));
+  await rpc('Page.captureScreenshot', { format: 'png', fromSurface: true }).then(x => writeFile('.next/workspace-overview.png', Buffer.from(x.data, 'base64')));
   assert.equal(await evaluate("document.querySelectorAll('.workspace-nav-link[aria-current=page]').length"), 1);
   assert.equal(await evaluate("document.querySelectorAll('.workspace-metrics > div').length"), 4);
   await click('Download'); await until("document.querySelector('dialog[open]')!==null");
@@ -75,7 +79,7 @@ test('workspace hierarchy, navigation and common actions remain usable across de
       assert.ok(await evaluate("!document.body.innerText.includes('Application error:')"), route);
       if(width === 1024 && ['/app/components','/app/import','/admin'].includes(route)) {
         await new Promise(r=>setTimeout(r,350));
-        await rpc('Page.captureScreenshot', { format: 'png' }).then(x => writeFile(`.next/workspace-${route.replaceAll('/','-')}.png`, Buffer.from(x.data, 'base64')));
+        await rpc('Page.captureScreenshot', { format: 'png', fromSurface: true }).then(x => writeFile(`.next/workspace-${route.replaceAll('/','-')}.png`, Buffer.from(x.data, 'base64')));
       }
     }
   }
@@ -85,4 +89,21 @@ test('workspace hierarchy, navigation and common actions remain usable across de
   assert.equal(await evaluate("!!document.querySelector('#workspace-navigation')"), false);
   await evaluate("document.querySelector('[aria-label=\"Toggle workspace menu\"]').click()");
   await until("document.querySelector('#workspace-navigation')!==null");
+  await evaluate("document.querySelector('[aria-label=\"Open live support\"]').click()");
+  await until("document.querySelector('#support-widget-panel')?.innerText.includes('Automated support')");
+  const bounds = await evaluate("(()=>{const r=document.querySelector('#support-widget-panel').getBoundingClientRect();return {top:r.top,right:r.right,bottom:r.bottom};})()");
+  assert.ok(bounds.top>=0 && bounds.right<=1024 && bounds.bottom<=1000, 'Support fits inside the project workspace');
+  await evaluate("(()=>{const el=document.querySelector('#support-widget-panel textarea');Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,'value').set.call(el,'My support draft');el.dispatchEvent(new Event('input',{bubbles:true}));})()");
+  await evaluate("document.querySelector('[aria-label=\"Close live support\"]').click()");
+  assert.equal(await evaluate("document.querySelector('#support-widget-panel').hidden"), true);
+  await evaluate("document.querySelector('[aria-label=\"Open live support\"]').click()");
+  assert.equal(await evaluate("document.querySelector('#support-widget-panel textarea').value"), 'My support draft');
+  await click('Send message');
+  await until("document.querySelector('#support-widget-panel [role=log]')?.innerText.includes('My support draft')");
+  await until("document.querySelector('#support-widget-panel textarea')?.value===''");
+  await rpc('Page.captureScreenshot', {format:'png',fromSurface:true}).then(x=>writeFile('.next/workspace-support-widget.png',Buffer.from(x.data,'base64')));
+  await evaluate("document.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}))");
+  assert.equal(await evaluate("document.querySelector('#support-widget-panel').hidden"), true);
+  assert.equal(await evaluate("document.activeElement.getAttribute('aria-label')"), 'Open live support');
+
 });
