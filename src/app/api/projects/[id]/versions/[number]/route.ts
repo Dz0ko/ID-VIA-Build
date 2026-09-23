@@ -1,3 +1,4 @@
+import { withProjectWrite } from "@/lib/project-lock";
 import { db } from "@/lib/db";
 import { error, json, withUser } from "@/lib/api";
 
@@ -16,7 +17,7 @@ export async function GET(_req: Request, ctx: RouteContext<"/api/projects/[id]/v
 /** Restore this version as the current document/files (creates a new version entry). */
 export async function POST(_req: Request, ctx: RouteContext<"/api/projects/[id]/versions/[number]">) {
   const { id, number } = await ctx.params;
-  return withUser(async (user) => {
+  return withUser(async (user) => withProjectWrite(id, user.id, async () => {
     const project = await db.project.findFirst({ where: { id, userId: user.id } });
     if (!project) return error("Not found", 404);
     const v = await db.version.findUnique({ where: { projectId_number: { projectId: id, number: Number(number) } } });
@@ -28,14 +29,14 @@ export async function POST(_req: Request, ctx: RouteContext<"/api/projects/[id]/
       await db.$transaction([
         db.projectFile.deleteMany({ where: { projectId: id } }),
         ...files.map((f) => db.projectFile.create({ data: { projectId: id, path: f.path, content: f.content } })),
-        db.version.create({ data: { projectId: id, number: next, html: v.html, message: `Restored v${v.number}` } }),
+        db.version.create({ data: { projectId: id, number: next, html: v.html, message: `Restored change #${v.number}` } }),
       ]);
       return json({ ok: true, files, versionNumber: next });
     }
     await db.$transaction([
       db.project.update({ where: { id }, data: { html: v.html } }),
-      db.version.create({ data: { projectId: id, number: next, html: v.html, message: `Restored v${v.number}` } }),
+      db.version.create({ data: { projectId: id, number: next, html: v.html, message: `Restored change #${v.number}` } }),
     ]);
     return json({ ok: true, html: v.html, versionNumber: next });
-  });
+  }));
 }

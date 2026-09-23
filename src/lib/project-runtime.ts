@@ -1,3 +1,5 @@
+import { fileBytes } from "./file-content";
+import { recordProjectRelease } from "./project-releases";
 import "server-only";
 import { Sandbox } from "e2b";
 import { randomUUID } from "node:crypto";
@@ -29,14 +31,14 @@ export async function runProjectBuild(project: Project & { files: ProjectFile[] 
     // Validate all paths before provisioning a paid runtime.
     const files = buildProjectFiles(project, readProjectEnv(project)).filter((f) => f.path !== ".env.production");
     files.forEach((f) => runtimePath(f.path));
-    if (project.kind === "app" && !project.files.some((f) => f.path === "/App.tsx")) throw new Error("There is no /App.tsx to build yet.");
+    if (project.kind === "app" && !files.some((f) => f.path === "src/App.tsx")) throw new Error("Automatic preview currently supports static websites and frontend React projects. Export this project and follow its setup instructions to run its selected stack.");
     if (project.kind !== "app" && !project.html.trim()) throw new Error("There is no website to build yet.");
     await stopProjectRuntime(project.id);
     emit("Creating an isolated build environment…");
     sandbox = await Sandbox.create({ timeoutMs: LIFETIME, metadata: { projectId: project.id }, network: { allowPublicTraffic: true } });
     signal.throwIfAborted();
     emit(`Uploading ${files.length} project files…`);
-    await sandbox.files.write(files.map((f) => ({ path: runtimePath(f.path), data: f.content })));
+    await sandbox.files.write(files.map((f) => ({ path: runtimePath(f.path), data: new Uint8Array(fileBytes(f.content)).buffer })));
     // Only explicitly public browser config is passed. Platform secrets never enter the VM.
     const publicEnv = Object.fromEntries(Object.entries(readProjectEnv(project)).filter(([k]) => /^VITE_[A-Z0-9_]+$/.test(k)));
     const activeSandbox = sandbox;
@@ -49,6 +51,8 @@ export async function runProjectBuild(project: Project & { files: ProjectFile[] 
     const url = `https://${sandbox.getHost(3000)}`;
     const expiresAt = Date.now() + LIFETIME;
     await db.setting.upsert({ where: { key }, create: { key, value: JSON.stringify({ sandboxId: sandbox.sandboxId, url, expiresAt }) }, update: { value: JSON.stringify({ sandboxId: sandbox.sandboxId, url, expiresAt }) } });
+    const release = await recordProjectRelease(project);
+    emit(`Build version v${release.number} ready.`);
     ready = true;
     emit("Build exited successfully. Temporary preview is ready; anyone with its link can view it. It expires within 15 minutes.");
     return { url, expiresAt };

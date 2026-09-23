@@ -109,37 +109,30 @@ function priceCentsToUsd(cents: number) {
  * When the paid amount is known it must cover the item price, so partial/test charges never unlock.
  */
 export async function markPurchasePaid(purchaseId: string, whopPaymentId?: string | null, paidCents?: number | null) {
-  const purchase = await db.purchase.findUnique({ where: { id: purchaseId } });
-  if (!purchase) return null;
-  if (purchase.status === "PAID") return purchase;
-  if (typeof paidCents === "number" && paidCents > 0 && paidCents + 1 < purchase.priceCents) {
-    console.warn(`[marketplace] payment ${whopPaymentId} for ${purchaseId} was ${paidCents}c, expected ${purchase.priceCents}c; not unlocking`);
-    return null;
-  }
-  // The status flip is the guard: only the first concurrent settlement credits the seller.
-  const flipped = await db.purchase.updateMany({ where: { id: purchaseId, status: "PENDING" }, data: { status: "PAID", paidAt: new Date(), whopPaymentId: whopPaymentId ?? purchase.whopPaymentId } });
-  if (flipped.count !== 1) return db.purchase.findUnique({ where: { id: purchaseId } });
-  await db.$transaction([
-    db.marketItem.update({ where: { id: purchase.itemId }, data: { sales: { increment: 1 }, installs: { increment: 1 } } }),
-    db.user.update({ where: { id: purchase.sellerId }, data: { sellerBalanceCents: { increment: purchase.sellerCents } } }),
-  ]);
-  return db.purchase.findUnique({ where: { id: purchaseId } });
+  return db.$transaction(async (tx) => {
+    await tx.$queryRaw`SELECT "id" FROM "Purchase" WHERE "id" = ${purchaseId} FOR UPDATE`;
+    const purchase = await tx.purchase.findUnique({ where: { id: purchaseId } });
+    if (!purchase || purchase.status !== "PENDING") return purchase;
+    if (paidCents != null && (!Number.isSafeInteger(paidCents) || paidCents < purchase.priceCents)) return null;
+    await tx.purchase.update({ where: { id: purchaseId }, data: { status: "PAID", paidAt: new Date(), whopPaymentId: whopPaymentId ?? purchase.whopPaymentId } });
+    await tx.marketItem.update({ where: { id: purchase.itemId }, data: { sales: { increment: 1 }, installs: { increment: 1 } } });
+    await tx.user.update({ where: { id: purchase.sellerId }, data: { sellerBalanceCents: { increment: purchase.sellerCents } } });
+    return tx.purchase.findUnique({ where: { id: purchaseId } });
+  });
 }
 
-/** Reverse a paid purchase after a refund or chargeback: lock the item again and take the seller share back. Idempotent. */
+/** Reverse legacy/dev purchases atomically; production payment adjustments use billing-ledger. */
 export async function reversePurchase(whopPaymentId: string, reason: string) {
-  const purchase = await db.purchase.findFirst({ where: { whopPaymentId, status: "PAID" } });
-  if (!purchase) return null;
-  const flipped = await db.purchase.updateMany({ where: { id: purchase.id, status: "PAID" }, data: { status: "REFUNDED" } });
-  if (flipped.count !== 1) return null;
-  await db.$transaction([
-    db.marketItem.update({ where: { id: purchase.itemId }, data: { sales: { decrement: 1 } } }),
-    // Never below zero: if the seller was already paid out, the negative is tracked in paidOut instead.
-    db.$executeRaw`UPDATE "User" SET "sellerBalanceCents" = GREATEST(0, "sellerBalanceCents" - ${purchase.sellerCents}),
-      "sellerPaidOutCents" = "sellerPaidOutCents" - GREATEST(0, ${purchase.sellerCents} - "sellerBalanceCents") WHERE "id" = ${purchase.sellerId}`,
-  ]);
-  console.warn(`[marketplace] purchase ${purchase.id} reversed (${reason})`);
-  return db.purchase.findUnique({ where: { id: purchase.id } });
+  void reason;
+  return db.$transaction(async (tx) => {
+    await tx.$queryRaw`SELECT "id" FROM "Purchase" WHERE "whopPaymentId" = ${whopPaymentId} FOR UPDATE`;
+    const purchase = await tx.purchase.findFirst({ where: { whopPaymentId, status: "PAID" } });
+    if (!purchase) return null;
+    await tx.purchase.update({ where: { id: purchase.id }, data: { status: "REFUNDED" } });
+    await tx.marketItem.update({ where: { id: purchase.itemId }, data: { sales: { decrement: 1 } } });
+    await tx.user.update({ where: { id: purchase.sellerId }, data: { sellerBalanceCents: { decrement: purchase.sellerCents } } });
+    return tx.purchase.findUnique({ where: { id: purchase.id } });
+  });
 }
 
 export async function hasPurchased(userId: string, itemId: string) {

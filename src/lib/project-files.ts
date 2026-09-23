@@ -1,6 +1,7 @@
 import type { Project, ProjectFile } from "@prisma/client";
 import { decryptJson, encryptJson } from "./crypto";
 import { db } from "./db";
+import { isReactSandboxStack } from "./project-stack";
 import { protectProjectNavigation } from "./project-navigation";
 
 export type FileMap = { path: string; content: string }[];
@@ -22,7 +23,7 @@ export function buildProjectFiles(project: Project & { files: ProjectFile[] }, e
   const out: FileMap = [];
   if (project.kind === "app") {
     const stack = (() => { try { return (JSON.parse(project.memory || "{}").stack as string | undefined) ?? "react-ts"; } catch { return "react-ts"; } })();
-    if (!/react/i.test(stack)) {
+    if (!isReactSandboxStack(stack) || project.files.some((f) => f.path === "/package.json")) {
       for (const f of project.files) out.push({ path: f.path.replace(/^\/+/, ""), content: f.content });
       const envEntries = Object.entries(env).filter(([k]) => /^\w/.test(k));
       if (envEntries.length && !out.some((f) => f.path === ".env.example")) out.push({ path: ".env.example", content: envEntries.map(([k]) => `${k}=`).join("\n") + "\n" });
@@ -46,9 +47,10 @@ export function buildProjectFiles(project: Project & { files: ProjectFile[] }, e
     out.push({ path: ".gitignore", content: "node_modules\ndist\n.env\n.env.local\n" });
     out.push({ path: "README.md", content: `# ${project.name}\n\nBuilt with IDÆVIA Build (React + Vite).\n\n\`\`\`bash\nnpm install\nnpm run dev\nnpm run build   # → dist/\n\`\`\`\n` });
   } else {
+    for (const f of project.files) { const path = f.path.replace(/^\/+/, ""); if (path !== "index.html") out.push({ path, content: f.content }); }
     out.push({ path: "index.html", content: protectProjectNavigation(project.html) });
-    out.push({ path: "vercel.json", content: JSON.stringify({ cleanUrls: true }, null, 2) + "\n" });
-    out.push({ path: "README.md", content: `# ${project.name}\n\nBuilt with IDÆVIA Build.\n\nStatic site: open \`index.html\` or deploy the folder to any static host (Vercel, Netlify, Cloudflare Pages, GitHub Pages).\n` });
+    if (!out.some(f => f.path === "vercel.json")) out.push({ path: "vercel.json", content: JSON.stringify({ cleanUrls: true }, null, 2) + "\n" });
+    if (!out.some(f => f.path === "README.md")) out.push({ path: "README.md", content: `# ${project.name}\n\nBuilt with IDÆVIA Build.\n\nStatic site: open \`index.html\` or deploy the folder to any static host (Vercel, Netlify, Cloudflare Pages, GitHub Pages).\n` });
   }
   return out;
 }

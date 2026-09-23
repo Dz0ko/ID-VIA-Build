@@ -68,7 +68,8 @@ export async function POST(req: Request) {
       if (!p) return error("Choose one of your projects to publish.");
       if (p.kind === "app") {
         if (!p.files.length) return error("This app has no files yet.");
-        payload = { kind: "app", files: p.files.map((f) => ({ path: f.path, content: f.content })) };
+        const stack = (() => { try { return JSON.parse(p.memory).stack; } catch { return undefined; } })();
+        payload = { kind: "app", ...(typeof stack === "string" ? { stack } : {}), files: p.files.map((f) => ({ path: f.path, content: f.content })) };
       } else {
         if (!p.html.trim()) return error("This project is empty. Build something first.");
         payload = { kind: "website", html: p.html };
@@ -95,10 +96,8 @@ export async function DELETE(req: Request) {
     const { id } = (await req.json().catch(() => ({}))) as { id?: string };
     if (!id) return error("id required");
     const where = user.role === "ADMIN" ? { id } : { id, authorId: user.id };
-    // Keep items that were sold (buyers keep access); just unpublish them.
-    const sold = await db.purchase.count({ where: { itemId: id, status: "PAID" } });
-    if (sold > 0) await db.marketItem.updateMany({ where, data: { published: false } });
-    else await db.marketItem.deleteMany({ where });
+    // Preserve paid and in-flight orders; removing a listing never deletes purchases.
+    await db.marketItem.updateMany({ where, data: { published: false } });
     return json({ ok: true });
   });
 }

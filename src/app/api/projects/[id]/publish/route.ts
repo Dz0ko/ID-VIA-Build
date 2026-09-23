@@ -1,3 +1,4 @@
+import { recordProjectRelease } from "@/lib/project-releases";
 import { db } from "@/lib/db";
 import { error, json, withUser } from "@/lib/api";
 import { protectProjectNavigation } from "@/lib/project-navigation";
@@ -20,7 +21,8 @@ export async function POST(_req: Request, ctx: RouteContext<"/api/projects/[id]/
       where: { id },
       data: { status: "PUBLISHED", publishedHtml: html, publishedAt: new Date() },
     });
-    return json({ ok: true, url: `/s/${updated.slug}`, publishedAt: updated.publishedAt });
+    const release = await recordProjectRelease(project, { provider: "idaevia", url: `/s/${updated.slug}` });
+    return json({ release, ok: true, url: `/s/${updated.slug}`, publishedAt: updated.publishedAt });
   });
 }
 

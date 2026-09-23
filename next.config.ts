@@ -42,7 +42,7 @@ const nextConfig: NextConfig = {
   async headers() {
     return [
       // User-generated HTML gets its own (sandboxed) policy in the route handlers.
-      { source: "/((?!s/|api/portal/|api/templates/|api/projects/[^/]+/preview|api/marketplace/[^/]+/preview).*)", headers: securityHeaders },
+      { source: "/((?!s/|api/portal/|api/templates/|api/projects/[^/]+/preview|api/admin/projects/[^/]+/preview|api/marketplace/[^/]+/preview).*)", headers: securityHeaders },
     ];
   },
 };

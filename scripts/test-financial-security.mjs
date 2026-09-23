@@ -28,7 +28,7 @@ try {
   console.log('Created isolated test schema. Production tables are not used.');
   await run(['node_modules/prisma/build/index.js', 'db', 'push', '--skip-generate']);
   console.log(shellOnly ? 'Running live terminal and access-control tests…' : 'Running transaction, replay, refund and access-control tests…');
-  await run(['--conditions=react-server', '--import', 'tsx', '--test', ...(process.env.TEST_NAME_PATTERN ? ['--test-name-pattern', process.env.TEST_NAME_PATTERN] : []), shellOnly ? 'tests/shell-http.test.ts' : 'tests/financial-security.test.ts']);
+  await run(['--conditions=react-server', '--import', 'tsx', '--test', ...(process.env.TEST_NAME_PATTERN ? ['--test-name-pattern', process.env.TEST_NAME_PATTERN] : []), process.argv.includes('--imports') ? 'tests/import.browser.test.mjs' : process.argv.includes('--chat-components') ? 'tests/chat-components.browser.test.mjs' : process.argv.includes('--admin') ? 'tests/admin.browser.test.mjs' : process.argv.includes('--components') ? 'tests/component-library.browser.test.mjs' : shellOnly ? 'tests/shell-http.test.ts' : 'tests/financial-security.test.ts']);
 } catch (e) { console.error(e.message); process.exitCode = 1; }
 finally {
   await base.$executeRawUnsafe(`DROP SCHEMA IF EXISTS "${schema}" CASCADE`);

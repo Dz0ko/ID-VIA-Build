@@ -1,3 +1,4 @@
+import { recordProjectRelease } from "@/lib/project-releases";
 import { z } from "zod";
 import { db } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
@@ -34,7 +35,7 @@ const HELP = [
   "  supabase link               inject the connected Supabase project into env",
   "  integrations                what is connected (GitHub, Vercel, Supabase, Higgsfield…)",
   "  export                      download the project as a ZIP",
-  "  versions | git log · agents · run <agent> <task> · clear   (run locally in the workspace)",
+  "  versions | history | git log · agents · run <agent> <task> · clear   (run locally in the workspace)",
 ];
 
 /** Server-side terminal: streams log lines as SSE while running one command. */
@@ -101,6 +102,7 @@ export async function POST(req: Request, ctx: RouteContext<"/api/projects/[id]/t
             let html = protectProjectNavigation(project.html);
             if (user.plan === "FREE") html = html.replace("</body>", `<a href="${appUrl}" target="_blank" rel="noopener" style="position:fixed;bottom:12px;right:12px;z-index:9999;font:500 11px/1 ui-monospace,monospace;letter-spacing:.12em;text-transform:uppercase;background:#0a0a0b;color:#f5f5f7;border:1px solid #1c1c1f;border-radius:999px;padding:8px 12px;text-decoration:none">Made with IDÆVIA</a></body>`);
             await db.project.update({ where: { id }, data: { status: "PUBLISHED", publishedHtml: html, publishedAt: new Date() } });
+            await recordProjectRelease(project, { provider: "idaevia", url: `/s/${project.slug}` });
             await db.deployment.create({ data: { projectId: id, provider: "idaevia", status: "READY", url: `${appUrl}/s/${project.slug}`, log: "Published to IDÆVIA hosting", finishedAt: new Date() } });
             send(`✓ Live at ${appUrl}/s/${project.slug}`, "ok");
           }
@@ -174,6 +176,7 @@ export async function POST(req: Request, ctx: RouteContext<"/api/projects/[id]/t
                 try {
                   const files = buildProjectFiles(project, env).filter((f) => f.path !== ".env.production");
                   const r = await deployToVercel({ token: vc.secret.token, teamId: vc.secret.teamId || undefined, name: args[1] ?? project.slug, files, framework: project.kind === "app" ? "vite" : null, env, log });
+                  if (r.state === "READY") await recordProjectRelease(project, { provider: "vercel", url: r.url });
                   await db.deployment.update({ where: { id: dep.id }, data: { status: r.state === "READY" ? "READY" : "PENDING", url: r.url, log: lines.join("\n"), finishedAt: new Date() } });
                   send(r.url, "ok");
                 } catch (e) {

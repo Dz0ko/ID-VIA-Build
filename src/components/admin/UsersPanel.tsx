@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useState } from "react";
 import { PLAN_ORDER, PLANS } from "@/lib/plans";
 
@@ -29,11 +30,11 @@ export function UsersPanel() {
 
   return (
     <div className="space-y-4">
-      <section className="grid sm:grid-cols-4 gap-4">
-        <div className="card p-4"><div className="label">Total</div><div className="mt-1 text-2xl font-semibold">{users.length}</div></div>
-        <div className="card p-4"><div className="label">Paying</div><div className="mt-1 text-2xl font-semibold">{paid}</div></div>
-        <div className="card p-4"><div className="label">Admins</div><div className="mt-1 text-2xl font-semibold">{users.filter((u) => u.role === "ADMIN").length}</div></div>
-        <div className="card p-4"><div className="label">Credits in circulation</div><div className="mt-1 text-2xl font-semibold">{users.reduce((s, u) => s + u.credits, 0).toLocaleString()}</div></div>
+      <section className="admin-metrics">
+        <div className="p-4"><div className="label">Total</div><div className="mt-1 text-2xl font-semibold">{users.length}</div></div>
+        <div className="p-4"><div className="label">Paying</div><div className="mt-1 text-2xl font-semibold">{paid}</div></div>
+        <div className="p-4"><div className="label">Admins</div><div className="mt-1 text-2xl font-semibold">{users.filter((u) => u.role === "ADMIN").length}</div></div>
+        <div className="p-4"><div className="label">Credits in circulation</div><div className="mt-1 text-2xl font-semibold">{users.reduce((s, u) => s + u.credits, 0).toLocaleString()}</div></div>
       </section>
 
       <section className="card overflow-hidden">
@@ -60,7 +61,7 @@ export function UsersPanel() {
                   </td>
                   <td className="p-3"><select className="input py-1 w-28" value={u.plan} onChange={(e) => patchUser(u.id, { plan: e.target.value })}>{PLAN_ORDER.map((p) => <option key={p}>{p}</option>)}</select></td>
                   <td className="p-3 font-mono">{u.credits.toLocaleString()}</td>
-                  <td className="p-3">{u._count.projects}</td>
+                  <td className="p-3"><Link className="underline underline-offset-4" href={`/admin/projects?owner=${encodeURIComponent(u.id)}`}>{u._count.projects} projects →</Link></td>
                   <td className="p-3">{u._count.referrals}</td>
                   <td className="p-3 font-mono">{u.sellerBalanceCents ? `$${(u.sellerBalanceCents / 100).toFixed(2)}` : "—"}</td>
                   <td className="p-3"><select className="input py-1 w-24" value={u.role} onChange={(e) => patchUser(u.id, { role: e.target.value })}><option>USER</option><option>ADMIN</option></select></td>

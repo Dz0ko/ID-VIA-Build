@@ -32,11 +32,6 @@ export async function POST(req: Request) {
     if (!body.success) return error("Invalid input.");
     if (body.data.kind === "app" && !planAtLeast(user.plan, "PRO"))
       return error("React app projects with a live sandbox are available from the Pro plan.", 403, { code: "PLAN", minPlan: "PRO" });
-    const limit = PLANS[user.plan].projectLimit;
-    const count = await db.project.count({ where: { userId: user.id } });
-    if (limit !== "unlimited" && count >= limit)
-      return error(`Your ${PLANS[user.plan].name} plan allows ${limit} projects. Upgrade to create more.`, 403, { code: "PROJECT_LIMIT" });
-
     let html = "";
     let templateId: string | undefined;
     if (body.data.templateId && TEMPLATE_MAP.has(body.data.templateId)) {
@@ -44,20 +39,28 @@ export async function POST(req: Request) {
       templateId = body.data.templateId;
     }
     const slug = `${slugify(body.data.name)}-${nanoid()}`;
-    const project = await db.project.create({
-      data: {
-        userId: user.id,
-        name: body.data.name,
-        description: body.data.description,
-        kind: body.data.kind ?? "website",
-        slug,
-        html,
-        templateId,
-      },
+    return db.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT "id" FROM "User" WHERE "id" = ${user.id} FOR UPDATE`;
+      const limit = PLANS[user.plan].projectLimit;
+      const count = await tx.project.count({ where: { userId: user.id } });
+      if (limit !== "unlimited" && count >= limit)
+        return error(`Your ${PLANS[user.plan].name} plan allows ${limit} projects. Upgrade to create more.`, 403, { code: "PROJECT_LIMIT" });
+
+      const project = await tx.project.create({
+        data: {
+          userId: user.id,
+          name: body.data.name,
+          description: body.data.description,
+          kind: body.data.kind ?? "website",
+          slug,
+          html,
+          templateId,
+        },
+      });
+      if (html) {
+        await tx.version.create({ data: { projectId: project.id, number: 1, html, message: `Template: ${TEMPLATE_MAP.get(templateId!)?.name}` } });
+      }
+      return json({ project });
     });
-    if (html) {
-      await db.version.create({ data: { projectId: project.id, number: 1, html, message: `Template: ${TEMPLATE_MAP.get(templateId!)?.name}` } });
-    }
-    return json({ project });
   });
 }

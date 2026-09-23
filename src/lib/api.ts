@@ -1,3 +1,4 @@
+import { ProjectBusyError } from "./project-lock";
 import { NextResponse } from "next/server";
 import { AuthError, getCurrentUser, type SessionUser } from "./auth";
 import { InsufficientCredits } from "./credits";
@@ -25,6 +26,7 @@ export async function withUser<T>(
 }
 
 export function handleError(e: unknown) {
+  if (e instanceof ProjectBusyError) return error(e.message, e.status, { code: "PROJECT_BUSY" });
   if (e instanceof AuthError) return error(e.message, 401);
   if (e instanceof InsufficientCredits)
     return error(e.message, 402, { needed: e.needed, have: e.have, code: "INSUFFICIENT_CREDITS" });

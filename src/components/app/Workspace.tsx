@@ -7,6 +7,9 @@ import Link from "next/link";
 import {
   ArrowLeft, Rocket, Download, Monitor, Tablet, Smartphone, Code2, Eye, History, MessageSquare, TerminalSquare, AlertTriangle, Lock, Play, RotateCcw, Save, Activity, ExternalLink, Users, FileCode2, Folder, ChevronRight, Image as ImageIcon, X, Share2, Link2, Trash2, CheckCircle2,
 } from "@/components/icons";
+import { selectedComponents, componentImplementationPrompt, SELECTABLE_COMPONENTS, MAX_COMPONENT_SELECTION } from "@/lib/component-selection";
+import { ProjectDownloadDialog } from "./ProjectDownload";
+import { readImportHandoff, clearImportHandoff } from "@/lib/import-handoff";
 import { shellIntent } from "@/lib/shell-intent";
 import { runtimeCommand } from "@/lib/runtime-command";
 import { ComposerSelect } from "./ComposerSelect";
@@ -17,6 +20,7 @@ import { MODEL_TIERS } from "@/lib/plans";
 import type { AuditResult } from "@/lib/audit";
 import { protectProjectNavigation } from "@/lib/project-navigation";
 
+const ComponentCatalog = dynamic(() => import("./ComponentCatalog").then(m => m.ComponentCatalog));
 const MonacoEditor = dynamic(() => import("@monaco-editor/react").then((m) => m.default), { ssr: false });
 const ShellTerminal = dynamic(() => import("./ShellTerminal").then((m) => m.ShellTerminal), { ssr: false });
 const AppSandbox = dynamic(() => import("./AppSandbox").then((m) => m.AppSandbox), { ssr: false });
@@ -56,6 +60,7 @@ function makeDiffs(beforeFiles: ProjFile[], afterFiles: ProjFile[]): DiffFile[] 
 }
 
 export interface WorkspaceProps {
+  releases?: { number: number; createdAt: string; deployedAt?: string; provider?: string; url?: string }[];
   project: {
     id: string; name: string; slug: string; status: string; kind: string; html: string; memory?: string; description: string | null; health: string | null; clientStatus: string;
     versions: Version[]; messages: Msg[]; agentRuns: Run[]; files: ProjFile[];
@@ -108,6 +113,9 @@ export function Workspace(p: WorkspaceProps) {
   const [files, setFiles] = useState<ProjFile[]>(p.project.files);
   const [savedFiles, setSavedFiles] = useState<ProjFile[]>(p.project.files);
   const [activeFile, setActiveFile] = useState<string>(p.project.files[0]?.path ?? "/App.tsx");
+  const [releases, setReleases] = useState(p.releases ?? []);
+  const refreshReleases = async () => { const res = await fetch(`/api/projects/${p.project.id}/releases`); if (res.ok) { const rows = (await res.json()).releases; setReleases(rows); return rows as typeof releases; } return releases; };
+  const [downloadOpen, setDownloadOpen] = useState(false);
   const [versions, setVersions] = useState(p.project.versions);
   const [messages, setMessages] = useState(p.project.messages);
   const [runs, setRuns] = useState(p.project.agentRuns);
@@ -124,10 +132,15 @@ export function Workspace(p: WorkspaceProps) {
   const [agentId, setAgentId] = useState("auto");
   const [tier, setTier] = useState<ModelTier | "auto">("auto");
   const [provider, setProvider] = useState<"anthropic" | "openai" | undefined>(undefined);
-  const [input, setInput] = useState(params.get("prompt") ?? "");
+  const [componentIds, setComponentIds] = useState<string[]>(() => selectedComponents(params.get("prompt") ?? ""));
+  const [componentsOpen, setComponentsOpen] = useState(false);
+  const componentsDialog = useRef<HTMLDialogElement>(null);
+  useEffect(() => { if (componentsOpen) componentsDialog.current?.showModal(); else componentsDialog.current?.close(); }, [componentsOpen]);
+  const [input, setInput] = useState((params.get("prompt") ?? "").replace(/\s*\[COMPONENT:[a-z0-9-]+\]/g, ""));
   const [images, setImages] = useState<RefImage[]>([]);
   const [busy, setBusy] = useState<string | null>(null);
   const [stream, setStream] = useState("");
+  const [responseMode, setResponseMode] = useState<"rewrite" | "report">("rewrite");
   const [activity, setActivity] = useState<AgentActivity[]>([]);
   const [diffs, setDiffs] = useState<DiffFile[]>([]);
   const [pendingStackRequest, setPendingStackRequest] = useState<string | null>(null);
@@ -152,7 +165,6 @@ export function Workspace(p: WorkspaceProps) {
   const terminalEnd = useRef<HTMLDivElement>(null);
   const chatEnd = useRef<HTMLDivElement>(null);
   const followChat = useRef(true);
-  const lastWorkDetail = useRef("Preparing the agent workspace");
   const autoRan = useRef(false);
   const abortRef = useRef<AbortController | null>(null);
   const busyRef = useRef<string | null>(null);
@@ -175,26 +187,6 @@ export function Workspace(p: WorkspaceProps) {
     const t = setTimeout(() => setTermLines(["IDÆVIA terminal · project commands and isolated builds. Type `help`.", "Try: npm run build · preview · stop · status · git push · deploy vercel"]), 0);
     return () => clearTimeout(t);
   }, []);
-  useEffect(() => {
-    if (!busy) return;
-    const phases = isApp
-      ? ["reading the project files", "updating components and interactions", "checking imports and routes", "reviewing the result"]
-      : ["reading index.html", "applying design changes", "checking buttons and interactions", "reviewing responsive behaviour"];
-    let index = 0;
-    const tick = () => {
-      setActivity((items) => {
-        const running = items.findIndex((item) => item.label === "Work in progress" && item.status === "running");
-        const fallback = items.findIndex((item) => item.status === "running");
-        const target = running >= 0 ? running : fallback;
-        if (target < 0) return items;
-        const detail = `${lastWorkDetail.current} · ${phases[index++ % phases.length]}`;
-        return items.map((item, i) => i === target ? { ...item, detail } : item);
-      });
-    };
-    tick();
-    const timer = window.setInterval(tick, 2200);
-    return () => window.clearInterval(timer);
-  }, [busy, isApp]);
 
   const runOne = useCallback(async (request: string, agentToRun: string, imgs: RefImage[] = []) => {
     if (!request.trim() || busyRef.current) return false;
@@ -202,8 +194,8 @@ export function Workspace(p: WorkspaceProps) {
     busyRef.current = agentToRun;
     setBusy(agentToRun);
     setStream("");
+    setResponseMode("rewrite");
     setDiffs([]);
-    lastWorkDetail.current = "Preparing the agent workspace";
     setActivity([{ id: `activity-${Date.now()}`, label: "Start task", detail: "Preparing the agent workspace", status: "running" }]);
     setBottom("chat");
     setExpandedPanel(true);
@@ -242,6 +234,7 @@ export function Workspace(p: WorkspaceProps) {
           else if (ev.type === "clarification") { clarified = true; setPendingStackRequest(ev.request); setMessages((m) => [...m, { id: `q-${Date.now()}`, role: "assistant", content: ev.message, agentId: busyRef.current ?? agentToRun, creditsUsed: 0, model: null, createdAt: new Date().toISOString() }]); setActivity((items) => [...items.map((item) => ({ ...item, status: "done" as const })), { id: `activity-${Date.now()}`, label: "Choose project stack", detail: "Waiting for your language or framework choice", status: "done" }]); log("Waiting for project language/framework choice"); }
           else if (ev.type === "agent") { setMessages((m) => [...m, { id: `i-${Date.now()}`, role: "assistant", content: ev.text, agentId: ev.agent, creditsUsed: 0, model: null, createdAt: new Date().toISOString() }]); log(`${ev.name} (${ev.profession}) started`); setActivity((items) => [...items.map((item) => ({ ...item, status: "done" as const })), { id: `activity-${Date.now()}`, label: ev.name, detail: `${ev.profession} started`, status: "running" }]); }
           else if (ev.type === "meta") {
+            setResponseMode(ev.mode ?? "rewrite");
             usedCredits = ev.credits; setCredits((c) => c - ev.credits);
             log(`Routed → ${ev.tier} tier · ${ev.provider}/${ev.model} · task=${ev.taskClass} · ${ev.credits} credits${ev.fallback ? " · template engine" : ""}`);
             setActivity((items) => [...items.map((item) => ({ ...item, status: "done" as const })), { id: `activity-${Date.now()}`, label: "Plan work", detail: `${ev.tier} model · ${ev.taskClass} task`, status: "running" }]);
@@ -249,10 +242,9 @@ export function Workspace(p: WorkspaceProps) {
             acc += ev.text;
             setStream(acc);
             const fileMatch = [...acc.matchAll(/<<<FILE\s+([^\s>]+)\s*>>>/g)].at(-1)?.[1];
-            const detail = isApp
-              ? `Working on ${fileMatch ?? "project files"} · updating components and interactions`
-              : "Working on index.html · applying changes and checking interactions";
-            lastWorkDetail.current = detail;
+            const detail = /^<<<ANSWER>>>/.test(acc) ? "Writing an answer" : fileMatch ? `Generating ${fileMatch}` : isApp
+              ? "Generating a response"
+              : "Generating a response";
             setActivity((items) => {
               const current = items.find((item) => item.label === "Work in progress" && item.status === "running");
               if (current) return items.map((item) => item.id === current.id ? { ...item, detail } : item);
@@ -261,20 +253,20 @@ export function Workspace(p: WorkspaceProps) {
           }
           else if (ev.type === "done") {
             completed = true;
-            setActivity((items) => [...items.map((item) => ({ ...item, status: "done" as const })), { id: `activity-${Date.now()}`, label: "Save result", detail: ev.mode === "rewrite" ? `Version ${ev.versionNumber} saved` : "Report ready", status: "done" }]);
+            setActivity((items) => [...items.map((item) => ({ ...item, status: "done" as const })), { id: `activity-${Date.now()}`, label: "Save result", detail: ev.mode === "rewrite" ? "Change saved" : "Answer ready", status: "done" }]);
             if (ev.mode === "rewrite") {
               rewrote = true;
               if (ev.files) { setDiffs(makeDiffs(savedFiles, ev.files)); setFiles(ev.files); setSavedFiles(ev.files); setActiveFile((f) => (ev.files.some((x: ProjFile) => x.path === f) ? f : "/App.tsx")); }
               else { setDiffs([makeDiff(savedHtml, ev.html ?? "", "index.html")].filter((file) => file.added || file.removed)); setHtml(ev.html); setSavedHtml(ev.html); }
               setVersions((v) => [{ id: `v${ev.versionNumber}`, number: ev.versionNumber, message: `${agentToRun}: ${request.slice(0, 120)}`, createdAt: new Date().toISOString() }, ...v]);
-              setMessages((m) => [...m, { id: `a-${Date.now()}`, role: "assistant", content: ev.note ?? `Updated the ${isApp ? "app" : "project"} (v${ev.versionNumber}).`, agentId: busyRef.current ?? agentToRun, creditsUsed: ev.creditsUsed, model: null, createdAt: new Date().toISOString() }]);
+              setMessages((m) => [...m, { id: `a-${Date.now()}`, role: "assistant", content: ev.note ?? `Updated the ${isApp ? "app" : "project"}.`, agentId: busyRef.current ?? agentToRun, creditsUsed: ev.creditsUsed, model: null, createdAt: new Date().toISOString() }]);
               setView("preview");
-              log(`✓ v${ev.versionNumber} saved (${ev.creditsUsed} credits)`, "ok");
+              log(`✓ Change saved (${ev.creditsUsed} credits)`, "ok");
             } else {
               setMessages((m) => [...m, { id: `a-${Date.now()}`, role: "assistant", content: ev.report, agentId: busyRef.current ?? agentToRun, creditsUsed: ev.creditsUsed, model: null, createdAt: new Date().toISOString() }]);
               log(`✓ ${agentToRun} report ready (${ev.creditsUsed} credits)`, "ok");
             }
-            setRuns((r) => [{ id: `r-${Date.now()}`, agentId: agentToRun, status: "DONE", task: request, model: null, creditsUsed: ev.creditsUsed, startedAt: new Date().toISOString(), finishedAt: new Date().toISOString(), output: ev.mode === "rewrite" ? `v${ev.versionNumber}` : "report" }, ...r]);
+            setRuns((r) => [{ id: `r-${Date.now()}`, agentId: agentToRun, status: "DONE", task: request, model: null, creditsUsed: ev.creditsUsed, startedAt: new Date().toISOString(), finishedAt: new Date().toISOString(), output: ev.mode === "rewrite" ? `Change #${ev.versionNumber}` : "report" }, ...r]);
           } else if (ev.type === "error") { setCredits((c) => c + usedCredits); throw new Error(ev.message); }
         }
       }
@@ -293,26 +285,38 @@ export function Workspace(p: WorkspaceProps) {
 
   useEffect(() => { terminalAction.current = term; });
 
-  const run = useCallback(async (request: string, agentToRun: string = agentId, chain: string[] = []) => {
-    if (!request.trim() || busyRef.current || terminalRunning.current) return;
+  const run = useCallback(async (request: string, agentToRun: string = agentId, chain: string[] = [], importImages?: RefImage[]) => {
+    if ((!request.trim() && !componentIds.length) || busyRef.current || terminalRunning.current) return;
     const command = shellIntent(request) ?? runtimeCommand(request);
-    if (command && !chain.length) { await terminalAction.current?.(command); return; }
-    const effectiveRequest = pendingStackRequest ? `${pendingStackRequest}\n\nSTACK CHOICE: ${request}` : request;
+    if (command && !chain.length && !componentIds.length) { await terminalAction.current?.(command); return; }
+    if (componentIds.length && allAgents.find(a => a.id === agentToRun)?.mode === "report") agentToRun = "builder";
+    const composed = componentImplementationPrompt(request, componentIds);
+    if (composed.length > 8000) { setError("The message is too long with these components. Shorten your instructions and try again."); setInput(request); return; }
+    const effectiveRequest = pendingStackRequest ? `${pendingStackRequest}\n\nSTACK CHOICE: ${composed}` : composed;
     if (pendingStackRequest) setPendingStackRequest(null);
-    const imgs = images; setImages([]);
+    const imgs = importImages ?? images; setImages([]);
     for (const [i, id] of [agentToRun, ...chain].entries()) {
       const ok = await runOne(effectiveRequest, id, i === 0 ? imgs : []);
+      if (ok) { setComponentIds([]); if (params.get("from") === "import") void clearImportHandoff(p.project.id).catch(() => {}); }
       if (!ok) { setInput((current) => current || request); if (i === 0) setImages(imgs); break; }
     }
-  }, [agentId, images, pendingStackRequest, runOne]);
+  }, [agentId, images, pendingStackRequest, runOne, componentIds, allAgents, params, p.project.id]);
 
   useEffect(() => {
     if (params.get("auto") === "1" && !autoRan.current) {
       autoRan.current = true;
+      if (params.get("from") === "import") {
+        void readImportHandoff(p.project.id).then(handoff => {
+          if (!handoff) { setError("The import reference is no longer available in this browser. Attach it again to continue."); return; }
+          if (p.project.html || p.project.files.length) { void clearImportHandoff(p.project.id); return; }
+          setInput(""); void run(handoff.prompt, "builder", [], handoff.images);
+        }).catch(e => setError(e instanceof Error ? e.message : "Could not open import."));
+        return;
+      }
       let req = input;
       if (params.get("from") === "session") { try { req = sessionStorage.getItem(`idaevia:prompt:${p.project.id}`) ?? req; sessionStorage.removeItem(`idaevia:prompt:${p.project.id}`); } catch { /* ignore */ } }
       const hasContent = isApp ? p.project.files.length > 0 : Boolean(p.project.html);
-      if (req && !hasContent) { setInput(""); run(req, "builder"); }
+      if (req && !hasContent) { queueMicrotask(() => { setInput(""); void run(req, "builder"); }); }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -341,12 +345,12 @@ export function Workspace(p: WorkspaceProps) {
     if (isApp) {
       const res = await fetch(`/api/projects/${p.project.id}/files`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ files, saveVersion: asVersion }) });
       const d = await res.json();
-      if (res.ok) { setSavedFiles(files); if (d.versionNumber) setVersions((v) => [{ id: `v${d.versionNumber}`, number: d.versionNumber, message: "Manual edit", createdAt: new Date().toISOString() }, ...v]); log(asVersion ? `✓ Saved as v${d.versionNumber}` : "✓ Saved", "ok"); } else throw new Error(d.error ?? "Request failed");
+      if (res.ok) { setSavedFiles(files); if (d.versionNumber) setVersions((v) => [{ id: `v${d.versionNumber}`, number: d.versionNumber, message: "Manual edit", createdAt: new Date().toISOString() }, ...v]); log(asVersion ? "✓ Change saved" : "✓ Saved", "ok"); } else throw new Error(d.error ?? "Request failed");
       return;
     }
     const res = await fetch(`/api/projects/${p.project.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ html, saveVersion: asVersion }) });
     const d = await res.json();
-    if (res.ok) { setSavedHtml(html); if (d.versionNumber) setVersions((v) => [{ id: `v${d.versionNumber}`, number: d.versionNumber, message: "Manual edit", createdAt: new Date().toISOString() }, ...v]); log(asVersion ? `✓ Saved as v${d.versionNumber}` : "✓ Saved", "ok"); } else throw new Error(d.error ?? "Request failed");
+    if (res.ok) { setSavedHtml(html); if (d.versionNumber) setVersions((v) => [{ id: `v${d.versionNumber}`, number: d.versionNumber, message: "Manual edit", createdAt: new Date().toISOString() }, ...v]); log(asVersion ? "✓ Change saved" : "✓ Saved", "ok"); } else throw new Error(d.error ?? "Request failed");
   }
   const restore = (n: number) => perform(() => restoreRequest(n));
   async function restoreRequest(n: number) {
@@ -354,7 +358,7 @@ export function Workspace(p: WorkspaceProps) {
     const d = await res.json();
     if (!res.ok) throw new Error(d.error ?? "Request failed");
     if (d.files) { setFiles(d.files); setSavedFiles(d.files); setActiveFile((current) => d.files.some((f: ProjFile) => f.path === current) ? current : d.files[0]?.path ?? "/App.tsx"); } else { setHtml(d.html); setSavedHtml(d.html); }
-    setVersions((v) => [{ id: `v${d.versionNumber}`, number: d.versionNumber, message: `Restored v${n}`, createdAt: new Date().toISOString() }, ...v]); log(`↺ Restored v${n} as v${d.versionNumber}`, "ok");
+    setVersions((v) => [{ id: `v${d.versionNumber}`, number: d.versionNumber, message: `Restored change #${n}`, createdAt: new Date().toISOString() }, ...v]); log(`↺ Restored change #${n}`, "ok");
   }
   const previewVersion = (n: number) => perform(() => previewVersionRequest(n));
   async function previewVersionRequest(n: number) {
@@ -362,7 +366,7 @@ export function Workspace(p: WorkspaceProps) {
     const d = await res.json();
     if (!res.ok) throw new Error(d.error ?? "Request failed");
     if (d.version.files) { setFiles(d.version.files); setActiveFile((current) => d.version.files.some((f: ProjFile) => f.path === current) ? current : d.version.files[0]?.path ?? "/App.tsx"); } else setHtml(d.version.html);
-    setView("preview"); log(`Previewing v${n} (unsaved: Save or Restore to keep)`);
+    setView("preview"); log(`Previewing change #${n} (unsaved: Save or Restore to keep)`);
   }
   const publish = () => perform(async () => { try { await publishRequest(); } finally { setPublishing(false); } });
   async function publishRequest() {
@@ -370,7 +374,7 @@ export function Workspace(p: WorkspaceProps) {
     if (dirty) await persistCode(false);
     const res = await fetch(`/api/projects/${p.project.id}/publish`, { method: "POST" });
     const d = await res.json(); setPublishing(false);
-    if (res.ok) { setStatus("PUBLISHED"); log(`🚀 Published → ${d.url}`, "ok"); setBottom("logs"); } else throw new Error(d.error ?? "Request failed");
+    if (res.ok) { await refreshReleases(); setStatus("PUBLISHED"); log(`🚀 Published → ${d.url}`, "ok"); setBottom("logs"); } else throw new Error(d.error ?? "Request failed");
   }
   const runAudit = () => perform(() => runAuditRequest());
   async function runAuditRequest() {
@@ -380,15 +384,8 @@ export function Workspace(p: WorkspaceProps) {
     const d = await res.json();
     if (res.ok) { setAudit(d.audit); setBottom("problems"); log(`Audit: overall ${d.audit.overall}/100, ${d.audit.issues.length} issues`); } else throw new Error(d.error ?? "Audit failed");
   }
-  const exportZip = () => perform(() => exportZipRequest());
-  async function exportZipRequest() {
-    if (dirty) await persistCode(false);
-    const res = await fetch(`/api/projects/${p.project.id}/export`);
-    if (!res.ok) { const d = await res.json(); setError(d.error); return; }
-    const blob = await res.blob();
-    const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = `${p.project.slug}.zip`; a.click(); URL.revokeObjectURL(a.href);
-    log("⬇ Exported ZIP", "ok");
-  }
+  const exportZip = () => setDownloadOpen(true);
+
   const loadShare = () => perform(() => loadShareRequest());
   async function loadShareRequest() {
     const res = await fetch(`/api/projects/${p.project.id}/share`);
@@ -417,6 +414,7 @@ export function Workspace(p: WorkspaceProps) {
     const push = (...l: string[]) => setTermLines((x) => [...x, ...l]);
     if (!cmd || terminalRunning.current || busyRef.current) return;
     const execution = platformAction ? null : runtimeCommand(cmd);
+    if (execution === "npm run build" && (!isApp || isReactApp)) { await term("platform: npm run build"); return; }
     const shell = platformAction ? null : shellIntent(cmd);
     if (shell || execution) {
       if (dirty) { try { await persistCode(false); } catch (e) { setError(e instanceof Error ? e.message : "Could not save source"); return; } }
@@ -427,8 +425,9 @@ export function Workspace(p: WorkspaceProps) {
     setBottom("terminal");
     setExpandedPanel(true);
     if (cmd === "clear") { setTermLines([]); return; }
-    if (cmd === "versions" || cmd === "git log") { push(...out, ...versions.map((v) => `v${String(v.number).padStart(2, "0")}  ${new Date(v.createdAt).toLocaleString()}  ${v.message}`)); return; }
-    if (cmd.startsWith("git checkout v")) { const n = Number(cmd.replace("git checkout v", "")); restore(n); push(...out, `Restoring v${n}…`); return; }
+    if (cmd === "history" || cmd === "git log") { push(...out, ...versions.map((v) => `Change #${v.number}  ${new Date(v.createdAt).toLocaleString()}  ${v.message}`)); return; }
+    if (cmd === "versions") { const latest = await refreshReleases(); push(...out, ...latest.map(r => `v${r.number} · ${r.deployedAt ? "Deployed" : "Built"} · ${r.createdAt}`)); return; }
+    if (cmd.startsWith("restore change ")) { const n = Number(cmd.replace("restore change ", "")); restore(n); push(...out, `Restoring change #${n}…`); return; }
     if (cmd === "export") { exportZip(); push(...out, "Exporting…"); return; }
     if (cmd === "agents") { push(...out, ...allAgents.map((a) => `${isAllowed(a.id) ? "●" : "○"} ${a.id.padEnd(18)} ${a.short}`)); return; }
     if (!execution && cmd.startsWith("run ")) { const [id, ...rest] = cmd.slice(4).split(" "); run(rest.join(" ") || "Improve the project.", id); push(...out, `Running ${id}…`); return; }
@@ -456,7 +455,7 @@ export function Workspace(p: WorkspaceProps) {
           }
         }
       } catch (e) { push(`✗ ${e instanceof Error ? e.message : "terminal error"}`); }
-      finally { setTermBusy(false); terminalRunning.current = false; terminalAbort.current = null; }
+      finally { await refreshReleases().catch(() => {}); setTermBusy(false); terminalRunning.current = false; terminalAbort.current = null; }
       return;
     }
 
@@ -486,7 +485,7 @@ export function Workspace(p: WorkspaceProps) {
           <button onClick={() => { setView("preview"); setExpandedPanel(false); }} className={`btn btn-sm ${!expandedPanel && view === "preview" ? "btn-primary" : "btn-ghost"}`}><Eye size={13} />Preview</button>
           <button onClick={() => { setView("code"); setExpandedPanel(false); setShowFiles(true); }} className={`btn btn-sm ${!expandedPanel && view === "code" ? "btn-primary" : "btn-ghost"}`}><Code2 size={13} />Code</button>
         </div>
-        <button disabled={!!busy || termBusy} onClick={() => term(isApp ? stackBuildCommand : "npm run build && npm run preview")} className="btn btn-outline btn-sm"><Play size={13} />{termBusy ? "Running…" : isApp && !isReactApp ? "Build in Terminal" : "Build & preview"}</button>
+        <button disabled={!!busy || termBusy} onClick={() => term(isApp && !isReactApp ? stackBuildCommand : "platform: npm run build")} className="btn btn-outline btn-sm"><Play size={13} />{termBusy ? "Running…" : isApp && !isReactApp ? "Build in Terminal" : "Build & preview"}</button>
         {!isApp && <div className="hidden lg:flex items-center gap-0.5 border border-graphite rounded-full p-0.5">
           {([["desktop", Monitor], ["tablet", Tablet], ["mobile", Smartphone]] as const).map(([d, I]) => (
             <button key={d} onClick={() => setDevice(d)} className={`btn btn-sm ${device === d ? "bg-graphite" : "btn-ghost"}`} title={d}><I size={13} /></button>
@@ -524,16 +523,20 @@ export function Workspace(p: WorkspaceProps) {
 
             </>
           )}
-          <div className="label px-2 py-1 mt-4 flex items-center gap-1"><History size={11} />Versions</div>
-          {versions.length === 0 && <div className="px-2 text-ash">No versions yet.</div>}
+          <div className="label px-2 py-1 mt-4 flex items-center gap-1"><Rocket size={11} />Build versions</div>
+          {!releases.length && <p className="px-2 py-1 text-ash text-xs">No successful tracked builds yet.</p>}
+          {releases.map(r => <div key={r.number} className="px-2 py-2 text-xs"><span className="text-signal-soft font-mono">v{r.number}</span> <span className="text-fog">{r.deployedAt ? "Deployed" : "Built"}</span><div className="text-ash mt-1">{new Date(r.createdAt).toLocaleString()}</div>{r.url && <a href={r.url} target="_blank" rel="noopener noreferrer" className="text-signal-soft underline">Open deployment ↗</a>}</div>)}
+          <div className="label px-2 py-1 mt-4 flex items-center gap-1"><History size={11} />Change history</div>
+          {versions.length === 0 && <div className="px-2 text-ash">No saved changes yet.</div>}
           {versions.map((v) => (
             <div key={v.id} className="group px-2 py-1 rounded hover:bg-ink">
-              <button onClick={() => previewVersion(v.number)} className="w-full text-left flex items-center gap-1.5"><ChevronRight size={10} className="text-ash" /><span className="font-mono text-signal-soft">v{String(v.number).padStart(2, "0")}</span><span className="truncate text-fog">{v.message}</span></button>
+              <button onClick={() => previewVersion(v.number)} className="w-full text-left flex items-center gap-1.5"><ChevronRight size={10} className="text-ash" /><span className="truncate text-fog">{v.message}</span></button>
               <button onClick={() => restore(v.number)} className="hidden group-hover:flex items-center gap-1 pl-5 text-[10px] text-ash hover:text-paper"><RotateCcw size={9} />restore</button>
             </div>
           ))}
         </aside>}
 
+                <ProjectDownloadDialog projectId={p.project.id} name={p.project.name} open={downloadOpen} onClose={() => setDownloadOpen(false)} beforeDownload={async () => { if (dirty) await persistCode(false); }} />
         {/* Center */}
         <section className="min-w-0 min-h-0 flex-1 flex flex-col">
           <div className="flex-1 min-h-0 bg-[#050506] p-3 overflow-auto" hidden={expandedPanel}>
@@ -541,7 +544,7 @@ export function Workspace(p: WorkspaceProps) {
               runtimeUrl ? <div className="h-full flex flex-col">
                 <div className="shrink-0 flex items-center gap-3 pb-2 text-xs text-ash"><span className="truncate">{runtimeUrl}</span><a href={runtimeUrl} target="_blank" rel="noopener noreferrer" className="btn btn-ghost btn-sm">Open preview <ExternalLink size={12} /></a><button onClick={() => term("stop")} disabled={termBusy} className="btn btn-ghost btn-sm">Stop</button></div>
                 <iframe title="Built project preview" src={runtimeUrl} className="w-full flex-1 min-h-0 rounded-lg border border-graphite bg-white" sandbox="allow-scripts allow-forms allow-popups allow-modals allow-same-origin" />
-              </div> : isReactApp ? (
+              </div> : isReactApp && !files.some(f => f.path === "/package.json") ? (
                 <div className="h-full rounded-lg overflow-hidden border border-graphite bg-white">
                   {files.length ? <AppSandbox files={files} /> : <div className="h-full grid place-items-center text-sm text-ash bg-void">Describe the app you want in the chat below: e.g. “Build an admin dashboard for a SaaS with sidebar, KPI cards, a revenue chart and a customers table.”</div>}
                 </div>
@@ -561,7 +564,7 @@ export function Workspace(p: WorkspaceProps) {
                   <div className="ml-auto flex gap-1">
                     {isApp && <button onClick={() => { if (confirm(`Delete ${activeFile}?`)) { setFiles((f) => f.filter((x) => x.path !== activeFile)); setActiveFile(files.find((f) => f.path !== activeFile)?.path ?? "/App.tsx"); } }} className="btn btn-ghost btn-sm text-ash hover:text-error"><Trash2 size={12} /></button>}
                     <button onClick={() => saveCode(false)} disabled={!dirty} className="btn btn-ghost btn-sm"><Save size={12} />Save</button>
-                    <button onClick={() => saveCode(true)} disabled={!dirty} className="btn btn-outline btn-sm">Save as version</button>
+                    <button onClick={() => saveCode(true)} disabled={!dirty} className="btn btn-outline btn-sm">Save checkpoint</button>
                   </div>
                 </div>
                 <div className="flex-1 min-h-0">
@@ -593,11 +596,13 @@ export function Workspace(p: WorkspaceProps) {
             {bottom === "chat" && (
               <div className="flex-1 min-h-0 flex flex-col">
                 <div onScroll={(e) => { const el = e.currentTarget; followChat.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80; }} className="flex-1 min-h-0 overflow-y-auto px-5 py-6 space-y-6 text-sm leading-7">
+                  {(() => { try { const warnings = JSON.parse(p.project.memory || "{}").importWarnings; return Array.isArray(warnings) && warnings.length ? <details className="text-xs text-ash border border-graphite rounded-lg p-3"><summary className="cursor-pointer">Import notes ({warnings.length})</summary>{warnings.map((w: string, i: number) => <p key={i} className="mt-2">{w}</p>)}</details> : null; } catch { return null; } })()}
                   {messages.length === 0 && !stream && <div className="text-ash text-xs">{isApp ? "Describe the app. Example: “Build a CRM dashboard with sidebar, KPI cards, revenue chart and a deals table.”" : "Describe what you want. Example: “Build a dark SaaS landing page for an AI CRM with pricing and FAQ.”"}</div>}
                   {messages.map((m) => (
                     <div key={m.id} className={`w-fit max-w-[90%] rounded-2xl px-5 py-3 ${m.role === "user" ? "ml-auto bg-graphite rounded-br-sm" : "border border-graphite rounded-bl-sm text-fog"}`}>
                       {m.role !== "user" && (() => { const a = allAgents.find((x) => x.id === m.agentId); return <div className="font-mono text-[10px] text-signal-soft mb-1">{a?.name ?? m.agentId ?? "IDÆVIA"}{a?.profession ? <span className="text-ash"> · {a.profession}</span> : null}{m.creditsUsed ? ` · ${m.creditsUsed} cr` : ""}</div>; })()}
-                      <div className="whitespace-pre-wrap break-words">{m.content}</div>
+                      {m.role === "user" && selectedComponents(m.content).length > 0 && <div className="flex flex-wrap gap-2 mb-2">{selectedComponents(m.content).map(id => <span key={id} className="rounded-full border border-signal/40 px-2 py-0.5 text-xs text-signal-soft">{SELECTABLE_COMPONENTS.find(c => c.id === id)?.name}</span>)}</div>}
+                      <div className="whitespace-pre-wrap break-words">{m.role === "user" ? m.content.replace(/\s*\[COMPONENT:[a-z0-9-]+\]/g, "") : m.content}</div>
                     </div>
                   ))}
                   {(busy || activity.length > 0) && activity.length > 0 && <div className="rounded-2xl border border-graphite p-4 text-fog">
@@ -607,6 +612,7 @@ export function Workspace(p: WorkspaceProps) {
                     </div>
                     {busy && <p className="mt-3 text-xs text-ash">The agent summary appears here when finished. Technical commands and build logs are available in Terminal.</p>}
                   </div>}
+                  {busy && stream && (responseMode === "report" || stream.startsWith("<<<ANSWER>>>")) && <div className="rounded-2xl border border-graphite px-5 py-3 whitespace-pre-wrap break-words text-fog" aria-live="polite">{stream.replace(/^<<<ANSWER>>>\s*/, "").replace(/<<<END_ANSWER>>>\s*$/, "")}</div>}
                   {error && <div className="text-error text-xs">{error}</div>}
                   <div ref={chatEnd} />
                 </div>
@@ -616,7 +622,11 @@ export function Workspace(p: WorkspaceProps) {
                     <span className="text-[10px] text-ash self-end">{images.length} reference image(s) → Builder (vision)</span>
                   </div>
                 )}
-                <form onSubmit={(e) => { e.preventDefault(); const r = input; if (!busyRef.current && r.trim()) { setInput(""); run(r); } }} className="workspace-composer shrink-0 p-3 border-t border-graphite grid grid-cols-[1fr_auto_auto] gap-2 items-end">
+                {componentIds.length > 0 && <div className="px-3 pt-3 flex flex-wrap items-center gap-2" aria-label="Selected components">
+                  {componentIds.map(id => <span key={id} className="inline-flex items-center gap-2 rounded-full border border-signal/40 bg-signal/10 px-3 py-1 text-xs text-signal-soft" data-selected-component={id}>{SELECTABLE_COMPONENTS.find(c => c.id === id)?.name}<button type="button" disabled={!!busy} aria-label={`Remove ${SELECTABLE_COMPONENTS.find(c => c.id === id)?.name}`} onClick={() => setComponentIds(ids => ids.filter(x => x !== id))}><X size={12} /></button></span>)}
+                  <details className="w-full text-xs text-ash"><summary className="cursor-pointer">Implementation prompt · {p.project.name}</summary><p className="mt-2 max-h-28 overflow-auto whitespace-pre-wrap">{componentImplementationPrompt(input, componentIds)}</p></details>
+                </div>}
+                <form onSubmit={(e) => { e.preventDefault(); const r = input; if (!busyRef.current && (r.trim() || componentIds.length)) { setInput(""); run(r); } }} className="workspace-composer shrink-0 p-3 border-t border-graphite grid grid-cols-[1fr_auto_auto] gap-2 items-end">
                   <div className="col-span-3 flex gap-2 flex-wrap">
                     <ComposerSelect label="Agent" value={agentId} onChange={setAgentId} options={[
                       { value: "auto", label: "Auto agent", description: "IDÆVIA picks the right specialist for your task." },
@@ -628,12 +638,19 @@ export function Workspace(p: WorkspaceProps) {
                       ...MODEL_CHOICES.map((c) => ({ value: c.value, label: c.label, group: "Choose a model", description: TIERS.indexOf(c.tier) > TIERS.indexOf(p.maxTier) ? "Upgrade your plan to use this model" : undefined, disabled: TIERS.indexOf(c.tier) > TIERS.indexOf(p.maxTier) })),
                     ]} />
                   </div>
-                  <textarea aria-label="Project prompt" value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); const r = input; if (!busyRef.current && r.trim()) { setInput(""); run(r); } } }} rows={2} className="input col-span-3 min-w-0 resize-none" placeholder={isAuto ? "Describe what to build or change. IDÆVIA picks the right agent." : agent.mode === "rewrite" ? "What should the AI build or change?" : `Ask ${agent.name} for a report…`} />
+                  <textarea aria-label="Project prompt" value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); const r = input; if (!busyRef.current && (r.trim() || componentIds.length)) { setInput(""); run(r); } } }} rows={2} className="input col-span-3 min-w-0 resize-none" placeholder={isAuto ? "Ask a question, or describe what to build or change." : agent.mode === "rewrite" ? "Ask a question, or describe what to build or change?" : `Ask ${agent.name} for a report…`} />
                   <span className="text-[11px] text-ash self-center">Enter to send · Shift + Enter for a new line</span>
                   <input ref={fileInput} type="file" accept="image/png,image/jpeg,image/webp,image/gif" multiple hidden onChange={(e) => { attachImages(e.target.files); e.target.value = ""; }} />
+                  <div className="flex items-center gap-2">
+                  <button type="button" disabled={!!busy} onClick={() => setComponentsOpen(true)} className="btn btn-outline"><Code2 size={14} />Add components</button>
                   <button type="button" onClick={() => (p.visionAllowed ? fileInput.current?.click() : setError("Screenshot → website (vision) is available from the Starter plan."))} title="Attach reference images (screenshot → website)" className={`btn btn-outline ${p.visionAllowed ? "" : "opacity-60"}`}><ImageIcon size={14} />{!p.visionAllowed && <Lock size={10} />}</button>
-                  <button disabled={!!busy || !input.trim()} className="btn btn-primary"><Play size={14} />Run</button>
+                  </div>
+                  <button disabled={!!busy || (!input.trim() && !componentIds.length)} className="btn btn-primary"><Play size={14} />Run</button>
                 </form>
+                <dialog ref={componentsDialog} aria-label="Add components to project" onClose={() => setComponentsOpen(false)} className="m-auto w-[calc(100%-2rem)] max-w-5xl max-h-[85vh] rounded-2xl border border-graphite bg-void text-paper p-0 backdrop:bg-black/75">
+                  <div className="sticky top-0 z-10 bg-void border-b border-graphite px-5 py-4 flex items-center justify-between gap-3"><div><h2 className="font-semibold">Add components</h2><p className="text-xs text-ash mt-1">{p.project.name} · {componentIds.length}/{MAX_COMPONENT_SELECTION} selected · review and send from chat</p></div><button type="button" className="btn btn-primary btn-sm" onClick={() => setComponentsOpen(false)}>Done</button></div>
+                  {componentsOpen && <ComponentCatalog selected={componentIds} onToggle={id => setComponentIds(ids => ids.includes(id) ? ids.filter(x => x !== id) : ids.length < MAX_COMPONENT_SELECTION ? [...ids, id] : ids)} />}
+                </dialog>
               </div>
             )}
 
@@ -649,7 +666,7 @@ export function Workspace(p: WorkspaceProps) {
                 </div>}
                 {runs.length === 0 && diffs.length === 0 && <div className="text-ash">No agent runs yet.</div>}
                 <table className="w-full"><tbody>{runs.map((r) => (
-                  <tr key={r.id} className="border-b border-graphite/60"><td className="py-1.5 pr-3 font-mono text-signal-soft">{r.agentId}</td><td className="py-1.5 pr-3 text-fog truncate max-w-[380px]">{r.task}</td><td className="py-1.5 pr-3 text-ash">{r.output?.startsWith("v") ? r.output : r.status}</td><td className="py-1.5 pr-3 text-ash">{r.creditsUsed} cr</td><td className="py-1.5 text-ash">{new Date(r.startedAt).toLocaleTimeString()}</td></tr>
+                  <tr key={r.id} className="border-b border-graphite/60"><td className="py-1.5 pr-3 font-mono text-signal-soft">{r.agentId}</td><td className="py-1.5 pr-3 text-fog truncate max-w-[380px]">{r.task}</td><td className="py-1.5 pr-3 text-ash">{r.output?.match(/^v\d+$/) ? "Change saved" : r.status}</td><td className="py-1.5 pr-3 text-ash">{r.creditsUsed} cr</td><td className="py-1.5 text-ash">{new Date(r.startedAt).toLocaleTimeString()}</td></tr>
                 ))}</tbody></table>
               </div>
             )}

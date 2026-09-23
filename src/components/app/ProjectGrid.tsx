@@ -1,5 +1,6 @@
 "use client";
 
+import { ProjectDownload } from "./ProjectDownload";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Globe, Trash2, ExternalLink } from "@/components/icons";
@@ -45,6 +46,7 @@ export function ProjectGrid({ projects }: { projects: ProjectRow[] }) {
             <span className={`pill text-[10px] ${p.status === "PUBLISHED" ? "border-success/40 text-success" : ""}`}>{p.status === "PUBLISHED" ? "Live" : "Draft"}</span>
           </div>
           <div className="flex items-center gap-2 text-xs">
+            <ProjectDownload projectId={p.id} name={p.name} />
             {p.status === "PUBLISHED" && (
               <a href={`/s/${p.slug}`} target="_blank" rel="noopener" className="btn btn-ghost btn-sm text-fog"><Globe size={12} />Visit <ExternalLink size={10} /></a>
             )}

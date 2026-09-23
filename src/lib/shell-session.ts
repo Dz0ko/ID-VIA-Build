@@ -1,3 +1,4 @@
+import { fileBytes } from "./file-content";
 import "server-only";
 import { Sandbox, NotFoundError } from "e2b";
 import { createHash, randomUUID } from "node:crypto";
@@ -37,7 +38,7 @@ function sourceFiles(project: Source) {
 export async function uploadShellSource(sandbox: Sandbox, project: Source) {
   const files = sourceFiles(project);
   await sandbox.commands.run(`mkdir -p ${SHELL_ROOT}`);
-  await sandbox.files.write(files.map((f) => ({ path: runtimePath(f.path), data: f.content })));
+  await sandbox.files.write(files.map((f) => ({ path: runtimePath(f.path), data: new Uint8Array(fileBytes(f.content)).buffer })));
   return Object.fromEntries(files.map((f) => [f.path, digest(f.content)]));
 }
 
@@ -56,7 +57,7 @@ export async function syncSavedShell(sandbox: Sandbox, state: ShellState, projec
       throw new ShellError(`Both the editor and terminal changed ${path}. Download the runtime files and resolve the difference before syncing.`);
     }
   }
-  if (changed.length) await sandbox.files.write(changed.map((f) => ({ path: runtimePath(f.path), data: f.content })));
+  if (changed.length) await sandbox.files.write(changed.map((f) => ({ path: runtimePath(f.path), data: new Uint8Array(fileBytes(f.content)).buffer })));
   for (const path of removed) {
     try { await sandbox.files.remove(runtimePath(path)); } catch (e) { if (!(e instanceof NotFoundError)) throw e; }
   }

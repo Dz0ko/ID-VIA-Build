@@ -1,3 +1,4 @@
+import { withProjectWrite } from "@/lib/project-lock";
 import { publicProject } from "@/lib/public-project";
 import { z } from "zod";
 import { db } from "@/lib/db";
@@ -29,7 +30,7 @@ export async function GET(_req: Request, ctx: RouteContext<"/api/projects/[id]">
 
 export async function PATCH(req: Request, ctx: RouteContext<"/api/projects/[id]">) {
   const { id } = await ctx.params;
-  return withUser(async (user) => {
+  return withUser(async (user) => withProjectWrite(id, user.id, async () => {
     const body = patchSchema.safeParse(await req.json().catch(() => null));
     if (!body.success) return error("Invalid input.");
     const project = await db.project.findFirst({ where: { id, userId: user.id } });
@@ -39,23 +40,25 @@ export async function PATCH(req: Request, ctx: RouteContext<"/api/projects/[id]"
     if (body.data.description !== undefined) data.description = body.data.description;
     if (body.data.html !== undefined) data.html = body.data.html;
     if (body.data.memory !== undefined) data.memory = JSON.stringify(body.data.memory);
-    const updated = await db.project.update({ where: { id }, data });
-    let versionNumber: number | undefined;
-    if (body.data.saveVersion && body.data.html !== undefined) {
-      const last = await db.version.findFirst({ where: { projectId: id }, orderBy: { number: "desc" } });
-      versionNumber = (last?.number ?? 0) + 1;
-      await db.version.create({ data: { projectId: id, number: versionNumber, html: body.data.html, message: "Manual edit" } });
-    }
-    return json({ project: publicProject(updated), versionNumber });
-  });
+    return db.$transaction(async (tx) => {
+      const updated = await tx.project.update({ where: { id }, data });
+      let versionNumber: number | undefined;
+      if (body.data.saveVersion && body.data.html !== undefined) {
+        const last = await tx.version.findFirst({ where: { projectId: id }, orderBy: { number: "desc" } });
+        versionNumber = (last?.number ?? 0) + 1;
+        await tx.version.create({ data: { projectId: id, number: versionNumber, html: body.data.html, message: "Manual edit" } });
+      }
+      return json({ project: publicProject(updated), versionNumber });
+    });
+  }));
 }
 
 export async function DELETE(_req: Request, ctx: RouteContext<"/api/projects/[id]">) {
   const { id } = await ctx.params;
-  return withUser(async (user) => {
+  return withUser(async (user) => withProjectWrite(id, user.id, async () => {
     const project = await db.project.findFirst({ where: { id, userId: user.id } });
     if (!project) return error("Not found", 404);
     await db.project.delete({ where: { id } });
     return json({ ok: true });
-  });
+  }));
 }

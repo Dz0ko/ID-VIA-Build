@@ -1,5 +1,5 @@
 import type { ModelTier } from "../plans";
-import { getSettings, OPENAI_TIER_MODELS, type ModelConfig } from "../settings";
+import { getSettings, DEFAULT_SETTINGS, OPENAI_TIER_MODELS, type ModelConfig } from "../settings";
 import { PROVIDERS, type AIProvider, type GenerateInput, type GenerateResult } from "./provider";
 export { classifyTask, preferredProviderForTask, requiresFrontierDesign, tierForTask, type ModelProvider, type TaskClass } from "./task-routing";
 
@@ -35,13 +35,14 @@ export async function generateWithFallback(resolved: ResolvedModel, input: Gener
   if (resolved.provider.id === "mock" && process.env.NODE_ENV === "production") {
     throw Object.assign(new Error("No AI provider is available."), { status: 503 });
   }
+  let emittedText = false;
   try {
-    return await resolved.provider.generate(resolved.config.model, input);
+    return await resolved.provider.generate(resolved.config.model, { ...input, onText: (text) => { emittedText = true; input.onText?.(text); } });
   } catch (e) {
-    const canFallback = resolved.provider.id === "anthropic" && PROVIDERS.openai.available() && isAccountOrCapacityError(e);
+    const canFallback = !input.signal?.aborted && !emittedText && resolved.provider.id === "anthropic" && PROVIDERS.openai.available() && isAccountOrCapacityError(e);
     if (!canFallback) throw e;
     anthropicPausedUntil = Date.now() + PAUSE_MS;
-    console.warn(`[ai] Anthropic unavailable (${(e as Error).message?.slice(0, 120)}), falling back to OpenAI for ${resolved.tier}`);
+    console.warn(`[ai] Anthropic unavailable, falling back to OpenAI for ${resolved.tier}`);
     const model = process.env.OPENAI_MODEL || OPENAI_TIER_MODELS[resolved.tier];
     const result = await PROVIDERS.openai.generate(model, input);
     return { ...result, fellBack: true };
@@ -63,26 +64,26 @@ export function friendlyAiError(e: unknown): string {
 }
 
 /** Resolve a tier to a concrete model + provider, falling back to mock when no key is set. */
-export async function resolveModel(tier: ModelTier, preferProvider?: "anthropic" | "openai"): Promise<ResolvedModel> {
+export async function resolveModel(tier: ModelTier, preferProvider?: "anthropic" | "openai", explicitPreference = false): Promise<ResolvedModel> {
   const settings = await getSettings();
   let cfg = settings.tiers[tier];
   // Explicit choice (e.g. GPT-6 Astra instead of Claude Fable 5.1 on the frontier tier).
   if (preferProvider === "openai" && PROVIDERS.openai.available()) {
     cfg = { ...cfg, provider: "openai", model: process.env.OPENAI_MODEL || OPENAI_TIER_MODELS[tier] };
   } else if (preferProvider === "anthropic" && PROVIDERS.anthropic.available() && cfg.provider !== "anthropic") {
-    cfg = { ...cfg, provider: "anthropic" };
+    cfg = { ...cfg, provider: "anthropic", model: DEFAULT_SETTINGS.tiers[tier].model };
   }
   let provider = PROVIDERS[cfg.provider];
-  const paused = provider.id === "anthropic" && Date.now() < anthropicPausedUntil && PROVIDERS.openai.available();
+  const paused = !(explicitPreference && preferProvider === "anthropic") && provider.id === "anthropic" && Date.now() < anthropicPausedUntil && PROVIDERS.openai.available();
   if (!cfg.enabled || !provider.available() || paused) {
     // try other configured providers with the same tier intent
-    const alt: AIProvider[] = [PROVIDERS.anthropic, PROVIDERS.openai].filter((p) => p.available());
+    const alt: AIProvider[] = [PROVIDERS.anthropic, PROVIDERS.openai].filter((p) => p.available() && !(paused && p.id === "anthropic"));
     if (alt.length) {
       provider = alt[0];
       cfg = {
         ...cfg,
         provider: provider.id,
-        model: provider.id === "openai" ? process.env.OPENAI_MODEL || OPENAI_TIER_MODELS[tier] : cfg.model,
+        model: provider.id === "openai" ? process.env.OPENAI_MODEL || OPENAI_TIER_MODELS[tier] : DEFAULT_SETTINGS.tiers[tier].model,
       };
       return { tier, config: cfg, provider, fallback: false };
     }

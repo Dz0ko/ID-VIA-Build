@@ -1,3 +1,6 @@
+import { isConversationRequest } from "@/lib/ai/conversation";
+import { ProjectBusyError } from "@/lib/project-lock";
+import { friendlyAiError } from "@/lib/ai/router";
 import { z } from "zod";
 import { getCurrentUser } from "@/lib/auth";
 import { checkAgentAccess, resolveAgent } from "@/lib/agents-runtime";
@@ -7,7 +10,9 @@ import { MODEL_TIERS, PLANS } from "@/lib/plans";
 import { db } from "@/lib/db";
 import { agentAllowed, pickAgent, planAtLeast } from "@/lib/agents";
 import { rateLimit } from "@/lib/security";
-import { requestedStackName } from "@/lib/project-stack";
+import { resolveRequestedStack, isStaticStack } from "@/lib/project-stack";
+
+export const maxDuration = 300;
 
 const schema = z.object({
   request: z.string().min(1).max(8000),
@@ -32,8 +37,8 @@ export async function POST(req: Request, ctx: RouteContext<"/api/projects/[id]/r
 
   const proj = await db.project.findFirst({ where: { id, userId: user.id }, select: { html: true, kind: true, _count: { select: { files: true } } } });
   if (!proj) return Response.json({ error: "Not found" }, { status: 404 });
-  const requestedStack = requestedStackName(body.data.request);
-  if (proj.kind !== "app" && requestedStack && !/html|css|javascript/i.test(requestedStack) && !planAtLeast(user.plan, "PRO")) {
+  const requestedStack = resolveRequestedStack(body.data.request, proj.kind);
+  if (!isConversationRequest(body.data.request) && proj.kind !== "app" && requestedStack && !isStaticStack(requestedStack) && !planAtLeast(user.plan, "PRO")) {
     return Response.json({ error: "Multi-file language projects are available from the Pro plan. Upgrade or create a website with HTML, CSS and JavaScript." }, { status: 403, headers: { "Cache-Control": "no-store" } });
   }
 
@@ -56,7 +61,8 @@ export async function POST(req: Request, ctx: RouteContext<"/api/projects/[id]/r
   const encoder = new TextEncoder();
   const stream = new ReadableStream({
     async start(controller) {
-      const send = (e: RunEvent) => { try { controller.enqueue(encoder.encode(`data: ${JSON.stringify(e)}\n\n`)); } catch { /* Client disconnects must not trigger a second refund. */ } };
+      let sentError = false;
+      const send = (e: RunEvent) => { if (e.type === "error") sentError = true; try { controller.enqueue(encoder.encode(`data: ${JSON.stringify(e)}\n\n`)); } catch { /* Client disconnects must not trigger a second refund. */ } };
       try {
         if (autoPicked) send({ type: "picked", agent: agentId });
         await runAgent({
@@ -74,8 +80,8 @@ export async function POST(req: Request, ctx: RouteContext<"/api/projects/[id]/r
       } catch (e) {
         if (e instanceof InsufficientCredits) {
           send({ type: "error", message: `Not enough credits (need ${e.needed}, have ${e.have}). Top up or upgrade your plan.` });
-        } else if (!(e instanceof Error && /did not return/.test(e.message))) {
-          send({ type: "error", message: e instanceof Error ? e.message : "Generation failed" });
+        } else if (!sentError) {
+          send({ type: "error", message: e instanceof ProjectBusyError ? e.message : friendlyAiError(e) });
         }
       } finally {
         controller.close();

@@ -41,7 +41,7 @@ export interface AIProvider {
 
 let anthropicClient: Anthropic | null = null;
 function anthropic() {
-  if (!anthropicClient) anthropicClient = new Anthropic();
+  if (!anthropicClient) anthropicClient = new Anthropic({ maxRetries: 1, timeout: 240_000 });
   return anthropicClient;
 }
 
@@ -120,7 +120,7 @@ export const anthropicProvider: AIProvider = {
 
 let openaiClient: OpenAI | null = null;
 function openai() {
-  if (!openaiClient) openaiClient = new OpenAI();
+  if (!openaiClient) openaiClient = new OpenAI({ maxRetries: 1, timeout: 240_000 });
   return openaiClient;
 }
 
@@ -159,10 +159,12 @@ export const openaiProvider: AIProvider = {
       },
       { signal: input.signal },
     );
+    let stopReason: string | null = null;
     let text = "";
     let inputTokens = 0;
     let outputTokens = 0;
     for await (const chunk of stream) {
+      if (chunk.choices?.[0]?.finish_reason) stopReason = chunk.choices[0].finish_reason;
       const delta = chunk.choices?.[0]?.delta?.content ?? "";
       if (delta) {
         text += delta;
@@ -173,7 +175,7 @@ export const openaiProvider: AIProvider = {
         outputTokens = chunk.usage.completion_tokens ?? 0;
       }
     }
-    return { text, model, provider: "openai", inputTokens, outputTokens };
+    return { text, model, provider: "openai", inputTokens, outputTokens, stopReason };
   },
 };
 

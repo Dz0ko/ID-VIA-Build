@@ -8,7 +8,7 @@ const num = (n: number) => n.toLocaleString();
 
 function Stat({ label, value, sub, tone }: { label: string; value: string; sub?: string; tone?: "good" | "bad" }) {
   return (
-    <div className="card p-4">
+    <div className="p-4">
       <div className="label">{label}</div>
       <div className={`mt-1 text-2xl font-semibold tracking-tight ${tone === "good" ? "text-success" : tone === "bad" ? "text-error" : ""}`}>{value}</div>
       {sub && <div className="mt-1 text-[11px] text-ash">{sub}</div>}
@@ -47,13 +47,15 @@ export function AdminOverview({ s }: { s: AdminStats }) {
   return (
     <div className="space-y-8">
       {/* Headline numbers */}
-      <section className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <section className="admin-metrics">
         <Stat label="Users" value={num(s.users.total)} sub={`+${s.users.new7d} this week · +${s.users.new30d} in 30 days`} />
         <Stat label="Paying customers" value={num(s.users.paid)} sub={`${s.users.activeMemberships} active Whop memberships · ${s.users.total ? Math.round((s.users.paid / s.users.total) * 100) : 0}% conversion`} />
         <Stat label="MRR (plan list prices)" value={usd(s.users.mrr)} sub={`ARR ${usd(s.users.mrr * 12)}`} tone={s.users.mrr > 0 ? "good" : undefined} />
         <Stat label="AI cost, 30 days" value={usd(s.runs.cost30d)} sub={`${num(s.runs.credits30d)} credits · ${s.runs.credits30d ? (s.runs.cost30d / s.runs.credits30d * 100).toFixed(2) : "0"}¢ per credit`} />
       </section>
 
+      <div className="flex gap-3 text-sm"><Link href="/admin/projects" className="btn btn-outline">Browse {num(s.projects.total)} projects →</Link><Link href="/admin/payments" className="btn btn-outline">Revenue & profit →</Link></div>
+      <details className="admin-details"><summary>Detailed analytics <span>Projects, marketplace, trends, plans and AI usage</span></summary><div className="space-y-6 pt-6">
       <section className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <Stat label="Projects" value={num(s.projects.total)} sub={`+${s.projects.new7d} this week · ${s.projects.apps} React apps`} />
         <Stat label="Published" value={num(s.projects.published)} sub={`${s.projects.approved} client-approved · ${num(s.projects.versions)} versions saved`} />
@@ -131,6 +133,8 @@ export function AdminOverview({ s }: { s: AdminStats }) {
           </div>
         </div>
       </section>
+
+      </div></details>
 
       {/* People */}
       <section className="grid lg:grid-cols-2 gap-4">

@@ -1,3 +1,4 @@
+import { projectReleases } from "@/lib/project-releases";
 import { publicProject } from "@/lib/public-project";
 import { Suspense } from "react";
 import { notFound } from "next/navigation";
@@ -37,6 +38,7 @@ export default async function ProjectPage({ params }: PageProps<"/app/projects/[
           messages: project.messages.map((m) => ({ ...m, createdAt: m.createdAt.toISOString() })),
           agentRuns: project.agentRuns.map((r) => ({ ...r, startedAt: r.startedAt.toISOString(), finishedAt: r.finishedAt?.toISOString() ?? null })),
         }}
+        releases={await projectReleases(id, user.id)}
         agents={agents}
         customAgents={customAgents.map((c) => ({ id: c.id, name: c.name, description: c.description, tier: c.tier, mode: c.mode }))}
         allowedAgentIds={agentsForPlan(user.plan).map((a) => a.id)}

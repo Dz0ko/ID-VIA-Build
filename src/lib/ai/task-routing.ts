@@ -9,7 +9,7 @@ export type ModelProvider = "anthropic" | "openai";
 export function requiresFrontierDesign(prompt: string, agentId?: string): boolean {
   const p = prompt.toLowerCase();
   if (["designer", "animation", "3d", "asset"].includes(agentId ?? "")) return true;
-  return /\b(buttons?|cta|animat(?:e|ion|ions)?|hover|parallax|scroll effect|transition|micro-?interaction|motion|visual|ui|ux|design|colou?r|palette|font|typograph|spacing|layout|responsive|style|premium|modern|redesign|3d|webgl|gradient|shadow|border|radius)\b/.test(p);
+  return /\b(navbar|navigation|header|footer|hero|landing page|buttons?|cta|animat(?:e|ion|ions)?|hover|parallax|scroll effect|transition|micro-?interaction|motion|visual|ui|ux|design|colou?r|palette|font|typograph|spacing|layout|responsive|style|premium|modern|redesign|3d|webgl|gradient|shadow|border|radius)\b/.test(p);
 }
 
 /** Pick the provider whose strengths fit the work; explicit user choices still win. */

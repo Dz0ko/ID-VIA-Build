@@ -1,3 +1,4 @@
+import { fileBytes } from "./file-content";
 import type { FileMap } from "./project-files";
 
 const API = "https://api.vercel.com";
@@ -24,7 +25,7 @@ export async function deployToVercel(opts: { token: string; teamId?: string; nam
     body: JSON.stringify({
       name,
       target: "production",
-      files: opts.files.map((f) => ({ file: f.path, data: f.content, encoding: "utf-8" })),
+      files: opts.files.map((f) => ({ file: f.path, data: fileBytes(f.content).toString("base64"), encoding: "base64" })),
       projectSettings: opts.framework === "vite"
         ? { framework: "vite", buildCommand: "npm run build", outputDirectory: "dist", installCommand: "npm install" }
         : { framework: null, buildCommand: null, outputDirectory: null, installCommand: null },

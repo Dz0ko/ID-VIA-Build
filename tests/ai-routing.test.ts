@@ -27,3 +27,10 @@ test("automatic routing uses the strongest permitted tier for substantial work",
   assert.equal(tierForTask(classifyTask("build a new SaaS dashboard", false), "PRO"), "advanced");
   assert.equal(tierForTask(classifyTask("build a new SaaS dashboard", false), "FREE"), "standard");
 });
+
+test("navbar requests select the visual design path even without a design adjective", () => {
+  for (const request of ['add a navbar', 'improve the navigation', 'create a header', 'build a hero']) {
+    assert.equal(requiresFrontierDesign(request, 'builder'), true);
+    assert.equal(preferredProviderForTask(request, 'builder', true), 'anthropic');
+  }
+});

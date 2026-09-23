@@ -1,10 +1,12 @@
+import { withProjectWrite } from "@/lib/project-lock";
+import { safeProjectPath } from "@/lib/import";
 import { z } from "zod";
 import { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
 import { error, json, withUser } from "@/lib/api";
 
 const schema = z.object({
-  files: z.array(z.object({ path: z.string().max(200).regex(/^\/(?!.*(?:^|\/)\.\.(?:\/|$))[\w\-./]+$/), content: z.string().max(300_000) })).max(80),
+  files: z.array(z.object({ path: z.string().max(200).refine((path) => path.startsWith("/") && safeProjectPath(path) === path), content: z.string().max(700_000) })).max(200).refine((files) => new Set(files.map((f) => f.path)).size === files.length && files.reduce((n, f) => n + f.content.length, 0) <= 2_000_000),
   saveVersion: z.boolean().optional(),
   message: z.string().max(120).optional(),
 });
@@ -21,7 +23,7 @@ export async function GET(_req: Request, ctx: RouteContext<"/api/projects/[id]/f
 /** Replace the full file set (manual edits from the code editor). */
 export async function PUT(req: Request, ctx: RouteContext<"/api/projects/[id]/files">) {
   const { id } = await ctx.params;
-  return withUser(async (user) => {
+  return withUser(async (user) => withProjectWrite(id, user.id, async () => {
     const body = schema.safeParse(await req.json().catch(() => null));
     if (!body.success) return error("Invalid files payload.");
     const project = await db.project.findFirst({ where: { id, userId: user.id } });
@@ -38,5 +40,5 @@ export async function PUT(req: Request, ctx: RouteContext<"/api/projects/[id]/fi
     }
     await db.$transaction(ops);
     return json({ ok: true, versionNumber });
-  });
+  }));
 }

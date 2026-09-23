@@ -709,3 +709,22 @@ html.landing-html body { overflow-x: clip; }
 .composer-select-option[data-active="true"] { background: color-mix(in srgb, var(--signal) 12%, var(--ink)); }
 .composer-select-option[aria-selected="true"] { color: var(--signal-soft); }
 .composer-select-option[aria-disabled="true"] { opacity: .45; cursor: not-allowed; }
+
+/* Component library collection filters share the app's button and color tokens. */
+.component-catalog .component-collection[aria-pressed="true"] {
+  background: var(--paper);
+  color: var(--void);
+  border-color: var(--paper);
+}
+
+/* Quiet admin surfaces, with one persistent, labelled navigation. */
+.admin-theme .card, .admin-theme .card:hover { box-shadow: none; border-radius: 10px; }
+.admin-theme .admin-nav-link { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 6px; font-size: 13px; color: var(--fog); text-align: left; }
+.admin-theme .admin-nav-link:hover { background: var(--void); }
+.admin-theme .admin-nav-link[aria-current="page"] { color: var(--paper); background: var(--void); font-weight: 600; }
+.admin-metrics { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); background: var(--ink); border: 1px solid var(--graphite); border-radius: 10px; }
+.admin-metrics > * + * { border-left: 1px solid var(--graphite); }
+.admin-details { border-top: 1px solid var(--graphite); border-bottom: 1px solid var(--graphite); padding: 20px 0; }
+.admin-details > summary { cursor: pointer; font-size: 14px; font-weight: 600; }
+.admin-details > summary span { font-weight: 400; color: var(--fog); margin-left: 16px; font-size: 12px; }
+.admin-theme table tbody tr:hover { background: #fafafc; }

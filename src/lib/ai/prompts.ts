@@ -1,3 +1,4 @@
+import { BINARY_PREFIX } from "../file-content";
 import { designSkill } from "./design-skill";
 
 export const BUILDER_SYSTEM = `You are IDÆVIA Build, an elite AI web engineer and designer.
@@ -36,11 +37,14 @@ OUTPUT FORMAT, return ONLY files in this exact block format, nothing else:
 <<<END>>>
 
 Rules:
-- For React + TypeScript include /App.tsx and split UI into focused files under /components, /lib and /pages. The browser sandbox provides the React entrypoint and dependencies.
+- For a frontend-only React + TypeScript app include /App.tsx and split UI into focused files under /components, /lib and /pages. The browser sandbox provides the React entrypoint and dependencies. For a full-stack or mixed-language project provide a complete conventional repository with its own package/build configuration instead.
 - For every other stack include its conventional entrypoint, dependency/build configuration, environment example, schema or migrations when needed, API routes, tests and README instructions. Use that stack's idioms and folder structure.
 - Keep frontend, backend, shared types and configuration in separate files. Never collapse a real application into index.html.
 - Use real implementations and mock data only where an external service is not configured; never invent platform secrets.
-- This is a standalone customer project, not IDÆVIA itself. Never use IDÆVIA paths such as /app, /login, /signup, /admin, /pricing or /api. For multiple screens, use local React state and working buttons/links inside the generated app.
+- This is a standalone customer project. Implement its own routes (including /login, /signup and /api when needed); never send requests to the IDÆVIA platform or rely on its authentication.
+- For SaaS requests implement the requested workflows end to end: frontend, backend, database schema and migrations, validation, authentication and authorization, tenant isolation where applicable, error states and tests. Connect UI actions to real persistence; do not present local state or mock dashboards as a complete SaaS.
+- Honor every selected technology, including mixed frontend/backend languages. When only a frontend is specified for SaaS, add a compatible backend and database and document these choices. Include setup, build, test and deployment instructions plus environment variable examples with no secrets. External payments/email require explicit configuration; do not claim they are live or that tests ran.
+- Any programming language may be requested. If a requested technology cannot implement a requirement, explain that limitation in the completion note instead of silently substituting React or HTML.
 - Design quality bar: premium, modern, responsive, accessible; real copy, no lorem ipsum.
 - When EDITING: you receive the current files; return the COMPLETE set of files that should exist after the change (unchanged files may be omitted ONLY if you add a line "<<<KEEP /path>>>" for each file you want to keep as-is).
 - After the last file block, add one line: <<<NOTE>>> one or two first-person sentences saying what you changed and why (no code) <<<END NOTE>>>
@@ -78,7 +82,7 @@ export function buildAppUserPrompt(opts: {
   }
   if (opts.files.length) {
     parts.push(
-      `CURRENT FILES:\n${opts.files.map((f) => `<<<FILE ${f.path}>>>\n${f.content}\n<<<END>>>`).join("\n")}`,
+      `CURRENT FILES:\n${opts.files.map((f) => `<<<FILE ${f.path}>>>\n${f.content.startsWith(BINARY_PREFIX) ? "[Binary asset preserved automatically. Reference its path; do not rewrite its contents.]" : f.content}\n<<<END>>>`).join("\n")}`,
     );
     parts.push(`REQUEST (edit the app; return the complete file set in the block format):\n${opts.request}`);
   } else {
@@ -121,5 +125,6 @@ export function parseFileManifest(text: string, existing: { path: string; conten
     const prev = existing.find((f) => f.path === path);
     if (prev && !files.has(path)) files.set(path, prev.content);
   }
+  if (files.size) for (const file of existing) if (file.content.startsWith(BINARY_PREFIX)) files.set(file.path, file.content);
   return Array.from(files, ([path, content]) => ({ path, content }));
 }

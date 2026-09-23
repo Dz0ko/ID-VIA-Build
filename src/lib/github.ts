@@ -1,3 +1,4 @@
+import { fileBytes } from "./file-content";
 import type { FileMap } from "./project-files";
 
 const API = "https://api.github.com";
@@ -65,7 +66,7 @@ export async function pushToGitHub(opts: { token: string; repo?: string; name: s
   log(`  Uploading ${opts.files.length} files…`);
   const tree: { path: string; mode: "100644"; type: "blob"; sha: string }[] = [];
   for (const f of opts.files) {
-    const blob = await gh<{ sha: string; message?: string }>(token, `/repos/${owner}/${repo}/git/blobs`, { method: "POST", json: { content: Buffer.from(f.content, "utf8").toString("base64"), encoding: "base64" } });
+    const blob = await gh<{ sha: string; message?: string }>(token, `/repos/${owner}/${repo}/git/blobs`, { method: "POST", json: { content: fileBytes(f.content).toString("base64"), encoding: "base64" } });
     if (!blob.ok) throw new Error(`Upload failed for ${f.path}: ${blob.data.message ?? blob.status}`);
     tree.push({ path: f.path, mode: "100644", type: "blob", sha: blob.data.sha });
     log(`    + ${f.path} (${(f.content.length / 1024).toFixed(1)} KB)`);
