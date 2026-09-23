@@ -279,7 +279,7 @@ export function Workspace(p: WorkspaceProps) {
       setError(msg); log(`✗ ${msg}`, "err"); setStream("");
       return false;
     } finally {
-      busyRef.current = null; setBusy(null); abortRef.current = null; router.refresh();
+      busyRef.current = null; setBusy(null); setActivity([]); abortRef.current = null; router.refresh();
     }
   }, [allAgents, isApp, log, p.project.id, provider, router, savedFiles, savedHtml, tier]);
 
@@ -605,7 +605,7 @@ export function Workspace(p: WorkspaceProps) {
                       <div className="whitespace-pre-wrap break-words">{m.role === "user" ? m.content.replace(/\s*\[COMPONENT:[a-z0-9-]+\]/g, "") : m.content}</div>
                     </div>
                   ))}
-                  {(busy || activity.length > 0) && activity.length > 0 && <div className="rounded-2xl border border-graphite p-4 text-fog">
+                  {busy && activity.length > 0 && <div className="rounded-2xl border border-graphite p-4 text-fog">
                     <div role="status" className="mb-3 flex items-center gap-2 text-sm text-signal-soft"><span className={`w-2 h-2 rounded-full ${busy ? "bg-signal pulse-dot" : "bg-signal-soft"}`} />{busy ? `${allAgents.find((x) => x.id === busy)?.name ?? busy} is working` : "Agent activity"}</div>
                     <div className="divide-y divide-graphite/60">
                       {activity.map((item) => <div key={item.id} className="flex items-center gap-3 py-2 text-xs"><span className={`shrink-0 text-sm ${item.status === "done" ? "text-signal-soft" : "text-ash"}`}>{item.status === "done" ? "✓" : "◌"}</span><span className="min-w-0 flex-1 truncate text-fog">{item.label}</span><span className="max-w-[52%] truncate text-ash">{item.detail}</span></div>)}

@@ -29,7 +29,7 @@ export function NewProject({ templates }: { templates: Template[] }) {
       body: JSON.stringify({
         name: name.trim() || (prompt ? prompt.slice(0, 40) : "Untitled project"),
         templateId: template?.id,
-        description: prompt || undefined,
+        description: prompt.slice(0, 500) || undefined,
         kind: initialKind,
       }),
     });
@@ -54,7 +54,7 @@ export function NewProject({ templates }: { templates: Template[] }) {
             <label className="block"><span className="label">Project name</span><input autoFocus className="input mt-1" value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Nimbus CRM landing" /></label>
             <label className="block">
               <span className="label flex items-center gap-1"><Sparkles size={11} />Prompt</span>
-              <textarea className="input mt-1 min-h-32" value={prompt} onChange={(e) => setPrompt(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) create(); }} placeholder="Build a premium dark SaaS landing page for an AI CRM targeting agencies, with pricing, testimonials and FAQ." />
+              <textarea maxLength={7800} className="input mt-1 min-h-32" value={prompt} onChange={(e) => setPrompt(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) create(); }} placeholder="Build a premium dark SaaS landing page for an AI CRM targeting agencies, with pricing, testimonials and FAQ." />
             </label>
             {error && <div className="text-sm text-error">{error}</div>}
             <div className="flex justify-end gap-2">

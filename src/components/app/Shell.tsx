@@ -23,6 +23,7 @@ const GROUPS: { title: string; items: Item[] }[] = [
     { href: "/app/projects", label: "Projects", icon: "projects" },
     { href: "/app/assistant", label: "IDÆVIA Agent", icon: "agent" },
     { href: "/app/import", label: "Import", icon: "import" },
+    { href: "/app/support", label: "Live support", icon: "agent" },
   ] },
   { title: "Library", items: [
     { href: "/app/templates", label: "Templates", icon: "templates" },

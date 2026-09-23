@@ -49,6 +49,7 @@ model User {
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
+  supportThread SupportThread?
   projects    Project[]
   ledger      CreditLedger[]
   memberships Membership[]
@@ -455,4 +456,34 @@ model FinancialExpense {
   incurredAt  DateTime
   createdBy   String
   createdAt   DateTime @default(now())
+}
+
+model SupportThread {
+  id           String   @id @default(cuid())
+  userId       String   @unique
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  status       String   @default("BOT") // BOT | WAITING | HUMAN | CLOSED
+  assignedTo   String?
+  botTurns     Int      @default(0)
+  botToken     String?
+  botUntil     DateTime?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  messages     SupportMessage[]
+
+  @@index([status, updatedAt])
+}
+
+model SupportMessage {
+  id           String   @id @default(cuid())
+  threadId     String
+  thread       SupportThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  role         String   // user | assistant | manager | system
+  content      String
+  authorName   String?
+  clientId     String
+  createdAt    DateTime @default(now())
+
+  @@unique([threadId, clientId])
+  @@index([threadId, createdAt, id])
 }

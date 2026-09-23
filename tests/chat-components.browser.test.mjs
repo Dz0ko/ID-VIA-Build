@@ -11,8 +11,8 @@ const base = 'http://127.0.0.1:3848';
 let server, ws, originalUrl, previousCookies = [], nextId = 0;
 const initScripts = [];
 const pending = new Map();
-function rpc(method, params = {}) { return new Promise((resolve, reject) => { const id = ++nextId; const timer = setTimeout(() => { pending.delete(id); reject(new Error(`CDP timeout: ${method}`)); }, 10000); pending.set(id, (value) => { clearTimeout(timer); if (value.error) reject(new Error(value.error.message)); else resolve(value.result); }); ws.send(JSON.stringify({ id, method, params })); }); }
-async function evaluate(expression) { const r = await rpc('Runtime.evaluate', { expression, returnByValue: true, awaitPromise: true }); if (r.exceptionDetails) throw new Error(r.exceptionDetails.text); return r.result.value; }
+function rpc(method, params = {}) { return new Promise((resolve, reject) => { const id = ++nextId; const timer = setTimeout(() => { pending.delete(id); reject(new Error(`CDP timeout: ${method}`)); }, method === 'Page.captureScreenshot' ? 30000 : 10000); pending.set(id, (value) => { clearTimeout(timer); if (value.error) reject(new Error(value.error.message)); else resolve(value.result); }); ws.send(JSON.stringify({ id, method, params })); }); }
+async function evaluate(expression) { const r = await rpc('Runtime.evaluate', { expression, returnByValue: true, awaitPromise: true }); if (r.exceptionDetails) throw new Error(r.exceptionDetails.exception?.description || r.exceptionDetails.text); return r.result.value; }
 async function until(expression) { for (let i = 0; i < 60; i++) { if (await evaluate(expression)) return; await new Promise(r => setTimeout(r, 100)); } throw new Error(`Not ready: ${expression}; ${await evaluate("document.body.innerText.slice(-2500)")}`); }
 
 before(async () => {
@@ -54,7 +54,7 @@ test('chat component picker previews, tags and sends references to the current p
   await new Promise(r => setTimeout(r, 1500));
   await evaluate("[...document.querySelectorAll('button')].find(b=>b.textContent.includes('Add components')).click()");
   await until("document.querySelectorAll('[data-component-id]').length===9");
-  await evaluate("[...document.querySelectorAll('button')].find(b=>b.textContent==='Liquid Glass').click()");
+  await evaluate("[...document.querySelectorAll('button')].find(b=>b.textContent==='Forms & controls').click()");
   await until("document.querySelectorAll('[data-component-id]').length===4");
   await evaluate("[...document.querySelector('[data-component-id=glass-switch]').querySelectorAll('button')].find(b=>b.textContent==='Select component').click()");
   await evaluate("[...document.querySelector('[data-component-id=glass-slider]').querySelectorAll('button')].find(b=>b.textContent==='Select component').click()");
@@ -67,6 +67,7 @@ test('chat component picker previews, tags and sends references to the current p
   await rpc('Page.captureScreenshot', { format: 'png' }).then(x => writeFile('.next/chat-components.png', Buffer.from(x.data, 'base64')));
   await evaluate("document.querySelector('form.workspace-composer').requestSubmit()");
   await until("window.__sent!==undefined && document.body.innerText.includes('Fixture implementation received')");
+  assert.ok(await evaluate("!document.body.innerText.includes('Agent activity') && !document.body.innerText.includes('Save result')"), "completed activity must disappear so the answer remains last");
   const sent = await evaluate('window.__sent');
   assert.match(sent.body.request, /Implement the selected components/);
   assert.match(sent.body.request, /\[COMPONENT:glass-switch\]/);

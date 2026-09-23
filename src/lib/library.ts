@@ -1,3 +1,4 @@
+import { websiteBrief, saasBrief, SAAS_BRIEFS } from "./prompt-briefs";
 /** Prompt library, prompt packs and effects library (static content). */
 
 export interface PromptItem {
@@ -7,7 +8,7 @@ export interface PromptItem {
   prompt: string;
 }
 
-export const PROMPT_LIBRARY: PromptItem[] = [
+const WEBSITE_PROMPTS: PromptItem[] = [
   { id: "saas-crm", category: "SaaS", title: "AI CRM landing", prompt: "Build a modern dark SaaS landing page for an AI CRM targeting agencies. Premium black and purple style, smooth scroll animations, features grid, pricing with 3 tiers, testimonials, FAQ and a dashboard preview section." },
   { id: "saas-analytics", category: "SaaS", title: "Analytics platform", prompt: "Create a light, clean landing page for a product analytics platform: hero with product screenshot, 6 features, logos row, pricing (Free/Growth/Scale), testimonials and FAQ." },
   { id: "saas-pm", category: "SaaS", title: "Project management tool", prompt: "Build a landing page for a project management tool for remote teams. Friendly, colourful, with feature sections alternating image/text, integrations grid and a CTA banner." },
@@ -30,6 +31,11 @@ export const PROMPT_LIBRARY: PromptItem[] = [
   { id: "local-salon", category: "Local", title: "Local business", prompt: "Build a modern website for a hair salon: services with prices, gallery, team, appointment booking, opening hours and contact." },
 ];
 
+export const PROMPT_LIBRARY: PromptItem[] = [
+  ...WEBSITE_PROMPTS.map(item => ({ ...item, category: item.id === "dashboard" ? "SaaS applications" : ["saas-crm", "saas-analytics", "saas-pm", "startup", "web3"].includes(item.id) ? "Landing pages" : "Websites", prompt: item.id === "dashboard" ? saasBrief("operations dashboard", "teams managing customer orders", "Provide a workspace overview with KPIs derived from saved orders, customer management, searchable and sortable order lists, order details, activity history and role-aware settings. Include creation, editing, filtering and export flows. Do not fabricate live charts or totals.", "workspaces, members, customers, orders, order items and audit events") : websiteBrief(item.title, item.prompt) })),
+  ...SAAS_BRIEFS.map(item => ({ id: item.id, category: "SaaS applications", title: item.title, prompt: saasBrief(item.title, item.audience, item.flows, item.data) })),
+];
+
 export interface PromptPack {
   id: string;
   name: string;
@@ -41,14 +47,14 @@ export const PROMPT_PACKS: PromptPack[] = [
   {
     id: "saas-launch",
     name: "SaaS Launch Pack",
-    description: "From strategy to a production-ready SaaS landing page in 6 steps.",
+    description: "A complete launch brief covering strategy, design, copy, SEO and verification.",
     steps: [
-      { title: "Product strategy", prompt: "Define positioning, target users and 3 core value props for this SaaS.", agent: "planner" },
-      { title: "Landing page", prompt: "Build a premium SaaS landing page based on the plan: hero, features, pricing, testimonials, FAQ." },
-      { title: "Copy pass", prompt: "Sharpen all copy for conversion.", agent: "copywriter" },
-      { title: "Design polish", prompt: "Elevate the design to premium quality.", agent: "designer" },
-      { title: "SEO", prompt: "Add complete metadata and structured data.", agent: "seo" },
-      { title: "Production check", prompt: "Fix any bugs and accessibility issues.", agent: "debugger" },
+      { title: "Product strategy", prompt: "Define the target customer, central problem, primary conversion and three concrete value propositions. Identify assumptions and use a coherent brand voice throughout.", agent: "planner" },
+      { title: "Landing page", prompt: "Build a responsive SaaS landing page with outcome-led hero, real product walkthrough, feature details, transparent pricing, clearly labelled sample social proof and useful FAQ. Connect CTAs to onboarding or a validated contact flow." },
+      { title: "Copy pass", prompt: "Replace generic claims with specific benefits, concise headlines and clear action labels. Keep pricing and limitations honest; do not invent customer results.", agent: "copywriter" },
+      { title: "Design polish", prompt: "Create a consistent type and spacing scale, responsive navbar with working mobile menu, purposeful visual hierarchy, accessible contrast and restrained motion with reduced-motion support.", agent: "designer" },
+      { title: "SEO", prompt: "Add unique titles, descriptions, social previews and meaningful image alt text. Use structured data only for verified facts and ensure semantic page landmarks.", agent: "seo" },
+      { title: "Production check", prompt: "Verify navigation, forms, keyboard operation, loading and error states at mobile/tablet/desktop widths. Fix broken flows, run the available checks and report remaining integration requirements.", agent: "debugger" },
     ],
   },
   {
@@ -56,10 +62,10 @@ export const PROMPT_PACKS: PromptPack[] = [
     name: "Local Business Pack",
     description: "Website for a local business with booking, SEO and translation.",
     steps: [
-      { title: "Site", prompt: "Build a website for a local business with services, gallery, booking form and contact." },
-      { title: "Local SEO", prompt: "Add LocalBusiness structured data, address, opening hours and map section.", agent: "seo" },
-      { title: "Translate", prompt: "Translate the site to Macedonian.", agent: "localization" },
-      { title: "Mobile", prompt: "Ensure everything works perfectly on mobile.", agent: "debugger" },
+      { title: "Site", prompt: "Build a local business website with a clear service-area hero, service detail pages, honest pricing, gallery, about section, opening hours and a validated booking enquiry. Do not display a confirmed booking unless it is saved by a real backend." },
+      { title: "Local SEO", prompt: "Add unique page metadata and a contact section with editable address, opening hours, phone and an optional map. Generate LocalBusiness structured data only from supplied factual business details.", agent: "seo" },
+      { title: "Translate", prompt: "Translate all visitor-facing copy, form errors, menus and metadata to natural Macedonian. Preserve brand names and use appropriate date and number formatting.", agent: "localization" },
+      { title: "Mobile", prompt: "Check widths from 390px to desktop, mobile navigation, form validation, keyboard focus and image loading. Provide accessible touch targets and report what was actually tested.", agent: "debugger" },
     ],
   },
 ];
