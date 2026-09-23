@@ -89,30 +89,28 @@ export async function fetchProfile(p: OAuthProvider, code: string, origin: strin
       redirect_uri: redirectUri(p, origin),
     }),
   });
-  if (!tokenRes.ok) throw new Error(`${p} token exchange failed: ${await tokenRes.text()}`);
+  if (!tokenRes.ok) throw new Error(`${p} token exchange failed (${tokenRes.status})`);
   const token = (await tokenRes.json()) as { access_token?: string; error?: string };
-  if (!token.access_token) throw new Error(`${p} token exchange failed: ${token.error ?? "no access_token"}`);
+  if (!token.access_token) throw new Error(`${p} token exchange did not return an access token`);
   const auth = { Authorization: `Bearer ${token.access_token}`, Accept: "application/json", "User-Agent": "idaevia-build" };
 
   if (p === "google") {
     const res = await fetch("https://openidconnect.googleapis.com/v1/userinfo", { headers: auth });
     if (!res.ok) throw new Error("google userinfo failed");
     const me = (await res.json()) as { sub: string; email?: string; email_verified?: boolean; name?: string; picture?: string };
-    if (!me.email || me.email_verified === false) throw new Error("google account has no verified email");
+    if (!me.email || me.email_verified !== true) throw new Error("google account has no verified email");
     return { providerId: me.sub, email: me.email, name: me.name ?? null, avatarUrl: me.picture ?? null, accessToken: token.access_token };
   }
 
   const res = await fetch("https://api.github.com/user", { headers: auth });
   if (!res.ok) throw new Error("github user failed");
   const me = (await res.json()) as { id: number; login: string; name?: string | null; email?: string | null; avatar_url?: string };
-  let email = me.email ?? null;
-  if (!email) {
-    const er = await fetch("https://api.github.com/user/emails", { headers: auth });
-    if (er.ok) {
-      const emails = (await er.json()) as { email: string; primary: boolean; verified: boolean }[];
-      email = (emails.find((e) => e.primary && e.verified) ?? emails.find((e) => e.verified))?.email ?? null;
-    }
-  }
+  // Public profile email is not proof of verification. Always use the provider's
+  // verified email list before resolving a local identity.
+  const er = await fetch("https://api.github.com/user/emails", { headers: auth });
+  if (!er.ok) throw new Error("github verified email lookup failed");
+  const emails = (await er.json()) as { email: string; primary: boolean; verified: boolean }[];
+  const email = (emails.find(e => e.primary && e.verified === true) ?? emails.find(e => e.verified === true))?.email;
   if (!email) throw new Error("github account has no verified email");
   return { providerId: String(me.id), email, name: me.name ?? me.login, avatarUrl: me.avatar_url ?? null, accessToken: token.access_token };
 }
@@ -124,17 +122,10 @@ export async function upsertOAuthUser(p: OAuthProvider, profile: OAuthProfile) {
   // 1. Exact provider-id match: the account this Google/GitHub identity already belongs to.
   let user = await db.user.findFirst({ where: { [idField]: profile.providerId } });
   if (!user) {
-    // 2. Same email: only auto-link when that account was itself created by a social sign-in
-    //    (no password). A password account is never taken over by an OAuth login with a matching
-    //    email, because password sign-up does not verify the address.
+    // A matching address must never replace an already-bound provider identity.
+    // This also prevents takeover when an email address is reassigned later.
     const byEmail = await db.user.findUnique({ where: { email } });
-    if (byEmail) {
-      const otherProvider = idField === "googleId" ? byEmail.githubId : byEmail.googleId;
-      if (byEmail.passwordHash || (otherProvider && !byEmail[idField])) {
-        throw new Error(`An account with ${email} already exists. Sign in with your ${byEmail.passwordHash ? "password" : "other sign-in method"} and link ${p === "google" ? "Google" : "GitHub"} from Settings.`);
-      }
-      user = byEmail;
-    }
+    if (byEmail) throw new Error("An account already exists. Sign in with its existing sign-in method.");
   }
   let created = false;
   if (!user) {

@@ -23,6 +23,8 @@ let server: ChildProcess;
 let serverErrors = "";
 const baseUrl = "http://localhost:3848";
 before(async () => {
+  const isolation = await db.$queryRaw<{ schema: string }[]>`SELECT current_schema()::text AS schema`;
+  assert.equal(isolation[0].schema, process.env.TEST_DATABASE_SCHEMA, "Database schema isolation must hold before tests run");
   server = spawn(process.execPath, ["node_modules/next/dist/bin/next", "start", "-p", "3848"], { env: process.env, stdio: ["ignore", "ignore", "pipe"] });
   server.stderr?.on("data", (data) => { serverErrors += String(data); });
   for (let i = 0; i < 100; i++) {

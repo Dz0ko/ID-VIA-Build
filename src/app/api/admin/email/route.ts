@@ -1,3 +1,4 @@
+import { readRequestJson } from "@/lib/request-body";
 import { z } from "zod";
 import { after } from "next/server";
 import { randomUUID } from "node:crypto";
@@ -22,7 +23,7 @@ const configSchema = z.object({ enabled: z.boolean(), from: z.string().trim().mi
 export async function PUT(req: Request) {
   return withUser(async user => {
     if (user.role !== "ADMIN") return error("Forbidden", 403);
-    const body = configSchema.safeParse(await req.json().catch(() => null));
+    const body = configSchema.safeParse(await readRequestJson(req, 16384).catch(() => null));
     if (!body.success) return error("Check the sender, reply-to address and Resend API key.");
     const current = await emailConfig();
     if (body.data.enabled && !body.data.apiKey && !current.apiKey) return error("Add a Resend API key before enabling email delivery.");
@@ -35,7 +36,7 @@ export async function POST(req: Request) {
   return withUser(async user => {
     if (user.role !== "ADMIN") return error("Forbidden", 403);
     const limited = await rateLimit(`admin-email:${user.id}`, 30, 600); if (limited) return limited;
-    const body = z.object({ action: z.enum(["test", "process", "retry"]), id: z.string().max(100).optional() }).safeParse(await req.json().catch(() => null));
+    const body = z.object({ action: z.enum(["test", "process", "retry"]), id: z.string().max(100).optional() }).safeParse(await readRequestJson(req, 16384).catch(() => null));
     if (!body.success) return error("Invalid email action.");
     const config = await emailConfig();
     if (!config.enabled || !config.apiKey) return error("Connect and enable email delivery first.");

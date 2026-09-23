@@ -1,3 +1,4 @@
+import { readRequestJson } from "@/lib/request-body";
 import { z } from "zod";
 import { error, json, withUser } from "@/lib/api";
 import { rateLimit } from "@/lib/security";
@@ -13,7 +14,7 @@ export async function GET(req: Request, ctx: RouteContext<"/api/support/[id]">) 
 }
 export async function POST(req: Request, ctx: RouteContext<"/api/support/[id]">) {
   return withUser(async user => {
-    const parsed = input.safeParse(await req.json().catch(() => null));
+    const parsed = input.safeParse(await readRequestJson(req, 32768).catch(() => null));
     if (!parsed.success) return error("Write a message of up to 4,000 characters.");
     const limited = await rateLimit(`support:send:${user.id}`, user.role === "ADMIN" ? 300 : 120, 600);
     if (limited) return limited;

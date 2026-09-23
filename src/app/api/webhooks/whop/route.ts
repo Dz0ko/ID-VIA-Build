@@ -1,3 +1,4 @@
+import { readRequestText, RequestBodyError } from "@/lib/request-body";
 import { dispatchEmails } from "@/lib/email-dispatch";
 import { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
@@ -9,8 +10,11 @@ const MEMBERSHIP_EVENTS = new Set(["membership.activated", "membership.went_vali
 const ADJUSTMENT = /^(refund\.(created|succeeded|updated)|dispute\.(created|updated)|payment\.(refunded|disputed))$/;
 
 export async function POST(req: Request) {
-  const raw = await req.text();
   const id = req.headers.get("webhook-id");
+  if (!id || !req.headers.get("webhook-signature") || !req.headers.get("webhook-timestamp")) return new Response("invalid signature", { status: 401 });
+  let raw: string;
+  try { raw = await readRequestText(req, 256_000); }
+  catch (e) { return new Response("Invalid webhook body", { status: e instanceof RequestBodyError ? e.status : 400 }); }
   if (!verifyWhopSignature({ id, timestamp: req.headers.get("webhook-timestamp"), signature: req.headers.get("webhook-signature"), rawBody: raw, secret: process.env.WHOP_WEBHOOK_SECRET ?? "" })) return new Response("invalid signature", { status: 401 });
   let event: WhopWebhookEvent;
   try { event = JSON.parse(raw); } catch { return new Response("bad json", { status: 400 }); }

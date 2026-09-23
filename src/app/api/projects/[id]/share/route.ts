@@ -1,3 +1,4 @@
+import { hashPassword } from "@/lib/password";
 import { z } from "zod";
 import { randomBytes } from "node:crypto";
 import { db } from "@/lib/db";
@@ -20,7 +21,7 @@ export async function POST(req: Request, ctx: RouteContext<"/api/projects/[id]/s
     if (!body.success) return error("Invalid input.");
     const project = await db.project.findFirst({ where: { id, userId: user.id } });
     if (!project) return error("Not found", 404);
-    const link = await db.shareLink.create({ data: { projectId: id, token: randomBytes(12).toString("base64url"), label: body.data.label, password: body.data.password || null, canComment: body.data.canComment, canApprove: body.data.canApprove } });
+    const link = await db.shareLink.create({ data: { projectId: id, token: randomBytes(12).toString("base64url"), label: body.data.label, password: body.data.password ? await hashPassword(body.data.password) : null, canComment: body.data.canComment, canApprove: body.data.canApprove } });
     if (project.clientStatus === "NONE") await db.project.update({ where: { id }, data: { clientStatus: "REVIEW" } });
     return json({ link: { ...link, password: undefined, hasPassword: Boolean(link.password) }, url: `/portal/${link.token}` });
   });

@@ -1,3 +1,4 @@
+import { readRequestJson } from "@/lib/request-body";
 import { enqueueWelcome } from "@/lib/email";
 import { dispatchEmails } from "@/lib/email-dispatch";
 import { z } from "zod";
@@ -9,14 +10,14 @@ import { applyReferralOnSignup } from "@/lib/referrals";
 import { clientIp, rateLimit } from "@/lib/security";
 
 const schema = z.object({
-  email: z.string().email(),
+  email: z.string().email().max(254),
   password: z.string().min(8).max(128),
   marketingEmails: z.boolean().default(false),
   name: z.string().min(1).max(80).optional(),
 });
 
 export async function POST(req: Request) {
-  const body = schema.safeParse(await req.json().catch(() => null));
+  const body = schema.safeParse(await readRequestJson(req, 16384).catch(() => null));
   if (!body.success) return error("Invalid input: email and a password of 8+ characters are required.");
   const limited = await rateLimit(`signup:ip:${await clientIp()}`, 5, 3600);
   if (limited) return limited;

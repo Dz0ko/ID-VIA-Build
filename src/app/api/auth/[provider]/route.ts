@@ -15,6 +15,7 @@ export async function GET(req: Request, ctx: RouteContext<"/api/auth/[provider]"
   const next = safePath(url.searchParams.get("next"), "/app");
   const store = await cookies();
   const opts = { httpOnly: true, sameSite: "lax" as const, path: "/", maxAge: 600, secure: process.env.NODE_ENV === "production" };
+  store.delete("oauth_mode");
   store.set("oauth_state", state, opts);
   store.set("oauth_next", next, opts);
   return NextResponse.redirect(authorizeUrl(provider, { state, origin: url.origin }));

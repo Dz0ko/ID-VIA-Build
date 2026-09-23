@@ -1,3 +1,4 @@
+import { readRequestJson } from "@/lib/request-body";
 import { z } from "zod";
 import { after } from "next/server";
 import { Prisma } from "@prisma/client";
@@ -11,7 +12,8 @@ export async function POST(req: Request) {
   return withUser(async user => {
     if (user.role !== "ADMIN") return error("Forbidden", 403);
     const limited = await rateLimit(`email-campaign:${user.id}`, 30, 600); if (limited) return limited;
-    const raw = await req.json().catch(() => null);
+    const payload = await readRequestJson(req, 65536).catch(() => null);
+    const raw = payload && typeof payload === "object" && "action" in payload ? payload : null;
     if (raw?.action === "draft" || raw?.action === "preview") {
       const body = draftSchema.safeParse(raw); if (!body.success) return error("Add a subject and message. Links must use HTTPS.");
       const recipients = await db.user.count({ where: { marketingEmails: true, ...(body.data.plan ? { plan: body.data.plan } : {}) } });

@@ -8,7 +8,7 @@ const nanoid = customAlphabet("abcdefghijklmnopqrstuvwxyz0123456789", 5);
 
 export async function GET() {
   return withUser(async (user) => {
-    const memberships = await db.teamMember.findMany({ where: { OR: [{ userId: user.id }, { email: user.email, status: "PENDING" }] }, include: { team: { include: { members: true, _count: { select: { projects: true } } } } } });
+    const memberships = await db.teamMember.findMany({ where: { userId: user.id, status: "ACTIVE" }, include: { team: { include: { members: true, _count: { select: { projects: true } } } } } });
     return json({ teams: memberships.map((m) => ({ ...m.team, myRole: m.role, myStatus: m.status, whiteLabel: JSON.parse(m.team.whiteLabel || "{}") })) });
   });
 }

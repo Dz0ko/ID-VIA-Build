@@ -1,7 +1,7 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { SignJWT, jwtVerify } from "jose";
-import bcrypt from "bcryptjs";
+export { hashPassword, verifyPassword } from "./password";
 import { db } from "./db";
 import type { PlanId } from "./plans";
 import { isPlanId } from "./plans";
@@ -114,11 +114,3 @@ export async function requireUser(): Promise<SessionUser> {
 }
 
 export class AuthError extends Error {}
-
-export async function hashPassword(pw: string) {
-  return bcrypt.hash(pw, 10);
-}
-
-export async function verifyPassword(pw: string, hash: string) {
-  return bcrypt.compare(pw, hash);
-}

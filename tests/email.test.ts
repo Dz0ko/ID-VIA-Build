@@ -11,6 +11,8 @@ if (!process.env.TEST_DATABASE_SCHEMA?.startsWith("security_test_")) throw new E
 const base = "http://localhost:3848";
 let server: ChildProcess;
 before(async () => {
+  const isolation = await db.$queryRaw<{ schema: string }[]>`SELECT current_schema()::text AS schema`;
+  assert.equal(isolation[0].schema, process.env.TEST_DATABASE_SCHEMA, "Database schema isolation must hold before tests run");
   server = spawn(process.execPath, ["node_modules/next/dist/bin/next", "start", "-p", "3848"], { env: process.env, stdio: "ignore" });
   for (let i = 0; i < 100; i++) { try { if ((await fetch(base + "/login")).ok) return; } catch {} await new Promise(r => setTimeout(r, 100)); }
   throw new Error("App did not start");

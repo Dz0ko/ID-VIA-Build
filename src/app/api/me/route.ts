@@ -1,3 +1,4 @@
+import { readRequestJson } from "@/lib/request-body";
 import { enqueueEmail, appUrl } from "@/lib/email";
 import { dispatchEmails } from "@/lib/email-dispatch";
 import { z } from "zod";
@@ -17,14 +18,14 @@ export async function GET() {
 const schema = z.object({
   name: z.string().trim().min(2).max(60).optional(),
   avatarUrl: z.string().trim().url().max(500).regex(/^https:\/\//, "Avatar must be an https URL").or(z.literal("")).optional(),
-  currentPassword: z.string().optional(),
+  currentPassword: z.string().max(200).optional(),
   newPassword: z.string().min(8).max(200).optional(),
 });
 
 /** Update the signed-in user's own profile (name, avatar, password). */
 export async function PATCH(req: Request) {
   return withUser(async (user) => {
-    const body = schema.safeParse(await req.json().catch(() => null));
+    const body = schema.safeParse(await readRequestJson(req, 16384).catch(() => null));
     if (!body.success) return error("Invalid input.");
     const data: { name?: string; avatarUrl?: string | null; passwordHash?: string } = {};
     if (body.data.name !== undefined) data.name = body.data.name;

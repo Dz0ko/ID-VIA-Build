@@ -9,6 +9,8 @@ if (!process.env.TEST_DATABASE_SCHEMA?.startsWith("security_test_")) throw new E
 const base = "http://localhost:3848";
 let server: ChildProcess;
 before(async () => {
+  const isolation = await db.$queryRaw<{ schema: string }[]>`SELECT current_schema()::text AS schema`;
+  assert.equal(isolation[0].schema, process.env.TEST_DATABASE_SCHEMA, "Database schema isolation must hold before tests run");
   server = spawn(process.execPath, ["node_modules/next/dist/bin/next", "start", "-p", "3848"], { env: process.env, stdio: "ignore" });
   for (let i = 0; i < 100; i++) { try { if ((await fetch(base + "/login")).ok) return; } catch {} await new Promise(r => setTimeout(r, 100)); }
   throw new Error("App did not start");
@@ -28,6 +30,8 @@ test("support is private, tenant-isolated and admins alone can access the inbox"
   const a = await account(), b = await account(), admin = await account("ADMIN");
   const created = await Promise.all([api("/api/support", a.cookie, "POST"), api("/api/support", a.cookie, "POST")]);
   const [one, two] = await Promise.all(created.map(r => r.json()));
+  assert.equal(created[0].status, 200, JSON.stringify(one));
+  assert.equal(created[1].status, 200, JSON.stringify(two));
   assert.equal(one.thread.id, two.thread.id);
   const path = `/api/support/${one.thread.id}`;
   assert.equal((await api(path)).status, 401);

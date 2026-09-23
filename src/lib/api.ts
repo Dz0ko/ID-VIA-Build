@@ -10,7 +10,7 @@ export function json(data: unknown, init?: ResponseInit) {
 }
 
 export function error(message: string, status = 400, extra?: Record<string, unknown>) {
-  return NextResponse.json({ error: message, ...extra }, { status });
+  return json({ error: message, ...extra }, { status, headers: status === 429 && typeof extra?.retryAfter === "number" ? { "Retry-After": String(extra.retryAfter) } : undefined });
 }
 
 export async function withUser<T>(

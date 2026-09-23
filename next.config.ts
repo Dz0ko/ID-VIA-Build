@@ -7,6 +7,7 @@ import tempoNextjsPlugin from "tempo-sdk/nextjs";
  * these headers stop clickjacking, base-tag hijacks, form exfiltration and MIME sniffing.
  */
 const securityHeaders = [
+  { key: "Strict-Transport-Security", value: "max-age=63072000; includeSubDomains" },
   { key: "X-Frame-Options", value: "SAMEORIGIN" },
   { key: "X-Content-Type-Options", value: "nosniff" },
   { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
@@ -38,7 +39,8 @@ const securityHeaders = [
 const nextConfig: NextConfig = {
   poweredByHeader: false,
   // Prisma + native deps must stay external to the server bundle.
-  serverExternalPackages: ["@prisma/client", "prisma", "bcryptjs"],
+  serverExternalPackages: ["@prisma/client", "@prisma/adapter-pg", "pg", "prisma", "bcryptjs"],
+  outputFileTracingIncludes: { "/*": ["./certs/supabase-ca.crt"] },
   async headers() {
     return [
       // User-generated HTML gets its own (sandboxed) policy in the route handlers.
