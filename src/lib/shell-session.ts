@@ -1,3 +1,4 @@
+import { PREVIEW_TEMPLATE, preparePreviewEnvironment } from "./preview-environment";
 import { fileBytes } from "./file-content";
 import "server-only";
 import { Sandbox, NotFoundError } from "e2b";
@@ -34,6 +35,10 @@ function sourceFiles(project: Source) {
   const unique = [...new Map(files.map((f) => [f.path, f])).values()];
   unique.forEach((f) => runtimePath(f.path));
   return unique;
+}
+export function shellSourceMatches(state: ShellState, project: Source) {
+  const files = sourceFiles(project);
+  return Boolean(state.manifest) && files.length === Object.keys(state.manifest!).length && files.every(f => state.manifest![f.path] === digest(f.content));
 }
 export async function uploadShellSource(sandbox: Sandbox, project: Source) {
   const files = sourceFiles(project);
@@ -76,21 +81,36 @@ export async function ensureShell(project: Source) {
   try { await db.setting.create({ data: { key: lockKey, value: token } }); }
   catch { throw new ShellError("Another connection is starting. Try Connect again in a moment."); }
   let created: Sandbox | undefined;
+  let previous: Awaited<ReturnType<typeof connectShell>> | undefined;
+  let archive: Uint8Array | undefined;
   try {
     try {
       const active = await connectShell(project.id);
       const processes = await active.sandbox.commands.list();
-      if (processes.some((p) => p.pid === active.state.pid)) return active.state;
-      await active.sandbox.kill();
+      if (processes.some((p) => p.pid === active.state.pid)) {
+        const info = await active.sandbox.getInfo();
+        if (info.templateId === PREVIEW_TEMPLATE || info.memoryMB >= 2048) return active.state;
+        // Preserve shell-only edits when upgrading the old 512 MiB runtime.
+        await active.sandbox.commands.run("tar -czf /tmp/idaevia-upgrade.tar.gz --exclude=node_modules --exclude=.next --exclude=.git -C /home/user/project .", { timeoutMs: 30_000 });
+        const size = await active.sandbox.commands.run("stat -c %s /tmp/idaevia-upgrade.tar.gz", { timeoutMs: 5000 });
+        if (Number(size.stdout.trim()) > 20_000_000) throw new Error("Download your runtime files before upgrading this large terminal session.");
+        archive = await active.sandbox.files.read("/tmp/idaevia-upgrade.tar.gz", { format: "bytes" });
+        previous = active;
+      } else await active.sandbox.kill();
     } catch (e) { if (!(e instanceof ShellError)) throw e; }
-    created = await Sandbox.create({ timeoutMs: SHELL_TTL, metadata: { projectId: project.id, purpose: "terminal" }, network: { allowPublicTraffic: true } });
+    created = await Sandbox.create(PREVIEW_TEMPLATE, { timeoutMs: SHELL_TTL, metadata: { projectId: project.id, purpose: "terminal" }, network: { allowPublicTraffic: true } });
     const manifest = await uploadShellSource(created, project);
-    const envs = Object.fromEntries(Object.entries(readProjectEnv(project)).filter(([key]) => /^VITE_[A-Z0-9_]+$/.test(key)));
+    if (archive) {
+      await created.files.write("/tmp/idaevia-upgrade.tar.gz", archive.buffer as ArrayBuffer);
+      await created.commands.run(`tar -xzf /tmp/idaevia-upgrade.tar.gz -C ${SHELL_ROOT}`, { timeoutMs: 30_000 });
+    }
+    const envs = await preparePreviewEnvironment(created, project.files, readProjectEnv(project));
     const handle = await created.pty.create({ cwd: SHELL_ROOT, cols: 100, rows: 28, timeoutMs: 0, envs: { ...envs, TERM: "xterm-256color", PS1: "\\w $ " }, onData: () => {} });
-    const state = { sandboxId: created.sandboxId, pid: handle.pid, manifest, expiresAt: Date.now() + SHELL_TTL };
+    const state = { sandboxId: created.sandboxId, pid: handle.pid, manifest: previous?.state.manifest ?? manifest, expiresAt: Date.now() + SHELL_TTL };
     await db.setting.upsert({ where: { key: keyFor(project.id) }, create: { key: keyFor(project.id), value: JSON.stringify(state) }, update: { value: JSON.stringify(state) } });
     await handle.disconnect();
     created = undefined;
+    await previous?.sandbox.kill().catch(() => {});
     return state;
   } finally {
     await created?.kill().catch(() => {});

@@ -12,8 +12,9 @@ export function runtimeProfile(files: { path: string; content: string }[], stack
     const install = has("pnpm-lock.yaml") ? "corepack pnpm install" : has("yarn.lock") ? "corepack yarn install" : "npm install --no-audit --no-fund";
     const script = scripts.dev ? "dev" : scripts.start ? "start" : scripts.preview ? "preview" : null;
     const flags = script && /\bnext\b/.test(scripts[script]) ? " -- --hostname 0.0.0.0 --port 3000" : script && /\bvite\b/.test(scripts[script]) ? " -- --host 0.0.0.0 --port 3000" : "";
+    const prisma = has("prisma/schema.prisma") ? "npx --no-install prisma generate && if [ \"$IDAEVIA_LOCAL_DATABASE\" = 1 ]; then npx --no-install prisma db push --skip-generate; fi && " : "";
     const start = script ? `PORT=3000 HOST=0.0.0.0 npm run ${script}${flags}` : "printf '%s\\n' 'No dev/start/preview script. Add one in package.json, or run your entry point in Terminal.'";
-    return result(`${install} && ${scripts.build ? "npm run build" : "printf '%s\\n' 'Dependencies installed; no build script is defined.'"}`, `${install} && ${start}`, deps.next ? "Next.js" : "JavaScript / TypeScript");
+    return result(`${install} && ${scripts.build ? "npm run build" : "printf '%s\\n' 'Dependencies installed; no build script is defined.'"}`, `${install} && ${prisma}${start}`, deps.next ? "Next.js" : "JavaScript / TypeScript");
   }
   const requirements = has("requirements.txt") ? "python3 -m pip install -r requirements.txt && " : has("pyproject.toml") ? "python3 -m pip install -e . && " : "";
   if (has("manage.py")) return result(`${requirements}python3 manage.py check`, `${requirements}python3 manage.py runserver 0.0.0.0:3000`, "Django");

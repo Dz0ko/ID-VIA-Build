@@ -2,11 +2,12 @@ import { z } from "zod";
 import { getCurrentUser } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { rateLimit } from "@/lib/security";
-import { connectShell, ensureShell, refreshShellTimeout, ShellError, stopShell, syncSavedShell } from "@/lib/shell-session";
+import { shellSourceMatches, connectShell, ensureShell, refreshShellTimeout, ShellError, stopShell, syncSavedShell } from "@/lib/shell-session";
 
 export const maxDuration = 300;
 const schema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("connect") }),
+  z.object({ action: z.literal("status") }),
   z.object({ action: z.literal("input"), data: z.string().min(1).max(16_384) }),
   z.object({ action: z.literal("command"), data: z.string().min(1).max(8000) }),
   z.object({ action: z.literal("resize"), cols: z.number().int().min(10).max(500), rows: z.number().int().min(2).max(200) }),
@@ -48,6 +49,15 @@ export async function POST(req: Request, ctx: RouteContext<"/api/projects/[id]/s
     }
     if (action.action === "stop") { await stopShell(id); return Response.json({ ok: true }); }
     const { sandbox, state } = await connectShell(id);
+    if (action.action === "status") {
+      if (!shellSourceMatches(state, access.project)) return Response.json({ ready: false });
+      const url = `https://${sandbox.getHost(3000)}`;
+      try {
+        const response = await fetch(url, { signal: AbortSignal.timeout(3000), redirect: "manual", cache: "no-store" });
+        if (response.status < 400) return Response.json({ ready: true, url });
+      } catch { /* Not running yet. */ }
+      return Response.json({ ready: false });
+    }
     if (action.action === "download") {
       await sandbox.commands.run("tar -czf /home/user/project-export.tar.gz --exclude=node_modules --exclude=.git -C /home/user/project .", { timeoutMs: 30_000 });
       const size = await sandbox.commands.run("stat -c %s /home/user/project-export.tar.gz", { timeoutMs: 5000 });

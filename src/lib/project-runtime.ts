@@ -1,3 +1,4 @@
+import { PREVIEW_TEMPLATE, PREVIEW_SYSTEM_ENV } from "./preview-environment";
 import { fileBytes } from "./file-content";
 import { recordProjectRelease } from "./project-releases";
 import "server-only";
@@ -35,7 +36,7 @@ export async function runProjectBuild(project: Project & { files: ProjectFile[] 
     if (project.kind !== "app" && !project.html.trim()) throw new Error("There is no website to build yet.");
     await stopProjectRuntime(project.id);
     emit("Creating an isolated build environment…");
-    sandbox = await Sandbox.create({ timeoutMs: LIFETIME, metadata: { projectId: project.id }, network: { allowPublicTraffic: true } });
+    sandbox = await Sandbox.create(PREVIEW_TEMPLATE, { timeoutMs: LIFETIME, metadata: { projectId: project.id }, network: { allowPublicTraffic: true } });
     signal.throwIfAborted();
     emit(`Uploading ${files.length} project files…`);
     await sandbox.files.write(files.map((f) => ({ path: runtimePath(f.path), data: new Uint8Array(fileBytes(f.content)).buffer })));
@@ -43,7 +44,7 @@ export async function runProjectBuild(project: Project & { files: ProjectFile[] 
     const publicEnv = Object.fromEntries(Object.entries(readProjectEnv(project)).filter(([k]) => /^VITE_[A-Z0-9_]+$/.test(k)));
     const activeSandbox = sandbox;
     await executeProjectBuild({
-      command: async (command, timeoutMs) => { await activeSandbox.commands.run(command, { cwd: ROOT, envs: publicEnv, timeoutMs, onStdout: emit, onStderr: emit }); },
+      command: async (command, timeoutMs) => { await activeSandbox.commands.run(command, { cwd: ROOT, envs: { ...publicEnv, ...PREVIEW_SYSTEM_ENV }, timeoutMs, onStdout: emit, onStderr: emit }); },
       writeServer: async (source) => { await activeSandbox.files.write(`${ROOT}/.preview.cjs`, source); },
       startServer: async () => { await activeSandbox.commands.run("node .preview.cjs", { cwd: ROOT, background: true, timeoutMs: 0 }); },
     }, project.kind === "app", emit, signal);

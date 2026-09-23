@@ -116,3 +116,13 @@ test("non-JavaScript manifests select their own runtimes without npm", () => {
   assert.match(api.preview, /--host 0.0.0.0/);
   assert.match(runtimeProfile([], "Unknown").preview, /No automatic runtime detected/);
 });
+
+test("Prisma previews generate the client and prepare only the isolated local database", () => {
+  const profile = runtimeProfile([
+    { path: "/package.json", content: JSON.stringify({ scripts: { dev: "next dev" }, dependencies: { next: "15" } }) },
+    { path: "/prisma/schema.prisma", content: 'datasource db { provider = "postgresql" }' },
+  ], "");
+  assert.match(profile.preview, /prisma generate/);
+  assert.match(profile.preview, /if \[ "\$IDAEVIA_LOCAL_DATABASE" = 1 \]; then npx --no-install prisma db push --skip-generate; fi/);
+  assert.doesNotMatch(profile.preview, /accept-data-loss|migrate reset/);
+});

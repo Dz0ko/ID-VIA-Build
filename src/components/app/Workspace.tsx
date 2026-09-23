@@ -411,6 +411,18 @@ export function Workspace(p: WorkspaceProps) {
     const shell = platformAction ? null : shellIntent(cmd);
     if (shell || execution) {
       if (dirty) { try { await persistCode(false); } catch (e) { setError(e instanceof Error ? e.message : "Could not save source"); return; } }
+      if (execution === "preview") {
+        try {
+          const response = await fetch(`/api/projects/${p.project.id}/shell`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "status" }) });
+          const ready = await response.json();
+          if (response.ok && ready.ready && typeof ready.url === "string") {
+            const url = new URL(ready.url);
+            if (url.protocol === "https:" && url.hostname.endsWith(".e2b.app")) {
+              setRuntimePreview({ url: url.href, source: runtimeSource }); setView("preview"); setExpandedPanel(false); return;
+            }
+          }
+        } catch { /* Start a fresh preview below. */ }
+      }
       const text = execution === "preview" ? (isApp ? runtime.preview : "npm run dev") : execution === "stop" ? "\x03" : execution === "npm run build" ? runtime.build : shell!;
       setShellCommand({ id: Date.now(), text }); setShellOpened(true); setBottom("terminal"); setExpandedPanel(true);
       return;
