@@ -14,7 +14,7 @@ import {
 } from "./prompts";
 import { identityPrompt, personaFor } from "../personas";
 import { protectProjectNavigation } from "../project-navigation";
-import { classifyTask, friendlyAiError, generateWithFallback, resolveModel, tierForTask, type TaskClass } from "./router";
+import { classifyTask, friendlyAiError, generateWithFallback, requiresFrontierDesign, resolveModel, tierForTask, type TaskClass } from "./router";
 import type { InputImage } from "./provider";
 import { estimateUsd } from "./cost";
 
@@ -59,9 +59,10 @@ export async function runAgent(opts: RunOptions) {
   const hasContent = isApp ? project.files.length > 0 : Boolean(project.html && project.html.trim());
 
   const taskClass: TaskClass = agent.mode === "report" ? "small" : classifyTask(opts.request, hasContent);
-  const taskTier = tierForTask(taskClass, opts.plan);
+  const visualDesignTask = requiresFrontierDesign(opts.request, agent.id);
+  const taskTier = visualDesignTask ? "frontier" : tierForTask(taskClass, opts.plan);
   const merged = ORDER[Math.max(ORDER.indexOf(taskTier), ORDER.indexOf(agent.tier))];
-  const tier = tierForTask(taskClass, opts.plan, opts.requestedTier ?? merged);
+  const tier = tierForTask(taskClass, opts.plan, visualDesignTask ? "frontier" : opts.requestedTier ?? merged);
   const visionBump = opts.images?.length ? 1.5 : 1;
 
   const resolved = await resolveModel(tier, opts.preferProvider);

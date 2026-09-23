@@ -1,6 +1,13 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { classifyTask, tierForTask } from "../src/lib/ai/task-routing";
+import { classifyTask, requiresFrontierDesign, tierForTask } from "../src/lib/ai/task-routing";
+
+test("visual design work always requests the frontier tier", () => {
+  assert.equal(requiresFrontierDesign("change the button hover animation", "builder"), true);
+  assert.equal(requiresFrontierDesign("make the layout more premium", "builder"), true);
+  assert.equal(requiresFrontierDesign("rewrite the legal copy", "copywriter"), false);
+  assert.equal(requiresFrontierDesign("anything", "animation"), true);
+});
 
 test("automatic routing reserves efficient tiers for simple work", () => {
   assert.equal(tierForTask(classifyTask("change the button colour", true), "AGENCY"), "fast");

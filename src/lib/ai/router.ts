@@ -1,7 +1,7 @@
 import type { ModelTier } from "../plans";
 import { getSettings, OPENAI_TIER_MODELS, type ModelConfig } from "../settings";
 import { PROVIDERS, type AIProvider, type GenerateInput, type GenerateResult } from "./provider";
-export { classifyTask, tierForTask, type TaskClass } from "./task-routing";
+export { classifyTask, requiresFrontierDesign, tierForTask, type TaskClass } from "./task-routing";
 
 export interface ResolvedModel {
   tier: ModelTier;
