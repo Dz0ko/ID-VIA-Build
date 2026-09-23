@@ -1,12 +1,18 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { classifyTask, requiresFrontierDesign, tierForTask } from "../src/lib/ai/task-routing";
+import { classifyTask, preferredProviderForTask, requiresFrontierDesign, tierForTask } from "../src/lib/ai/task-routing";
 
 test("visual design work always requests the frontier tier", () => {
   assert.equal(requiresFrontierDesign("change the button hover animation", "builder"), true);
   assert.equal(requiresFrontierDesign("make the layout more premium", "builder"), true);
   assert.equal(requiresFrontierDesign("rewrite the legal copy", "copywriter"), false);
   assert.equal(requiresFrontierDesign("anything", "animation"), true);
+});
+
+test("automatic provider selection follows model strengths", () => {
+  assert.equal(preferredProviderForTask("design a premium hero with button hover motion", "builder", false), "anthropic");
+  assert.equal(preferredProviderForTask("add authentication and database tests", "builder", true), "openai");
+  assert.equal(preferredProviderForTask("rewrite this short paragraph", "copywriter", false), undefined);
 });
 
 test("automatic routing reserves efficient tiers for simple work", () => {
