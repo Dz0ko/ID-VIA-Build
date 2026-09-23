@@ -101,7 +101,7 @@ export async function ensureShell(project: Source) {
     created = await Sandbox.create(PREVIEW_TEMPLATE, { timeoutMs: SHELL_TTL, metadata: { projectId: project.id, purpose: "terminal" }, network: { allowPublicTraffic: true } });
     const manifest = await uploadShellSource(created, project);
     if (archive) {
-      await created.files.write("/tmp/idaevia-upgrade.tar.gz", archive.buffer as ArrayBuffer);
+      await created.files.write("/tmp/idaevia-upgrade.tar.gz", new Uint8Array(archive).buffer);
       await created.commands.run(`tar -xzf /tmp/idaevia-upgrade.tar.gz -C ${SHELL_ROOT}`, { timeoutMs: 30_000 });
     }
     const envs = await preparePreviewEnvironment(created, project.files, readProjectEnv(project));
