@@ -79,7 +79,7 @@ export async function POST(req: Request, ctx: RouteContext<"/api/projects/[id]/r
         });
       } catch (e) {
         if (e instanceof InsufficientCredits) {
-          send({ type: "error", message: `Not enough credits (need ${e.needed}, have ${e.have}). Top up or upgrade your plan.` });
+          send({ type: "error", code: "INSUFFICIENT_CREDITS", needed: e.needed, have: e.have, message: `Not enough credits (need ${e.needed}, have ${e.have}). Top up or upgrade your plan.` });
         } else if (!sentError) {
           send({ type: "error", message: e instanceof ProjectBusyError ? e.message : friendlyAiError(e) });
         }

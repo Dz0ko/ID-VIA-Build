@@ -42,7 +42,7 @@ export type RunEvent =
   | { type: "agent"; agent: string; name: string; profession: string; text: string }
   | { type: "delta"; text: string }
   | { type: "done"; mode: "rewrite" | "report"; versionNumber?: number; html?: string; files?: { path: string; content: string }[]; report?: string; creditsUsed: number; note?: string }
-  | { type: "error"; message: string }
+  | { type: "error"; message: string; code?: "INSUFFICIENT_CREDITS"; needed?: number; have?: number }
   | { type: "clarification"; request: string; message: string };
 
 const ORDER: ModelTier[] = ["fast", "standard", "advanced", "premium", "frontier"];

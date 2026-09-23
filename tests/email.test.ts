@@ -157,3 +157,62 @@ test("ambiguous failures retry identical payloads inside the idempotency window,
     await processEmailQueue(); assert.equal(attempts.length, 2); assert.equal((await db.emailDelivery.findUniqueOrThrow({ where: { id: stale.id } })).status, "REVIEW");
   } finally { globalThis.fetch = originalFetch; await config(false); }
 });
+
+test("branded examples include the logo, contact address, safe markup and unsubscribe", async () => {
+  const admin = await account({ role: "ADMIN" });
+  const data = await (await api("/api/admin/email", admin.cookie)).json();
+  assert.equal(data.examples.length, 5);
+  for (const example of data.examples) {
+    assert.match(example.html, /brand\/monogram\/lockup-on-dark.png/);
+    assert.match(example.html, /mailto:info@idaevia.app/);
+    assert.match(example.text, /info@idaevia.app/);
+  }
+  assert.match(data.examples.find((x: { id: string }) => x.id === "promotion").html, /Unsubscribe/);
+  assert.doesNotMatch(renderEmail({ subject: "Safe", body: '<script>alert(1)</script>', ctaUrl: "javascript:alert(1)" }).html, /href="javascript:|<script>/);
+});
+
+test("announcements require admins, reach opted-out users, respect plan/expiry and do not send email", async () => {
+  await config(false);
+  const admin = await account({ role: "ADMIN" }), free = await account({ marketingEmails: false }), pro = await account({ plan: "PRO", marketingEmails: false });
+  assert.equal((await api("/api/announcements")).status, 401);
+  const campaign = await db.emailCampaign.create({ data: { subject: "New components are here", body: "Explore the latest components in your workspace.", createdBy: admin.id, ctaLabel: "Explore", ctaUrl: "https://idaevia.app/app/components" } });
+  const publish = { action: "publish-banner", id: campaign.id, expiresHours: 24 };
+  assert.equal((await api("/api/admin/email/campaigns", free.cookie, "POST", publish)).status, 403);
+  assert.equal((await api("/api/admin/email/campaigns", admin.cookie, "POST", { ...publish, expiresHours: 0 })).status, 400);
+  assert.equal((await api("/api/admin/email/campaigns", admin.cookie, "POST", publish)).status, 200);
+  const first = (await (await api("/api/announcements", free.cookie)).json()).announcement;
+  assert.equal(first.subject, campaign.subject);
+  assert.equal(await db.emailDelivery.count({ where: { campaignId: campaign.id } }), 0);
+  await db.emailCampaign.update({ where: { id: campaign.id }, data: { plan: "PRO" } });
+  await api("/api/admin/email/campaigns", admin.cookie, "POST", publish);
+  assert.equal((await (await api("/api/announcements", free.cookie)).json()).announcement, null);
+  const targeted = (await (await api("/api/announcements", pro.cookie)).json()).announcement;
+  assert.notEqual(targeted.id, first.id);
+  const response = await api("/api/announcements", pro.cookie);
+  assert.match(response.headers.get("cache-control")!, /private, no-store/);
+  await db.setting.update({ where: { key: "platform-announcement" }, data: { value: JSON.stringify({ ...targeted, expiresAt: new Date(Date.now() - 1000).toISOString() }) } });
+  assert.equal((await (await api("/api/announcements", pro.cookie)).json()).announcement, null);
+  await api("/api/admin/email/campaigns", admin.cookie, "POST", publish);
+  await api("/api/admin/email/campaigns", admin.cookie, "POST", { action: "hide-banner", id: campaign.id });
+  assert.equal((await (await api("/api/announcements", pro.cookie)).json()).announcement, null);
+  await api("/api/admin/email/campaigns", admin.cookie, "POST", publish);
+  await api("/api/admin/email/campaigns", admin.cookie, "POST", { action: "cancel", id: campaign.id });
+  assert.equal((await (await api("/api/announcements", pro.cookie)).json()).announcement, null);
+  assert.equal((await api("/api/admin/email/campaigns", admin.cookie, "POST", publish)).status, 409);
+});
+
+test("both agent streams return structured credit shortfalls without charging or calling providers", async () => {
+  const user = await account({ credits: 0, plan: "PRO" });
+  const project = await db.project.create({ data: { userId: user.id, name: "Credit test", slug: randomUUID(), html: "<!doctype html><html><body>Saved work</body></html>" } });
+  for (const [path, body] of [["/api/assistant", { message: "How do I connect GitHub?" }], [`/api/projects/${project.id}/run`, { request: "How do I connect GitHub?", agentId: "builder" }]] as const) {
+    const response = await api(path, user.cookie, "POST", body);
+    assert.equal(response.status, 200);
+    const events = (await response.text()).split("\n\n").filter(x => x.startsWith("data: ")).map(x => JSON.parse(x.slice(6)));
+    const error = events.find(x => x.code === "INSUFFICIENT_CREDITS");
+    assert.ok(error, "Both streams must explicitly identify a credit shortfall");
+    assert.equal(error.have, 0); assert.ok(error.needed > 0);
+  }
+  assert.equal((await db.user.findUniqueOrThrow({ where: { id: user.id } })).credits, 0);
+  assert.equal(await db.creditLedger.count({ where: { userId: user.id } }), 0);
+  assert.match((await db.project.findUniqueOrThrow({ where: { id: project.id } })).html, /Saved work/);
+});

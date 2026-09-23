@@ -1,3 +1,5 @@
+import { randomUUID } from "node:crypto";
+import { ANNOUNCEMENT_KEY, parseAnnouncement } from "@/lib/announcements";
 import { readRequestJson } from "@/lib/request-body";
 import { z } from "zod";
 import { after } from "next/server";
@@ -20,13 +22,24 @@ export async function POST(req: Request) {
       if (raw.action === "preview") return json({ ...renderEmail({ ...body.data, unsubscribe: "https://idaevia.app/email/unsubscribe" }), recipients });
       return json({ campaign: await db.emailCampaign.create({ data: { ...body.data, createdBy: user.id } }), recipients });
     }
-    const action = z.object({ action: z.enum(["send", "cancel"]), id: z.string().min(1).max(100), expectedRecipients: z.number().int().min(0).optional() }).safeParse(raw);
+    const action = z.object({ action: z.enum(["send", "cancel", "publish-banner", "hide-banner"]), id: z.string().min(1).max(100), expectedRecipients: z.number().int().min(0).optional(), expiresHours: z.number().int().min(1).max(720).default(168) }).safeParse(raw);
     if (!action.success) return error("Invalid campaign action.");
     if (action.data.action === "send") { const config = await emailConfig(); if (!config.enabled || !config.apiKey) return error("Connect and enable email delivery before sending a campaign."); }
     return db.$transaction(async tx => {
       await tx.$queryRaw`SELECT id FROM "EmailCampaign" WHERE id = ${action.data.id} FOR UPDATE`;
       const campaign = await tx.emailCampaign.findUnique({ where: { id: action.data.id } });
       if (!campaign) return error("Campaign not found.", 404);
+      if (action.data.action === "publish-banner") {
+        if (campaign.status === "CANCELLED") return error("Cancelled promotions cannot be published.", 409);
+        const value = JSON.stringify({ id: randomUUID(), campaignId: campaign.id, subject: campaign.subject, body: campaign.body, ctaLabel: campaign.ctaLabel, ctaUrl: campaign.ctaUrl, plan: campaign.plan, expiresAt: new Date(Date.now() + action.data.expiresHours * 3600000).toISOString() });
+        await tx.setting.upsert({ where: { key: ANNOUNCEMENT_KEY }, create: { key: ANNOUNCEMENT_KEY, value }, update: { value } });
+        return json({ ok: true, published: true });
+      }
+      if (action.data.action === "hide-banner" || action.data.action === "cancel") {
+        const row = await tx.setting.findUnique({ where: { key: ANNOUNCEMENT_KEY } });
+        if (row && parseAnnouncement(row.value)?.campaignId === campaign.id) await tx.setting.deleteMany({ where: { key: ANNOUNCEMENT_KEY, value: row.value } });
+        if (action.data.action === "hide-banner") return json({ ok: true });
+      }
       if (action.data.action === "cancel") {
         await tx.emailCampaign.update({ where: { id: campaign.id }, data: { status: "CANCELLED" } });
         await tx.emailDelivery.updateMany({ where: { campaignId: campaign.id, status: { in: ["PENDING", "FAILED"] } }, data: { status: "SUPPRESSED", lastError: "Campaign cancelled" } });

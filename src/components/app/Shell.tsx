@@ -1,5 +1,7 @@
 "use client";
 
+import { CreditUpsell } from "./CreditUpsell";
+import { AnnouncementBanner } from "./AnnouncementBanner";
 import { SupportWidget } from "@/components/support/SupportWidget";
 import { createContext, useContext, useState } from "react";
 import { Menu } from "@/components/icons";
@@ -43,7 +45,7 @@ const GROUPS: { title: string; items: Item[] }[] = [
 
 export function Shell(props: { user: SessionUser; children: React.ReactNode }) {
   const pathname = usePathname();
-  return <div className="app-theme"><ShellLayout key={pathname} {...props} /><SupportWidget /></div>;
+  return <div className="app-theme"><ShellLayout key={pathname} {...props} /><SupportWidget /><CreditUpsell credits={props.user.credits} plan={props.user.plan} /></div>;
 }
 
 function ShellLayout({ user, children }: { user: SessionUser; children: React.ReactNode }) {
@@ -114,7 +116,7 @@ function ShellLayout({ user, children }: { user: SessionUser; children: React.Re
           </div>
         </div>
       </aside>}
-      <div className="workspace-content flex-1 min-w-0 flex flex-col overflow-hidden">{children}</div>
+      <div className="workspace-content flex-1 min-w-0 flex flex-col overflow-hidden"><AnnouncementBanner userId={user.id} />{children}</div>
     </div>
     </NavigationContext.Provider>
   );

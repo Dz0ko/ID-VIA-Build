@@ -1,22 +1,24 @@
+import { getAnnouncement } from "@/lib/announcements";
+import { EMAIL_EXAMPLES } from "@/lib/email-examples";
 import { readRequestJson } from "@/lib/request-body";
 import { z } from "zod";
 import { after } from "next/server";
 import { randomUUID } from "node:crypto";
 import { db } from "@/lib/db";
 import { error, json, withUser } from "@/lib/api";
-import { emailConfig, saveEmailConfig, enqueueEmail, processEmailQueue, appUrl } from "@/lib/email";
+import { emailConfig, saveEmailConfig, enqueueEmail, processEmailQueue, appUrl, renderEmail } from "@/lib/email";
 import { rateLimit } from "@/lib/security";
 export const maxDuration = 300;
 export async function GET() {
   return withUser(async user => {
     if (user.role !== "ADMIN") return error("Forbidden", 403);
-    const [config, deliveries, counts, campaigns, subscribers] = await Promise.all([
+    const [config, deliveries, counts, campaigns, subscribers, announcement] = await Promise.all([
       emailConfig(), db.emailDelivery.findMany({ orderBy: { createdAt: "desc" }, take: 50, select: { id: true, kind: true, subject: true, status: true, attempts: true, lastError: true, createdAt: true, sentAt: true, user: { select: { email: true } } } }),
       db.emailDelivery.groupBy({ by: ["status"], _count: true }),
       db.emailCampaign.findMany({ orderBy: { createdAt: "desc" }, take: 20, include: { _count: { select: { deliveries: true } } } }),
-      db.user.count({ where: { marketingEmails: true } }),
+      db.user.count({ where: { marketingEmails: true } }), getAnnouncement(),
     ]);
-    return json({ config: { enabled: config.enabled, from: config.from, replyTo: config.replyTo, hasKey: !!config.apiKey }, deliveries, counts, campaigns, subscribers });
+    return json({ config: { enabled: config.enabled, from: config.from, replyTo: config.replyTo, hasKey: !!config.apiKey }, deliveries, counts, campaigns, subscribers, announcement, examples: EMAIL_EXAMPLES.map(example => ({ ...example, ...renderEmail(example) })) });
   });
 }
 const configSchema = z.object({ enabled: z.boolean(), from: z.string().trim().min(5).max(200).refine(value => !/[\r\n]/.test(value) && z.string().email().safeParse(value.match(/<([^<>]+)>$/)?.[1] || value).success, "Use a valid sender address."), replyTo: z.string().email().max(200), apiKey: z.string().trim().regex(/^re_[A-Za-z0-9_-]+$/).max(200).optional() });

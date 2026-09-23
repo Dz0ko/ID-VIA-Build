@@ -107,3 +107,46 @@ test('workspace hierarchy, navigation and common actions remain usable across de
   assert.equal(await evaluate("document.activeElement.getAttribute('aria-label')"), 'Open live support');
 
 });
+
+test('admin previews and publishes a promotion; users can read/dismiss it and recover from empty credits', async () => {
+  await rpc('Emulation.setDeviceMetricsOverride', { width: 1100, height: 1000, deviceScaleFactor: 1, mobile: false });
+  await rpc('Page.navigate', { url: base+'/admin/email' });
+  await until("document.querySelector('iframe[title=\"Branded email example\"]')!==null");
+  await click('Plan purchase');
+  assert.ok(await evaluate("document.querySelector('iframe[title=\"Branded email example\"]').srcdoc.includes('Payment confirmed')"));
+  await evaluate("document.querySelector('iframe[title=\"Branded email example\"]').scrollIntoView({block:'center'})");
+  await new Promise(r=>setTimeout(r,1500));
+  await rpc('Page.captureScreenshot', {format:'png'}).then(x=>writeFile('.next/branded-email-example.png',Buffer.from(x.data,'base64')));
+  async function type(selector,value) { await evaluate(`(()=>{const el=document.querySelector(${JSON.stringify(selector)});Object.getOwnPropertyDescriptor(Object.getPrototypeOf(el),'value').set.call(el,${JSON.stringify(value)});el.dispatchEvent(new Event('input',{bubbles:true}));})()`); }
+  await type('#promotion-editor input', 'Explore our new component collection');
+  await type('#promotion-editor textarea', 'Fresh components are ready in your workspace. Open the library to try the latest designs.');
+  await click('Save draft');
+  await until("document.body.innerText.includes('Draft saved.')");
+  await until("[...document.querySelectorAll('button')].some(b=>b.textContent==='Show in app' && !b.disabled)");
+  await click('Show in app'); await until("!!document.querySelector('[aria-label=\"Review in-app announcement\"]')");
+  await click('Publish announcement'); await until("document.body.innerText.includes('Announcement published.')");
+  assert.equal(await db.emailDelivery.count(), 0, 'Publishing in-app must not send email');
+  await rpc('Page.navigate', { url: base+'/app' });
+  await until("document.querySelector('.announcement-banner')?.innerText.includes('Explore our new component collection')");
+  await click('View details ↗'); await until("document.querySelector('.promotion-dialog[open]')!==null");
+  assert.ok(await evaluate("document.querySelector('.promotion-dialog').innerText.includes('Fresh components')"));
+  await evaluate("document.querySelector('[aria-label=\"Close announcement\"]').click()");
+  await evaluate("document.querySelector('[aria-label=\"Dismiss announcement\"]').click()");
+  await rpc('Page.navigate', { url: base+'/app/projects' }); await until("document.querySelector('.project-card')!==null");
+  assert.equal(await evaluate("!!document.querySelector('.announcement-banner')"), false);
+  const user = await db.user.findUniqueOrThrow({ where: { email: 'components@fixture.invalid' } });
+  await db.user.update({ where: { id: user.id }, data: { credits: 0 } });
+  await rpc('Page.navigate', { url: base+'/app' }); await until("document.querySelector('.credit-dialog[open]')!==null");
+  assert.ok(await evaluate("document.querySelector('.credit-dialog').innerText.includes('out of AI credits')"));
+  assert.equal(await evaluate("document.querySelectorAll('.credit-dialog a[href^=\"/api/billing/pack?credits=\"]').length"), 4);
+  await rpc('Page.captureScreenshot', {format:'png'}).then(x=>writeFile('.next/credit-options.png',Buffer.from(x.data,'base64')));
+  await click('Maybe later');
+  await evaluate("window.dispatchEvent(new CustomEvent('idaevia:credits-required',{detail:{needed:200,have:5}}))");
+  await until("document.querySelector('.credit-dialog[open]')!==null");
+  assert.ok(await evaluate("document.querySelector('.credit-dialog').innerText.includes('200 credits needed · 5 available')"));
+  await click('Maybe later');
+  await db.user.update({ where: { id: user.id }, data: { plan: 'FREE' } });
+  await rpc('Page.navigate', {url:base+'/app'}); await until("document.querySelector('.credit-dialog[open]')!==null");
+  assert.equal(await evaluate("document.querySelectorAll('.credit-dialog a[href^=\"/api/billing/pack\"]').length"), 0);
+  assert.ok(await evaluate("document.querySelector('.credit-dialog').innerText.includes('Choose a plan')"));
+});

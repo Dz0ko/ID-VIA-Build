@@ -22,7 +22,7 @@ export default async function Settings({ searchParams }: PageProps<"/app/setting
       <PageHeader title="Settings & billing" subtitle={user.email} />
       <div className="flex-1 overflow-y-auto p-6 space-y-8">
         {sp.error === "checkout_not_configured" && (
-          <div className="rounded-lg border border-warning/40 bg-warning/10 px-4 py-3 text-sm text-warning">Checkout is temporarily unavailable. Please try again later or contact support@idaevia.app.</div>
+          <div className="rounded-lg border border-warning/40 bg-warning/10 px-4 py-3 text-sm text-warning">Checkout is temporarily unavailable. Please try again later or contact info@idaevia.app.</div>
         )}
         {sp.error === "checkout_failed" && (
           <div className="rounded-lg border border-error/40 bg-error/10 px-4 py-3 text-sm text-error">We could not open the checkout. Please try again in a minute.</div>
@@ -42,7 +42,7 @@ export default async function Settings({ searchParams }: PageProps<"/app/setting
             <div className="rounded-lg border border-success/40 bg-success/10 px-4 py-3 text-sm text-success">Thanks! {String(sp.credits)} credits are added within a minute after Whop confirms the payment.</div>
           </>
         )}
-        <section>
+        <section id="plans">
           <div className="flex items-center justify-between mb-3">
             <h2 className="text-sm font-medium">Plan</h2>
             <span className="text-xs text-ash">{whop ? "Secure billing by Whop" : "Local dev: plan switching enabled"}</span>

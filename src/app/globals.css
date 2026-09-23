@@ -869,3 +869,11 @@ html.landing-html body { overflow-x: clip; }
 .admin-theme .bg-graphite { background: #25252c; }
 .admin-theme .bg-void\/40 { background: #0c0c0f; }
 @media (prefers-reduced-motion: reduce) { .support-launcher:hover { transform: none; } }
+
+.announcement-banner { display: flex; flex-shrink: 0; align-items: center; gap: 12px; padding: 9px 24px; border-bottom: 1px solid #514066; background: linear-gradient(100deg, #2b1f3b, #19141f); color: #e4daf5; font-size: 12px; }
+.announcement-badge { padding: 2px 7px; border-radius: 5px; background: #9073c72e; color: #c8adeb; font-size: 10px; text-transform: uppercase; letter-spacing: .08em; }
+.announcement-action { flex-shrink: 0; cursor: pointer; color: #dac8f5; font-size: 12px; }
+.promotion-dialog { max-height: 85dvh; overflow-y: auto; }
+.credit-dialog { max-height: 90dvh; overflow-y: auto; background: linear-gradient(150deg, #201a2a, #111113 45%); box-shadow: 0 30px 100px #0009; }
+.credit-pack { display: flex; flex-direction: column; gap: 9px; padding: 16px; border: 1px solid #38323f; border-radius: 12px; background: #161319; transition: border-color .15s, background .15s; }
+.credit-pack:hover { border-color: #9e83c5; background: #211b2a; }

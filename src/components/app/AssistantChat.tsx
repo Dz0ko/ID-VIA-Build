@@ -1,4 +1,5 @@
 "use client";
+import { notifyCreditShortfall } from "@/lib/credit-notice";
 
 import { Markdown } from "@/components/Markdown";
 
@@ -43,7 +44,7 @@ export function AssistantChat({ offline, name }: { offline: boolean; name: strin
     setMessages((m) => [...m, { id: `u-${Date.now()}`, role: "user", content: text }]);
     try {
       const res = await fetch("/api/assistant", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ message: text }) });
-      if (!res.ok || !res.body) { const d = await res.json().catch(() => ({})); throw new Error(d.error ?? "Request failed"); }
+      if (!res.ok || !res.body) { const d = await res.json().catch(() => ({})); if (d.code === "INSUFFICIENT_CREDITS") notifyCreditShortfall(d); throw new Error(d.error ?? "Request failed"); }
       const reader = res.body.getReader();
       const dec = new TextDecoder();
       let buf = ""; let acc = "";
@@ -58,7 +59,7 @@ export function AssistantChat({ offline, name }: { offline: boolean; name: strin
           const ev = JSON.parse(line.slice(6));
           if (ev.type === "delta") { acc += ev.text; setStream(acc); }
           else if (ev.type === "done") { setMessages((m) => [...m, { id: ev.id, role: "assistant", content: ev.content }]); setStream(""); }
-          else if (ev.type === "error") throw new Error(ev.message);
+          else if (ev.type === "error") { if (ev.code === "INSUFFICIENT_CREDITS") notifyCreditShortfall(ev); throw new Error(ev.message); }
         }
       }
     } catch (e) {

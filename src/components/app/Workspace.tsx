@@ -1,4 +1,5 @@
 "use client";
+import { notifyCreditShortfall } from "@/lib/credit-notice";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -211,7 +212,7 @@ export function Workspace(p: WorkspaceProps) {
         body: JSON.stringify({ request, agentId: agentToRun, tier: tier === "auto" ? undefined : tier, provider: tier === "auto" ? undefined : provider, images: imgs.length ? imgs.map((i) => ({ mediaType: i.mediaType, data: i.data })) : undefined }),
         signal: ac.signal,
       });
-      if (!res.ok || !res.body) { const d = await res.json().catch(() => ({})); throw new Error(d.error ?? `Request failed (${res.status})`); }
+      if (!res.ok || !res.body) { const d = await res.json().catch(() => ({})); if (d.code === "INSUFFICIENT_CREDITS") notifyCreditShortfall(d); throw new Error(d.error ?? `Request failed (${res.status})`); }
       const reader = res.body.getReader();
       const dec = new TextDecoder();
       let buf = "";
@@ -267,7 +268,7 @@ export function Workspace(p: WorkspaceProps) {
               log(`✓ ${agentToRun} report ready (${ev.creditsUsed} credits)`, "ok");
             }
             setRuns((r) => [{ id: `r-${Date.now()}`, agentId: agentToRun, status: "DONE", task: request, model: null, creditsUsed: ev.creditsUsed, startedAt: new Date().toISOString(), finishedAt: new Date().toISOString(), output: ev.mode === "rewrite" ? `Change #${ev.versionNumber}` : "report" }, ...r]);
-          } else if (ev.type === "error") { setCredits((c) => c + usedCredits); throw new Error(ev.message); }
+          } else if (ev.type === "error") { setCredits((c) => c + usedCredits); if (ev.code === "INSUFFICIENT_CREDITS") notifyCreditShortfall(ev); throw new Error(ev.message); }
         }
       }
       if (!completed && !clarified) throw new Error("The connection ended before the agent finished. Please try again.");

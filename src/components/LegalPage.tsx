@@ -3,7 +3,7 @@ import type { ReactNode } from "react";
 import { Logo } from "@/components/Logo";
 
 export const LEGAL_UPDATED = "22 September 2026";
-export const LEGAL_CONTACT = "support@idaevia.app";
+export const LEGAL_CONTACT = "info@idaevia.app";
 
 export function LegalPage({ title, intro, children }: { title: string; intro: string; children: ReactNode }) {
   return (
