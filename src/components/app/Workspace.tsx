@@ -12,6 +12,7 @@ import { selectedComponents, componentImplementationPrompt, SELECTABLE_COMPONENT
 import { ProjectDownloadDialog } from "./ProjectDownload";
 import { readImportHandoff, clearImportHandoff } from "@/lib/import-handoff";
 import { shellIntent } from "@/lib/shell-intent";
+import { runtimeProfile } from "@/lib/runtime-profile";
 import { runtimeCommand } from "@/lib/runtime-command";
 import { ComposerSelect } from "./ComposerSelect";
 import { StackSuggestions } from "./StackSuggestions";
@@ -98,21 +99,11 @@ export function Workspace(p: WorkspaceProps) {
   const params = useSearchParams();
   const isApp = p.project.kind === "app";
   const projectStack = useMemo(() => { try { return (JSON.parse(p.project.memory || "{}").stack as string | undefined) ?? "React + TypeScript"; } catch { return "React + TypeScript"; } }, [p.project.memory]);
-  const isReactApp = isApp && /react/i.test(projectStack);
-  const stackBuildCommand = useMemo(() => {
-    if (isReactApp) return "npm install && npm run build && npm run preview -- --host 0.0.0.0 --port 3000";
-    if (/java|kotlin/i.test(projectStack)) return "./mvnw test package || mvn test package";
-    if (/python/i.test(projectStack)) return "python -m pytest";
-    if (/go/i.test(projectStack)) return "go test ./... && go build ./...";
-    if (/rust/i.test(projectStack)) return "cargo test && cargo build";
-    if (/php/i.test(projectStack)) return "composer install && php artisan test";
-    if (/dotnet|c#/i.test(projectStack)) return "dotnet test && dotnet build";
-    if (/ruby/i.test(projectStack)) return "bundle install && bundle exec rake test";
-    return "npm install && npm run build";
-  }, [isReactApp, projectStack]);
   const [html, setHtml] = useState(p.project.html);
   const [savedHtml, setSavedHtml] = useState(p.project.html);
   const [files, setFiles] = useState<ProjFile[]>(p.project.files);
+  const isReactApp = isApp && /react/i.test(projectStack) && !files.some(f => f.path.replace(/^\/+/, "") === "package.json");
+  const runtime = useMemo(() => runtimeProfile(files, projectStack), [files, projectStack]);
   const [savedFiles, setSavedFiles] = useState<ProjFile[]>(p.project.files);
   const [activeFile, setActiveFile] = useState<string>(p.project.files[0]?.path ?? "/App.tsx");
   const [releases, setReleases] = useState(p.releases ?? []);
@@ -290,7 +281,7 @@ export function Workspace(p: WorkspaceProps) {
 
   const run = useCallback(async (request: string, agentToRun: string = agentId, chain: string[] = [], importImages?: RefImage[]) => {
     if ((!request.trim() && !componentIds.length) || busyRef.current || terminalRunning.current) return;
-    const command = shellIntent(request) ?? runtimeCommand(request);
+    const command = runtimeCommand(request) ?? shellIntent(request);
     if (command && !chain.length && !componentIds.length) { await terminalAction.current?.(command); return; }
     if (componentIds.length && allAgents.find(a => a.id === agentToRun)?.mode === "report") agentToRun = "builder";
     const composed = componentImplementationPrompt(request, componentIds);
@@ -421,7 +412,7 @@ export function Workspace(p: WorkspaceProps) {
     const shell = platformAction ? null : shellIntent(cmd);
     if (shell || execution) {
       if (dirty) { try { await persistCode(false); } catch (e) { setError(e instanceof Error ? e.message : "Could not save source"); return; } }
-      const text = shell ?? (execution === "preview" ? (isApp ? "npm install && npm run dev -- --host 0.0.0.0 --port 3000" : "npm run dev") : execution === "stop" ? "\x03" : "npm run build");
+      const text = execution === "preview" ? (isApp ? runtime.preview : "npm run dev") : execution === "stop" ? "\x03" : execution === "npm run build" ? runtime.build : shell!;
       setShellCommand({ id: Date.now(), text }); setShellOpened(true); setBottom("terminal"); setExpandedPanel(true);
       return;
     }
@@ -485,10 +476,10 @@ export function Workspace(p: WorkspaceProps) {
         </div>
         <div className="mx-auto flex items-center gap-1 border border-graphite rounded-full p-0.5">
           <button onClick={() => { setBottom("chat"); setExpandedPanel(true); }} className={`btn btn-sm ${expandedPanel && bottom === "chat" ? "btn-primary" : "btn-ghost"}`}><MessageSquare size={13} />Chat</button>
-          <button onClick={() => { setView("preview"); setExpandedPanel(false); }} className={`btn btn-sm ${!expandedPanel && view === "preview" ? "btn-primary" : "btn-ghost"}`}><Eye size={13} />Preview</button>
+          <button onClick={() => { if (isApp && !isReactApp && !runtimeUrl) { void term("preview"); } else { setView("preview"); setExpandedPanel(false); } }} className={`btn btn-sm ${!expandedPanel && view === "preview" ? "btn-primary" : "btn-ghost"}`}><Eye size={13} />Preview</button>
           <button onClick={() => { setView("code"); setExpandedPanel(false); setShowFiles(true); }} className={`btn btn-sm ${!expandedPanel && view === "code" ? "btn-primary" : "btn-ghost"}`}><Code2 size={13} />Code</button>
         </div>
-        <button disabled={!!busy || termBusy} onClick={() => term(isApp && !isReactApp ? stackBuildCommand : "platform: npm run build")} className="btn btn-outline btn-sm"><Play size={13} />{termBusy ? "Running…" : isApp && !isReactApp ? "Build in Terminal" : "Build & preview"}</button>
+        <button disabled={!!busy || termBusy} onClick={() => term("npm run build")} className="btn btn-outline btn-sm"><Play size={13} />{termBusy ? "Running…" : isApp && !isReactApp ? "Build" : "Build & preview"}</button>
         {!isApp && <div className="hidden lg:flex items-center gap-0.5 border border-graphite rounded-full p-0.5">
           {([["desktop", Monitor], ["tablet", Tablet], ["mobile", Smartphone]] as const).map(([d, I]) => (
             <button key={d} onClick={() => setDevice(d)} className={`btn btn-sm ${device === d ? "bg-graphite" : "btn-ghost"}`} title={d}><I size={13} /></button>
@@ -552,7 +543,7 @@ export function Workspace(p: WorkspaceProps) {
                   {files.length ? <AppSandbox files={files} /> : <div className="h-full grid place-items-center text-sm text-ash bg-void">Describe the app you want in the chat below: e.g. “Build an admin dashboard for a SaaS with sidebar, KPI cards, a revenue chart and a customers table.”</div>}
                 </div>
               ) : isApp ? (
-                <div className="h-full grid place-items-center rounded-lg border border-graphite bg-void p-6 text-center text-sm text-ash"><div><div className="text-paper font-medium mb-2">{projectStack} project</div><p>This stack is ready in the multi-file editor and Terminal. Run the project’s build or dev command there to open its own runtime preview.</p><button onClick={() => { setBottom("terminal"); setShellOpened(true); setExpandedPanel(true); }} className="btn btn-outline btn-sm mt-4"><TerminalSquare size={13} />Open Terminal</button></div></div>
+                <div className="h-full grid place-items-center rounded-lg border border-graphite bg-void p-6 text-center text-sm text-ash"><div><div className="text-paper font-medium mb-2">{projectStack} project</div><p>Start the project in its isolated runtime. Web servers open here when ready; command-line output appears in Terminal. Configure required environment variables in Integrations.</p><button onClick={() => { void term("preview"); }} className="btn btn-outline btn-sm mt-4"><Play size={13} />Start preview</button></div></div>
               ) : (
                 <div className="h-full mx-auto bg-white rounded-lg overflow-hidden border border-graphite transition-all" style={{ width, maxWidth: "100%" }}>
                   {/* No allow-same-origin: generated HTML runs in an opaque origin and cannot touch the app or its cookies. */}

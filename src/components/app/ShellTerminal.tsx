@@ -20,6 +20,7 @@ export function ShellTerminal({ projectId, active, command, onPreview, onConsume
   const connecting = useRef(false);
   const disposed = useRef(false);
   const consumed = useRef<number | null>(null);
+  const autoConnected = useRef(false);
   const attempted = useRef<number | null>(null);
   const callbacks = useRef({ onPreview, onConsumed });
   const [status, setStatus] = useState("Disconnected");
@@ -150,9 +151,11 @@ export function ShellTerminal({ projectId, active, command, onPreview, onConsume
     }
   }, [command, connect]);
 
+  useEffect(() => { if (active && !autoConnected.current) { autoConnected.current = true; void connect(); } }, [active, connect]);
+
   useEffect(() => { if (active) { fit.current?.fit(); terminal.current?.focus(); } }, [active]);
 
-  return <div className="flex-1 min-h-0 flex flex-col bg-[#050506]">
+  return <div className="flex-1 min-h-0 flex flex-col overflow-hidden bg-[#050506]">
     <div className="shrink-0 flex flex-wrap items-center gap-2 border-b border-graphite px-3 py-2 text-xs">
       <span className="text-ash">{status} · session expires after 15 min without input</span>
       <button className="btn btn-outline btn-sm" onClick={() => void connect()}>Connect</button>

@@ -94,3 +94,25 @@ test("chat forwards explicit shell commands verbatim, including quoting and pipe
   assert.equal(shellIntent("terminal: find . -name '*.tsx'"), "find . -name '*.tsx'");
   for (const request of ["Build a dashboard", "Add a terminal panel", "Install a contact form", "Please change the npm button label", "run builder Improve the page", "go to the homepage", "make the hero darker", "find a better logo"]) assert.equal(shellIntent(request), null);
 });
+
+import { runtimeProfile } from "../src/lib/runtime-profile";
+test("runtime selection follows manifests over stale language labels and uses Next hostname flag", () => {
+  const profile = runtimeProfile([{ path: "/package.json", content: JSON.stringify({ scripts: { dev: "next dev", build: "next build" }, dependencies: { next: "16" } }) }], "Java");
+  assert.equal(profile.label, "Next.js");
+  assert.match(profile.preview, /--hostname 0.0.0.0/);
+  assert.doesNotMatch(profile.preview, /--host /);
+  assert.match(profile.build, /npm run build/);
+  assert.equal(runtimeCommand("give me a preview run it"), "preview");
+  assert.equal(runtimeCommand("run it"), "preview");
+});
+test("non-JavaScript manifests select their own runtimes without npm", () => {
+  for (const [path, command] of [["go.mod", "go run"], ["Cargo.toml", "cargo run"], ["pom.xml", "spring-boot:run"], ["manage.py", "runserver"], ["app.csproj", "dotnet run"], ["Package.swift", "swift run"]]) {
+    const profile = runtimeProfile([{ path, content: "" }], "Next.js");
+    assert.ok(profile.preview.includes(command), path);
+    assert.doesNotMatch(profile.preview, /npm/);
+  }
+  const api = runtimeProfile([{ path: "main.py", content: "app = FastAPI()" }, { path: "requirements.txt", content: "fastapi\nuvicorn" }], "Python");
+  assert.match(api.preview, /uvicorn 'main:app'/);
+  assert.match(api.preview, /--host 0.0.0.0/);
+  assert.match(runtimeProfile([], "Unknown").preview, /No automatic runtime detected/);
+});
