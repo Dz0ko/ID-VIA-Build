@@ -57,7 +57,7 @@ function makeDiffs(beforeFiles: ProjFile[], afterFiles: ProjFile[]): DiffFile[] 
 
 export interface WorkspaceProps {
   project: {
-    id: string; name: string; slug: string; status: string; kind: string; html: string; description: string | null; health: string | null; clientStatus: string;
+    id: string; name: string; slug: string; status: string; kind: string; html: string; memory?: string; description: string | null; health: string | null; clientStatus: string;
     versions: Version[]; messages: Msg[]; agentRuns: Run[]; files: ProjFile[];
   };
   agents: AgentDef[];
@@ -90,6 +90,19 @@ export function Workspace(p: WorkspaceProps) {
   const router = useRouter();
   const params = useSearchParams();
   const isApp = p.project.kind === "app";
+  const projectStack = useMemo(() => { try { return (JSON.parse(p.project.memory || "{}").stack as string | undefined) ?? "React + TypeScript"; } catch { return "React + TypeScript"; } }, [p.project.memory]);
+  const isReactApp = isApp && /react/i.test(projectStack);
+  const stackBuildCommand = useMemo(() => {
+    if (isReactApp) return "npm install && npm run build && npm run preview -- --host 0.0.0.0 --port 3000";
+    if (/java|kotlin/i.test(projectStack)) return "./mvnw test package || mvn test package";
+    if (/python/i.test(projectStack)) return "python -m pytest";
+    if (/go/i.test(projectStack)) return "go test ./... && go build ./...";
+    if (/rust/i.test(projectStack)) return "cargo test && cargo build";
+    if (/php/i.test(projectStack)) return "composer install && php artisan test";
+    if (/dotnet|c#/i.test(projectStack)) return "dotnet test && dotnet build";
+    if (/ruby/i.test(projectStack)) return "bundle install && bundle exec rake test";
+    return "npm install && npm run build";
+  }, [isReactApp, projectStack]);
   const [html, setHtml] = useState(p.project.html);
   const [savedHtml, setSavedHtml] = useState(p.project.html);
   const [files, setFiles] = useState<ProjFile[]>(p.project.files);
@@ -117,6 +130,7 @@ export function Workspace(p: WorkspaceProps) {
   const [stream, setStream] = useState("");
   const [activity, setActivity] = useState<AgentActivity[]>([]);
   const [diffs, setDiffs] = useState<DiffFile[]>([]);
+  const [pendingStackRequest, setPendingStackRequest] = useState<string | null>(null);
   const [logs, setLogs] = useState<LogLine[]>([{ t: now(), text: "Workspace ready.", kind: "info" }]);
   const [runtimePreview, setRuntimePreview] = useState<{ url: string; source: string } | null>(null);
   const runtimeSource = isApp ? JSON.stringify(files) : html;
@@ -212,6 +226,7 @@ export function Workspace(p: WorkspaceProps) {
       let acc = "";
       let usedCredits = 0;
       let completed = false;
+      let clarified = false;
       let rewrote = false;
       while (true) {
         const { done, value } = await reader.read();
@@ -224,6 +239,7 @@ export function Workspace(p: WorkspaceProps) {
           if (!line) continue;
           const ev = JSON.parse(line.slice(6));
           if (ev.type === "picked") { const a = allAgents.find((x) => x.id === ev.agent); log(`Router → handing this to ${a?.name ?? ev.agent}${a?.profession ? ` (${a.profession})` : ""}`); setBusy(ev.agent); busyRef.current = ev.agent; setActivity((items) => [...items.map((item) => ({ ...item, status: "done" as const })), { id: `activity-${Date.now()}`, label: "Route request", detail: `Handing this to ${a?.name ?? ev.agent}`, status: "running" }]); }
+          else if (ev.type === "clarification") { clarified = true; setPendingStackRequest(ev.request); setMessages((m) => [...m, { id: `q-${Date.now()}`, role: "assistant", content: ev.message, agentId: busyRef.current ?? agentToRun, creditsUsed: 0, model: null, createdAt: new Date().toISOString() }]); setActivity((items) => [...items.map((item) => ({ ...item, status: "done" as const })), { id: `activity-${Date.now()}`, label: "Choose project stack", detail: "Waiting for your language or framework choice", status: "done" }]); log("Waiting for project language/framework choice"); }
           else if (ev.type === "agent") { setMessages((m) => [...m, { id: `i-${Date.now()}`, role: "assistant", content: ev.text, agentId: ev.agent, creditsUsed: 0, model: null, createdAt: new Date().toISOString() }]); log(`${ev.name} (${ev.profession}) started`); setActivity((items) => [...items.map((item) => ({ ...item, status: "done" as const })), { id: `activity-${Date.now()}`, label: ev.name, detail: `${ev.profession} started`, status: "running" }]); }
           else if (ev.type === "meta") {
             usedCredits = ev.credits; setCredits((c) => c - ev.credits);
@@ -262,7 +278,7 @@ export function Workspace(p: WorkspaceProps) {
           } else if (ev.type === "error") { setCredits((c) => c + usedCredits); throw new Error(ev.message); }
         }
       }
-      if (!completed) throw new Error("The connection ended before the agent finished. Please try again.");
+      if (!completed && !clarified) throw new Error("The connection ended before the agent finished. Please try again.");
       if (rewrote && !isApp) await runAuditRequest();
       setStream("");
       return true;
@@ -281,12 +297,14 @@ export function Workspace(p: WorkspaceProps) {
     if (!request.trim() || busyRef.current || terminalRunning.current) return;
     const command = shellIntent(request) ?? runtimeCommand(request);
     if (command && !chain.length) { await terminalAction.current?.(command); return; }
+    const effectiveRequest = pendingStackRequest ? `${pendingStackRequest}\n\nSTACK CHOICE: ${request}` : request;
+    if (pendingStackRequest) setPendingStackRequest(null);
     const imgs = images; setImages([]);
     for (const [i, id] of [agentToRun, ...chain].entries()) {
-      const ok = await runOne(request, id, i === 0 ? imgs : []);
+      const ok = await runOne(effectiveRequest, id, i === 0 ? imgs : []);
       if (!ok) { setInput((current) => current || request); if (i === 0) setImages(imgs); break; }
     }
-  }, [agentId, images, runOne]);
+  }, [agentId, images, pendingStackRequest, runOne]);
 
   useEffect(() => {
     if (params.get("auto") === "1" && !autoRan.current) {
@@ -460,7 +478,7 @@ export function Workspace(p: WorkspaceProps) {
         <WorkspaceMenuButton />
         <Link aria-label="Back to projects" href="/app/projects" className="btn btn-ghost btn-sm"><ArrowLeft size={14} /></Link>
         <div className="min-w-0 max-w-48">
-          <div className="text-sm font-medium truncate">{p.project.name} {isApp && <span className="pill text-[10px] ml-1">React app</span>}</div>
+        <div className="text-sm font-medium truncate">{p.project.name} {isApp && <span className="pill text-[10px] ml-1">{projectStack}</span>}</div>
           <div className="text-[11px] text-ash font-mono truncate">{status === "PUBLISHED" ? `live · /s/${p.project.slug}` : "draft"} · {credits.toLocaleString()} credits{clientStatus !== "NONE" && ` · client: ${clientStatus.toLowerCase().replace("_", " ")}`}</div>
         </div>
         <div className="mx-auto flex items-center gap-1 border border-graphite rounded-full p-0.5">
@@ -468,7 +486,7 @@ export function Workspace(p: WorkspaceProps) {
           <button onClick={() => { setView("preview"); setExpandedPanel(false); }} className={`btn btn-sm ${!expandedPanel && view === "preview" ? "btn-primary" : "btn-ghost"}`}><Eye size={13} />Preview</button>
           <button onClick={() => { setView("code"); setExpandedPanel(false); setShowFiles(true); }} className={`btn btn-sm ${!expandedPanel && view === "code" ? "btn-primary" : "btn-ghost"}`}><Code2 size={13} />Code</button>
         </div>
-        <button disabled={!!busy || termBusy} onClick={() => term(isApp ? "npm install && npm run build && npm run preview -- --host 0.0.0.0 --port 3000" : "npm run build && npm run preview")} className="btn btn-outline btn-sm"><Play size={13} />{termBusy ? "Running…" : "Build & preview"}</button>
+        <button disabled={!!busy || termBusy} onClick={() => term(isApp ? stackBuildCommand : "npm run build && npm run preview")} className="btn btn-outline btn-sm"><Play size={13} />{termBusy ? "Running…" : isApp && !isReactApp ? "Build in Terminal" : "Build & preview"}</button>
         {!isApp && <div className="hidden lg:flex items-center gap-0.5 border border-graphite rounded-full p-0.5">
           {([["desktop", Monitor], ["tablet", Tablet], ["mobile", Smartphone]] as const).map(([d, I]) => (
             <button key={d} onClick={() => setDevice(d)} className={`btn btn-sm ${device === d ? "bg-graphite" : "btn-ghost"}`} title={d}><I size={13} /></button>
@@ -523,10 +541,12 @@ export function Workspace(p: WorkspaceProps) {
               runtimeUrl ? <div className="h-full flex flex-col">
                 <div className="shrink-0 flex items-center gap-3 pb-2 text-xs text-ash"><span className="truncate">{runtimeUrl}</span><a href={runtimeUrl} target="_blank" rel="noopener noreferrer" className="btn btn-ghost btn-sm">Open preview <ExternalLink size={12} /></a><button onClick={() => term("stop")} disabled={termBusy} className="btn btn-ghost btn-sm">Stop</button></div>
                 <iframe title="Built project preview" src={runtimeUrl} className="w-full flex-1 min-h-0 rounded-lg border border-graphite bg-white" sandbox="allow-scripts allow-forms allow-popups allow-modals allow-same-origin" />
-              </div> : isApp ? (
+              </div> : isReactApp ? (
                 <div className="h-full rounded-lg overflow-hidden border border-graphite bg-white">
                   {files.length ? <AppSandbox files={files} /> : <div className="h-full grid place-items-center text-sm text-ash bg-void">Describe the app you want in the chat below: e.g. “Build an admin dashboard for a SaaS with sidebar, KPI cards, a revenue chart and a customers table.”</div>}
                 </div>
+              ) : isApp ? (
+                <div className="h-full grid place-items-center rounded-lg border border-graphite bg-void p-6 text-center text-sm text-ash"><div><div className="text-paper font-medium mb-2">{projectStack} project</div><p>This stack is ready in the multi-file editor and Terminal. Run the project’s build or dev command there to open its own runtime preview.</p><button onClick={() => { setBottom("terminal"); setShellOpened(true); setExpandedPanel(true); }} className="btn btn-outline btn-sm mt-4"><TerminalSquare size={13} />Open Terminal</button></div></div>
               ) : (
                 <div className="h-full mx-auto bg-white rounded-lg overflow-hidden border border-graphite transition-all" style={{ width, maxWidth: "100%" }}>
                   {/* No allow-same-origin: generated HTML runs in an opaque origin and cannot touch the app or its cookies. */}

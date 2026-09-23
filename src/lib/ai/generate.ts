@@ -17,6 +17,7 @@ import { protectProjectNavigation } from "../project-navigation";
 import { classifyTask, friendlyAiError, generateWithFallback, preferredProviderForTask, requiresFrontierDesign, resolveModel, tierForTask, type TaskClass } from "./router";
 import type { InputImage } from "./provider";
 import { estimateUsd } from "./cost";
+import { detectProjectStack, requestedStackName, stackQuestion } from "../project-stack";
 
 export interface RunOptions {
   userId: string;
@@ -38,7 +39,8 @@ export type RunEvent =
   | { type: "agent"; agent: string; name: string; profession: string; text: string }
   | { type: "delta"; text: string }
   | { type: "done"; mode: "rewrite" | "report"; versionNumber?: number; html?: string; files?: { path: string; content: string }[]; report?: string; creditsUsed: number; note?: string }
-  | { type: "error"; message: string };
+  | { type: "error"; message: string }
+  | { type: "clarification"; request: string; message: string };
 
 const ORDER: ModelTier[] = ["fast", "standard", "advanced", "premium", "frontier"];
 
@@ -55,8 +57,23 @@ export async function runAgent(opts: RunOptions) {
     where: { id: opts.projectId, userId: opts.userId },
     include: { files: true },
   });
-  const isApp = project.kind === "app";
+  let isApp = project.kind === "app";
   const hasContent = isApp ? project.files.length > 0 : Boolean(project.html && project.html.trim());
+  let memory: Record<string, unknown> = {};
+  try { memory = JSON.parse(project.memory || "{}"); } catch { /* ignore malformed project memory */ }
+  const storedStack = typeof memory.stack === "string" ? memory.stack : null;
+  if (!hasContent && !requestedStackName(opts.request) && !storedStack) {
+    const message = stackQuestion(opts.request, project.kind);
+    opts.onEvent?.({ type: "clarification", request: opts.request, message });
+    return { mode: "clarification" as const, message };
+  }
+  const stackId = detectProjectStack(opts.request);
+  const stack = requestedStackName(opts.request) ?? storedStack ?? (isApp ? "React + TypeScript" : "HTML + CSS + JavaScript");
+  if (!isApp && !hasContent && stackId && stackId !== "html-css-js") {
+    await db.project.update({ where: { id: project.id }, data: { kind: "app", memory: JSON.stringify({ ...memory, stack }) } });
+    isApp = true;
+  }
+  const reactStack = stackId ? stackId === "react-ts" : storedStack ? /react/i.test(storedStack) : isApp;
 
   const taskClass: TaskClass = agent.mode === "report" ? "small" : classifyTask(opts.request, hasContent);
   const visualDesignTask = requiresFrontierDesign(opts.request, agent.id);
@@ -96,9 +113,6 @@ export async function runAgent(opts: RunOptions) {
 
   opts.onEvent?.({ type: "meta", agent: agent.id, tier, model: resolved.config.model, provider: resolved.provider.id, credits, taskClass, fallback: resolved.fallback });
 
-  let memory: Record<string, unknown> = {};
-  try { memory = JSON.parse(project.memory || "{}"); } catch { /* ignore */ }
-
   let system: string;
   let userPrompt: string;
   const identity = identityPrompt(agent.id, agent.name);
@@ -109,8 +123,11 @@ export async function runAgent(opts: RunOptions) {
       : `<<<HTML\n${project.html}\nHTML>>>`;
     userPrompt = `PROJECT: ${project.name}\n${project.description ?? ""}\n\nCURRENT ${isApp ? "FILES" : "DOCUMENT"}:\n${current}\n\nREQUEST:\n${opts.request}`;
   } else if (isApp) {
-    system = `${identity}\n\n${agent.id === "builder" ? APP_BUILDER_SYSTEM : `${APP_BUILDER_SYSTEM}\n\nSPECIALIST ROLE:\n${agent.systemPrompt}`}`;
-    userPrompt = buildAppUserPrompt({ request: opts.request, files: project.files, memory });
+    const stackRules = reactStack
+      ? ""
+      : `\n\nSELECTED STACK: ${stack}\nThis is a real multi-file ${stack} project, not a React mock. Follow the selected language/framework. Return every required source, configuration, dependency, environment example, migration and test file needed for the requested feature in the <<<FILE ...>>> format. Do not force /App.tsx or React files when the selected stack does not use them.`;
+    system = `${identity}\n\n${agent.id === "builder" ? APP_BUILDER_SYSTEM : `${APP_BUILDER_SYSTEM}\n\nSPECIALIST ROLE:\n${agent.systemPrompt}`}${stackRules}`;
+    userPrompt = `${buildAppUserPrompt({ request: opts.request, files: project.files, memory })}\n\nTARGET STACK: ${stack}`;
   } else {
     system = `${identity}\n\n${agent.id === "builder" ? BUILDER_SYSTEM : agent.systemPrompt}`;
     userPrompt = buildUserPrompt({ request: opts.request, html: project.html, memory });
@@ -151,7 +168,8 @@ export async function runAgent(opts: RunOptions) {
 
     if (agent.mode === "rewrite" && isApp) {
       const files = parseFileManifest(result.text, project.files);
-      if (!files.some((f) => f.path === "/App.tsx")) throw new Error("Model did not return /App.tsx.");
+      if (!files.length) throw new Error("Model did not return any project files.");
+      if (reactStack && !files.some((f) => f.path === "/App.tsx")) throw new Error("Model did not return /App.tsx.");
       const lastApp = await db.version.findFirst({ where: { projectId: project.id }, orderBy: { number: "desc" }, select: { number: true } });
       const noteApp = extractNote(result.text) ?? persona.done((lastApp?.number ?? 0) + 1);
       const last = await db.version.findFirst({ where: { projectId: project.id }, orderBy: { number: "desc" } });
@@ -159,6 +177,7 @@ export async function runAgent(opts: RunOptions) {
       await db.$transaction([
         db.projectFile.deleteMany({ where: { projectId: project.id } }),
         ...files.map((f) => db.projectFile.create({ data: { projectId: project.id, path: f.path, content: f.content } })),
+        db.project.update({ where: { id: project.id }, data: { memory: JSON.stringify({ ...memory, stack }) } }),
         db.version.create({ data: { projectId: project.id, number, html: JSON.stringify(files), message: `${agent.name}: ${opts.request.slice(0, 120)}` } }),
         db.message.create({ data: { projectId: project.id, role: "assistant", content: noteApp, agentId: agent.id, model: result.model, creditsUsed: creditsCharged } }),
         db.agentRun.update({ where: { id: run.id }, data: { status: "DONE", finishedAt: new Date(), output: `v${number}`, ...usage } }),

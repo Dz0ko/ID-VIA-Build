@@ -21,6 +21,15 @@ export async function writeProjectEnv(projectId: string, env: Record<string, str
 export function buildProjectFiles(project: Project & { files: ProjectFile[] }, env: Record<string, string> = {}): FileMap {
   const out: FileMap = [];
   if (project.kind === "app") {
+    const stack = (() => { try { return (JSON.parse(project.memory || "{}").stack as string | undefined) ?? "react-ts"; } catch { return "react-ts"; } })();
+    if (!/react/i.test(stack)) {
+      for (const f of project.files) out.push({ path: f.path.replace(/^\/+/, ""), content: f.content });
+      const envEntries = Object.entries(env).filter(([k]) => /^\w/.test(k));
+      if (envEntries.length && !out.some((f) => f.path === ".env.example")) out.push({ path: ".env.example", content: envEntries.map(([k]) => `${k}=`).join("\n") + "\n" });
+      if (!out.some((f) => f.path === ".gitignore")) out.push({ path: ".gitignore", content: "node_modules\ndist\n.env\n.env.local\n" });
+      if (!out.some((f) => f.path === "README.md")) out.push({ path: "README.md", content: `# ${escapeHtml(project.name)}\n\nGenerated with IDÆVIA Build (${stack}).\n` });
+      return out;
+    }
     out.push({ path: "package.json", content: JSON.stringify({
       name: project.slug, private: true, version: "0.1.0", type: "module",
       scripts: { dev: "vite", build: "tsc -b && vite build", preview: "vite preview" },

@@ -5,8 +5,9 @@ import { runAgent, type RunEvent } from "@/lib/ai/generate";
 import { InsufficientCredits } from "@/lib/credits";
 import { MODEL_TIERS, PLANS } from "@/lib/plans";
 import { db } from "@/lib/db";
-import { agentAllowed, pickAgent } from "@/lib/agents";
+import { agentAllowed, pickAgent, planAtLeast } from "@/lib/agents";
 import { rateLimit } from "@/lib/security";
+import { requestedStackName } from "@/lib/project-stack";
 
 const schema = z.object({
   request: z.string().min(1).max(8000),
@@ -31,6 +32,10 @@ export async function POST(req: Request, ctx: RouteContext<"/api/projects/[id]/r
 
   const proj = await db.project.findFirst({ where: { id, userId: user.id }, select: { html: true, kind: true, _count: { select: { files: true } } } });
   if (!proj) return Response.json({ error: "Not found" }, { status: 404 });
+  const requestedStack = requestedStackName(body.data.request);
+  if (proj.kind !== "app" && requestedStack && !/html|css|javascript/i.test(requestedStack) && !planAtLeast(user.plan, "PRO")) {
+    return Response.json({ error: "Multi-file language projects are available from the Pro plan. Upgrade or create a website with HTML, CSS and JavaScript." }, { status: 403, headers: { "Cache-Control": "no-store" } });
+  }
 
   let agentId = body.data.agentId ?? "builder";
   let autoPicked = false;
