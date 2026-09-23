@@ -58,9 +58,9 @@ export function friendlyAiError(e: unknown): string {
   }
   if (err?.status === 400) return "The request could not be processed by the model. Try a shorter or clearer prompt.";
   if (err?.status === 401 || err?.status === 403) return "The AI service is temporarily unavailable. Please contact support if this continues.";
-  if (/did not return/.test(msg)) return "The model output could not be applied. See your credit history for the adjustment.";
-  if (e instanceof Error && e.name === "AbortError") return "Generation was interrupted. See your credit history for the adjustment.";
-  return "Generation failed. See your credit history for the adjustment.";
+  if (/did not return|empty response|truncated/.test(msg)) return "The model did not finish a usable result. Your project was preserved and this run was fully refunded. Please retry.";
+  if (e instanceof Error && e.name === "AbortError") return "Generation was interrupted. This run was fully refunded.";
+  return "Generation failed. This run was fully refunded; your saved project was preserved.";
 }
 
 /** Resolve a tier to a concrete model + provider, falling back to mock when no key is set. */

@@ -1,5 +1,6 @@
 import type { ModelTier, PlanId } from "../plans";
 import { TIER_ORDER, tierAllowed } from "../plans";
+import { isProductBrief } from "./request-intent";
 
 export type TaskClass = "tiny" | "small" | "section" | "page" | "feature" | "fullstack";
 
@@ -23,6 +24,7 @@ export function preferredProviderForTask(prompt: string, agentId: string | undef
 export function classifyTask(prompt: string, hasExistingHtml: boolean): TaskClass {
   const p = prompt.toLowerCase();
   const words = p.split(/\s+/).length;
+  if (isProductBrief(prompt)) return /\b(marketplace|saas|platform|app)\b/.test(p) ? "feature" : "page";
 
   if (!hasExistingHtml) {
     if (/\b(saas|dashboard|app|full[- ]?stack|platform|marketplace|crm)\b/.test(p)) return "feature";

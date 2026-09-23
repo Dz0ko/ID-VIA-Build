@@ -59,7 +59,7 @@ export function buildUserPrompt(opts: {
 }) {
   const parts: string[] = [];
   if (opts.memory && Object.keys(opts.memory).length) {
-    parts.push(`PROJECT MEMORY (brand, design DNA, decisions, follow it):\n${JSON.stringify(opts.memory, null, 2)}`);
+    parts.push(`PROJECT MEMORY (previous decisions; the latest request overrides conflicting brand, domain, layout or requirements):\n${JSON.stringify(opts.memory, null, 2)}`);
   }
   if (opts.templateHint) parts.push(`START FROM THIS TEMPLATE DIRECTION: ${opts.templateHint}`);
   if (opts.html && opts.html.trim()) {
@@ -78,7 +78,7 @@ export function buildAppUserPrompt(opts: {
 }) {
   const parts: string[] = [];
   if (opts.memory && Object.keys(opts.memory).length) {
-    parts.push(`PROJECT MEMORY:\n${JSON.stringify(opts.memory, null, 2)}`);
+    parts.push(`PROJECT MEMORY (previous decisions; the latest request overrides conflicting brand, domain, layout or requirements):\n${JSON.stringify(opts.memory, null, 2)}`);
   }
   if (opts.files.length) {
     parts.push(

@@ -21,7 +21,8 @@ import { protectProjectNavigation } from "../project-navigation";
 import { classifyTask, friendlyAiError, generateWithFallback, preferredProviderForTask, requiresFrontierDesign, resolveModel, tierForTask, type TaskClass } from "./router";
 import type { InputImage } from "./provider";
 import { estimateUsd } from "./cost";
-import { isReactSandboxStack, isStaticStack, resolveRequestedStack, stackQuestion } from "../project-stack";
+import { isReactSandboxStack, isStaticStack, isStackOnlyReply, resolveRequestedStack, stackQuestion } from "../project-stack";
+import { isProductBrief } from "./request-intent";
 
 export interface RunOptions {
   userId: string;
@@ -74,11 +75,27 @@ async function runAgentLocked(opts: RunOptions, assertActive: () => Promise<void
   const hasContent = isApp ? project.files.length > 0 : Boolean(project.html && project.html.trim());
   let memory: Record<string, unknown> = {};
   try { memory = JSON.parse(project.memory || "{}"); } catch { /* ignore malformed project memory */ }
+  const pendingBrief = typeof memory.pendingBuildRequest === "string" ? memory.pendingBuildRequest : null;
+  if (!hasContent && pendingBrief && isStackOnlyReply(opts.request)) {
+    opts = { ...opts, request: `${pendingBrief}\n\nSTACK CHOICE: ${opts.request.replace(/^STACK CHOICE:\s*/i, "")}` };
+  }
   const sourceSize = project.html.length + project.files.reduce((n, file) => n + file.content.length, 0);
   if (sourceSize > 2_000_000) throw new Error("This project is too large for one generation. Reduce its source size before retrying.");
   const storedStack = typeof memory.stack === "string" ? memory.stack : null;
+  if (agent.mode === "rewrite" && !hasContent && !pendingBrief && isStackOnlyReply(opts.request)) {
+    const chosen = resolveRequestedStack(opts.request, project.kind);
+    const message = "I have your technology choice. What should this project do? Describe the website or app, its users and main features so I can build the right product.";
+    if (chosen) await db.project.update({ where: { id: project.id }, data: { memory: JSON.stringify({ ...memory, stack: chosen }) } });
+    opts.onEvent?.({ type: "clarification", request: "", message });
+    return { mode: "clarification" as const, message };
+  }
   if (agent.mode === "rewrite" && !hasContent && !resolveRequestedStack(opts.request, project.kind) && !storedStack) {
     const message = stackQuestion(opts.request, project.kind);
+    await db.$transaction([
+      db.project.update({ where: { id: project.id }, data: { memory: JSON.stringify({ ...memory, pendingBuildRequest: opts.request }) } }),
+      db.message.create({ data: { projectId: project.id, role: "user", content: opts.request, agentId: agent.id } }),
+      db.message.create({ data: { projectId: project.id, role: "assistant", content: message, agentId: agent.id } }),
+    ]);
     opts.onEvent?.({ type: "clarification", request: opts.request, message });
     return { mode: "clarification" as const, message };
   }
@@ -86,6 +103,8 @@ async function runAgentLocked(opts: RunOptions, assertActive: () => Promise<void
   // Persist the mode only with a successful generation, never before a paid run.
   if (!isApp && !isStaticStack(stack)) isApp = true;
   const reactStack = isReactSandboxStack(stack);
+  // Pending prompts are durable until a result is saved successfully.
+  const savedMemory = { ...memory, stack, pendingBuildRequest: undefined, ...(isProductBrief(opts.request) ? { brief: opts.request } : {}) };
 
   const taskClass: TaskClass = agent.mode === "report" ? "small" : classifyTask(opts.request, hasContent);
   const debuggingTask = agent.mode === "rewrite" && agent.id === "debugger";
@@ -155,6 +174,7 @@ async function runAgentLocked(opts: RunOptions, assertActive: () => Promise<void
       userPrompt += `\n\nCURRENT VERIFIED CHECK FINDINGS:\n${auditSummary(findings)}`;
       system += "\nFix the actual source files and root causes. For framework apps preserve their file structure and use framework metadata/layout conventions; never insert a standalone HTML document into a component. Address each supplied finding. Do not claim tests or builds passed: you have not executed them. Return code changes, not instructions asking the user to fix them.";
     }
+    if (agent.mode === "rewrite" && isProductBrief(opts.request)) system += "\nPRODUCT BRIEF PRIORITY: The latest request defines the intended product. Implement its domain, audience, sections, palette and interactions. Replace unrelated branding, sample products and workflows from the old project, even when older memory or conversation says otherwise. Do not reduce this whole-product request to a copy edit. Preserve only existing features that remain relevant. Do not invent a different SaaS or brand direction.";
     if (isApp && agent.mode === "rewrite") system += "\n\nPREVIEW RUNTIME: Projects run in isolated Linux VMs with 4 GiB RAM, Node 24, Python 3.11, Java 17, Maven/Gradle, Go, Rust, PHP 8.2/Composer, Ruby 3.1, and .NET 8/10. Choose compatible dependency versions. Use 0.0.0.0 and port 3000 for web servers. For custom entry points or monorepos include .idaevia/runtime.json with string build and start commands that install dependencies and launch the project. Never run destructive database resets or migrate a production database automatically. Native Apple/Android interfaces need their platform SDKs; do not promise a browser preview of a native app.";
     system += `\n\n${ANSWER_FALLBACK}`;
     const history = await db.message.findMany({ where: { projectId: project.id, role: { in: ["user", "assistant"] } }, orderBy: [{ createdAt: "desc" }, { id: "desc" }], take: 12, select: { role: true, content: true } });
@@ -184,9 +204,18 @@ async function runAgentLocked(opts: RunOptions, assertActive: () => Promise<void
     await assertActive();
     const costUsd = resolved.provider.id === "mock" && !result.fellBack ? 0 : estimateUsd(result.model, result);
     await db.agentRun.update({ where: { id: run.id }, data: { costUsd, model: result.model, inputTokens: result.inputTokens, outputTokens: result.outputTokens } });
+    if (["max_tokens", "length"].includes(result.stopReason ?? "")) throw new Error("Model output was truncated before completion.");
+    const answer = extractAnswer(result.text);
+    const responseText = answer ?? result.text;
+    if (!responseText.trim()) throw new Error("Model returned an empty response.");
+    const generatedFiles = agent.mode === "rewrite" && answer === null && isApp ? parseFileManifest(result.text, project.files) : null;
+    const generatedHtml = agent.mode === "rewrite" && answer === null && !isApp ? protectProjectNavigation(extractHtml(result.text)) : null;
+    if (generatedFiles && !generatedFiles.length) throw new Error("Model did not return any project files.");
+    if (generatedFiles && reactStack && !generatedFiles.some(f => f.path === "/App.tsx" || f.path === "/package.json")) throw new Error("Model did not return /App.tsx.");
+    if (generatedHtml !== null && !/<html[\s>]/i.test(generatedHtml)) throw new Error("Model did not return an HTML document.");
     // Final charge = max(class price, real cost × creditsPerUsd); the rest of the hold is released.
     const outK = Math.round(result.outputTokens / 1000);
-    const creditsCharged = await finalizeCredits({ userId: opts.userId, ledgerId, hold: est.hold, byClassCredits: credits, costUsd, k: est.k, purchasedHeld: purchasedSpent, note: `${noteBase} · ${outK}k tokens generated${result.fellBack ? " · provider fallback" : ""}`, meta: { ...meta, model: result.model, inputTokens: result.inputTokens, outputTokens: result.outputTokens, costUsd: Number(costUsd.toFixed(4)) } });
+    const creditsCharged = await finalizeCredits({ userId: opts.userId, ledgerId, hold: est.hold, byClassCredits: est.byClass, costUsd, k: est.k, purchasedHeld: purchasedSpent, note: `${noteBase} · ${outK}k tokens generated${result.fellBack ? " · provider fallback" : ""}`, meta: { ...meta, model: result.model, inputTokens: result.inputTokens, outputTokens: result.outputTokens, costUsd: Number(costUsd.toFixed(4)) } });
     const usage = {
       model: result.model, // the model that actually answered (may differ after a provider fallback)
       inputTokens: result.inputTokens,
@@ -195,14 +224,8 @@ async function runAgentLocked(opts: RunOptions, assertActive: () => Promise<void
       creditsUsed: creditsCharged,
     };
 
-    const answer = extractAnswer(result.text);
-    const responseText = answer ?? result.text;
-    if (!responseText.trim()) throw new Error("Model returned an empty response.");
-
-    if (agent.mode === "rewrite" && answer === null && isApp) {
-      const files = parseFileManifest(result.text, project.files);
-      if (!files.length) throw new Error("Model did not return any project files.");
-      if (reactStack && !files.some((f) => f.path === "/App.tsx" || f.path === "/package.json")) throw new Error("Model did not return /App.tsx.");
+    if (generatedFiles) {
+      const files = generatedFiles;
       const lastApp = await db.version.findFirst({ where: { projectId: project.id }, orderBy: { number: "desc" }, select: { number: true } });
       const checked = auditProject({ kind: "app", html: "", files });
       const noteApp = debuggingTask ? `Changes saved. ${auditSummary(checked)}` : extractNote(result.text) ?? persona.done((lastApp?.number ?? 0) + 1);
@@ -211,7 +234,7 @@ async function runAgentLocked(opts: RunOptions, assertActive: () => Promise<void
       await db.$transaction([
         db.projectFile.deleteMany({ where: { projectId: project.id } }),
         ...files.map((f) => db.projectFile.create({ data: { projectId: project.id, path: f.path, content: f.content } })),
-        db.project.update({ where: { id: project.id }, data: { kind: "app", health: JSON.stringify(checked), memory: JSON.stringify({ ...memory, stack }) } }),
+        db.project.update({ where: { id: project.id }, data: { kind: "app", health: JSON.stringify(checked), memory: JSON.stringify(savedMemory) } }),
         db.version.create({ data: { projectId: project.id, number, html: JSON.stringify(files), message: `${agent.name}: ${opts.request.slice(0, 120)}` } }),
         db.message.create({ data: { projectId: project.id, role: "assistant", content: noteApp, agentId: agent.id, model: result.model, creditsUsed: creditsCharged } }),
         db.agentRun.update({ where: { id: run.id }, data: { status: "DONE", finishedAt: new Date(), output: `v${number}`, ...usage } }),
@@ -220,15 +243,14 @@ async function runAgentLocked(opts: RunOptions, assertActive: () => Promise<void
       return { mode: "rewrite" as const, files, versionNumber: number, credits: creditsCharged };
     }
 
-    if (agent.mode === "rewrite" && answer === null) {
-      const html = protectProjectNavigation(extractHtml(result.text));
-      if (!/<html[\s>]/i.test(html)) throw new Error("Model did not return an HTML document.");
+    if (generatedHtml !== null) {
+      const html = generatedHtml;
       const last = await db.version.findFirst({ where: { projectId: project.id }, orderBy: { number: "desc" } });
       const number = (last?.number ?? 0) + 1;
       const checked = auditProject({ kind: "website", html, files: [] });
       const noteHtml = debuggingTask ? `Changes saved. ${auditSummary(checked)}` : extractNote(result.text) ?? persona.done(number);
       await db.$transaction([
-        db.project.update({ where: { id: project.id }, data: { html, health: JSON.stringify(checked), memory: JSON.stringify({ ...memory, stack }) } }),
+        db.project.update({ where: { id: project.id }, data: { html, health: JSON.stringify(checked), memory: JSON.stringify(savedMemory) } }),
         db.version.create({ data: { projectId: project.id, number, html, message: `${agent.name}: ${opts.request.slice(0, 120)}` } }),
         db.message.create({ data: { projectId: project.id, role: "assistant", content: noteHtml, agentId: agent.id, model: result.model, creditsUsed: creditsCharged } }),
         db.agentRun.update({ where: { id: run.id }, data: { status: "DONE", finishedAt: new Date(), output: `v${number}`, ...usage } }),
@@ -246,12 +268,9 @@ async function runAgentLocked(opts: RunOptions, assertActive: () => Promise<void
   } catch (err) {
     const message = friendlyAiError(err);
     console.error("[agent run failed]", err instanceof Error ? err.message : err);
-    // Provider failures are refunded in full. When the model answered but not in the required
-    // format, the tokens were still paid for, so only half is refunded (prevents "free" runs).
-    const malformed = err instanceof Error && /did not return/.test(err.message);
-    const keep = malformed ? Math.ceil(credits / 2) : 0;
-    await releaseCredits({ userId: opts.userId, ledgerId, hold: est.hold, keep, purchasedHeld: purchasedSpent, note: malformed ? `${noteBase} · output could not be applied, half refunded` : `${noteBase} · failed, fully refunded` });
-    if (run) await db.agentRun.update({ where: { id: run.id }, data: { status: "FAILED", finishedAt: new Date(), output: message, creditsUsed: keep } });
+    // A failed or unusable generation delivers no result: return the entire current debit.
+    await releaseCredits({ userId: opts.userId, ledgerId, hold: est.hold, keep: 0, purchasedHeld: purchasedSpent, note: `${noteBase} · failed, fully refunded` });
+    if (run) await db.agentRun.update({ where: { id: run.id }, data: { status: "FAILED", finishedAt: new Date(), output: message, creditsUsed: 0 } });
     opts.onEvent?.({ type: "error", message });
     throw err;
   }

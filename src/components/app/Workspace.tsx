@@ -136,7 +136,9 @@ export function Workspace(p: WorkspaceProps) {
   const [responseMode, setResponseMode] = useState<"rewrite" | "report">("rewrite");
   const [activity, setActivity] = useState<AgentActivity[]>([]);
   const [diffs, setDiffs] = useState<DiffFile[]>([]);
-  const [pendingStackRequest, setPendingStackRequest] = useState<string | null>(null);
+  const [pendingStackRequest, setPendingStackRequest] = useState<string | null>(() => {
+    try { const pending = JSON.parse(p.project.memory || "{}").pendingBuildRequest; return typeof pending === "string" ? pending : null; } catch { return null; }
+  });
   const [logs, setLogs] = useState<LogLine[]>([{ t: now(), text: "Workspace ready.", kind: "info" }]);
   const [runtimePreview, setRuntimePreview] = useState<{ url: string; source: string } | null>(null);
   const runtimeSource = isApp ? JSON.stringify(files) : html;
@@ -247,6 +249,7 @@ export function Workspace(p: WorkspaceProps) {
           }
           else if (ev.type === "done") {
             completed = true;
+            setCredits(c => c + usedCredits - ev.creditsUsed);
             setActivity((items) => [...items.map((item) => ({ ...item, status: "done" as const })), { id: `activity-${Date.now()}`, label: "Save result", detail: ev.mode === "rewrite" ? "Change saved" : "Answer ready", status: "done" }]);
             if (ev.mode === "rewrite") {
               rewrote = true;
@@ -273,6 +276,12 @@ export function Workspace(p: WorkspaceProps) {
       setError(msg); log(`✗ ${msg}`, "err"); setStream("");
       return false;
     } finally {
+      // Reconcile the real balance after holds, refunds, concurrent runs or a dropped stream.
+      try {
+        const response = await fetch("/api/me", { cache: "no-store", signal: AbortSignal.timeout(5000) });
+        const account = response.ok ? await response.json() : null;
+        if (typeof account?.user?.credits === "number") setCredits(account.user.credits);
+      } catch { /* The server refresh also supplies the balance when connectivity returns. */ }
       busyRef.current = null; setBusy(null); setActivity([]); abortRef.current = null; router.refresh();
     }
   }, [allAgents, isApp, log, p.project.id, provider, router, savedFiles, savedHtml, tier]);

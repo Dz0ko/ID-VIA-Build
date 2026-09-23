@@ -111,3 +111,10 @@ export function stackQuestion(request: string, kind: string) {
   const recommendation = recommendedProjectStack(request, kind);
   return `Before I build this, which stack should I use? I recommend ${recommendation.label} — ${recommendation.description}. Choose the recommended stack below, browse the other options, or type your own language/framework combination. Source generation accepts custom stacks; live preview and deployment depend on the available runtime.`;
 }
+
+/** A language choice is not a product brief; preserve the previous request across reloads. */
+export function isStackOnlyReply(request: string): boolean {
+  const text = request.trim().replace(/^STACK CHOICE:\s*/i, "");
+  if (/^(?:(?:use|choose|pick)\s+)?(?:the\s+)?(?:recommended(?: stack| option)?|recommendation|auto|best|you choose)[.!]?$/i.test(text)) return true;
+  return text.length <= 180 && !text.includes("\n") && Boolean(requestedStackName(text)) && !/\b(?:build|create|make|marketplace|website|dashboard|landing|store|for|with a|that|which)\b/i.test(text);
+}

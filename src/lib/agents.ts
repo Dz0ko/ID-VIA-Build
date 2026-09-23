@@ -2,6 +2,7 @@ import type { ModelTier, PlanId } from "./plans";
 import { PLANS, planRank } from "./plans";
 import { designSkill } from "./ai/design-skill";
 import { personaFor } from "./personas";
+import { isProductBrief } from "./ai/request-intent";
 
 export interface AgentDef {
   id: string;
@@ -479,6 +480,7 @@ export const AGENT_TEAMS: { id: string; name: string; description: string; agent
 export function pickAgent(request: string, hasContent: boolean): string {
   const p = request.toLowerCase();
   if (!hasContent) return "builder";
+  if (isProductBrief(request)) return "builder";
   const rules: [RegExp, string][] = [
     [/\b(translate|translation|macedonian|albanian|german|language)\b/, "localization"],
     [/\b(fix|bug|error|broken|not working|crash|console)\b/, "debugger"],
