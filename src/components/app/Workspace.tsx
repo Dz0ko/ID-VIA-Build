@@ -99,7 +99,6 @@ export function Workspace(p: WorkspaceProps) {
   const terminalAction = useRef<((cmd: string) => Promise<void>) | null>(null);
   const terminalRunning = useRef(false);
   const terminalAbort = useRef<AbortController | null>(null);
-  const buildAfterRun = useRef(false);
   const [shellCommand, setShellCommand] = useState<{ id: number; text: string } | null>(null);
   const [shellOpened, setShellOpened] = useState(false);
   const [termBusy, setTermBusy] = useState(false);
@@ -199,11 +198,6 @@ export function Workspace(p: WorkspaceProps) {
             completed = true;
             setActivity((items) => [...items.map((item) => ({ ...item, status: "done" as const })), { id: `activity-${Date.now()}`, label: "Save result", detail: ev.mode === "rewrite" ? `Version ${ev.versionNumber} saved` : "Report ready", status: "done" }]);
             if (ev.mode === "rewrite") {
-              // A code-writing agent hands off to the isolated terminal after it
-              // finishes. The build is intentionally queued only once, after a
-              // chained workflow has completed, so every specialist can edit
-              // the same source without starting competing runtimes.
-              buildAfterRun.current = true;
               rewrote = true;
               if (ev.files) { setFiles(ev.files); setSavedFiles(ev.files); setActiveFile((f) => (ev.files.some((x: ProjFile) => x.path === f) ? f : "/App.tsx")); }
               else { setHtml(ev.html); setSavedHtml(ev.html); }
@@ -239,16 +233,9 @@ export function Workspace(p: WorkspaceProps) {
     const command = shellIntent(request) ?? runtimeCommand(request);
     if (command && !chain.length) { await terminalAction.current?.(command); return; }
     const imgs = images; setImages([]);
-    buildAfterRun.current = false;
-    let completed = true;
     for (const [i, id] of [agentToRun, ...chain].entries()) {
       const ok = await runOne(request, id, i === 0 ? imgs : []);
-      if (!ok) { completed = false; setInput((current) => current || request); if (i === 0) setImages(imgs); break; }
-    }
-    if (completed && buildAfterRun.current) {
-      buildAfterRun.current = false;
-      log("↪ Code complete · handing off to Terminal for build and preview");
-      await term("npm run build");
+      if (!ok) { setInput((current) => current || request); if (i === 0) setImages(imgs); break; }
     }
   }, [agentId, images, runOne]);
 
