@@ -142,7 +142,7 @@ export default function Docs() {
           ))}
 
           <H2 id="models">Models</H2>
-          <P>Runs execute on one of five tiers. Auto routing picks the cheapest tier that fits the task and never escalates to Frontier on its own; you choose the model explicitly from the dropdown in the chat.</P>
+          <P>Runs execute on one of five tiers. Auto routing matches the model tier to the work: focused edits stay efficient, while demanding builds receive deeper reasoning. You can also choose a model explicitly from the dropdown in the chat.</P>
           <Table head={["Tier", "Models", "Best for", "Credit multiplier"]} rows={[
             ["Fast", TIER_LABELS.fast, "Small tweaks: colours, text, spacing", `×${DEFAULT_SETTINGS.tierMultiplier.fast}`],
             ["Standard", TIER_LABELS.standard, "Sections, edits, most everyday work", `×${DEFAULT_SETTINGS.tierMultiplier.standard}`],
@@ -205,7 +205,7 @@ export default function Docs() {
           <H2 id="faq">FAQ</H2>
           {[
             ["Do I own what I build?", "Yes. You own the code and content generated in your projects and can export and host it anywhere."],
-            ["Which model is used?", "Your choice per run, from Fast to Frontier. Auto routing uses the cheapest tier that fits the task."],
+            ["Which model is used?", "Your choice per run, from Fast to Frontier. Auto routing selects the tier that best matches the task."],
             ["What happens if a run fails?", "Credits for that run are refunded automatically."],
             ["Can I use it on my phone?", "The landing page and account creation work on phones; the workspace is designed for desktop browsers and the desktop app."],
             ["Can I bring my own domain?", "Publish to idaevia.app for a preview link, or deploy to Vercel/Netlify from the terminal and attach your domain there. The Deploy agent writes the exact steps for your project."],

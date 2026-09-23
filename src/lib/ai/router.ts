@@ -1,61 +1,7 @@
-import type { ModelTier, PlanId } from "../plans";
-import { TIER_ORDER, tierAllowed } from "../plans";
+import type { ModelTier } from "../plans";
 import { getSettings, OPENAI_TIER_MODELS, type ModelConfig } from "../settings";
 import { PROVIDERS, type AIProvider, type GenerateInput, type GenerateResult } from "./provider";
-
-export type TaskClass = "tiny" | "small" | "section" | "page" | "feature" | "fullstack";
-
-/**
- * Cheap deterministic task classifier. Used to pick a model tier and a credit cost
- * without spending tokens on classification.
- */
-export function classifyTask(prompt: string, hasExistingHtml: boolean): TaskClass {
-  const p = prompt.toLowerCase();
-  const words = p.split(/\s+/).length;
-
-  if (!hasExistingHtml) {
-    if (/\b(saas|dashboard|app|full[- ]?stack|platform|marketplace|crm)\b/.test(p)) return "feature";
-    return "page";
-  }
-  if (/\b(database|auth|login|api|payments?|stripe|whop|backend|full[- ]?stack)\b/.test(p)) return "fullstack";
-  if (/\b(rebuild|redesign|rewrite everything|new page|entire|whole site|from scratch)\b/.test(p)) return "page";
-  if (/\b(add|create|new|build)\b.*\b(section|pricing|faq|testimonial|hero|footer|gallery|form|table|nav)/.test(p))
-    return "section";
-  if (words <= 8 && /\b(color|colour|text|font|button|title|rename|change|make|bigger|smaller|padding|spacing)\b/.test(p))
-    return "tiny";
-  if (words <= 20) return "small";
-  return "section";
-}
-
-export function tierForTask(task: TaskClass, plan: PlanId, requested?: ModelTier): ModelTier {
-  let tier: ModelTier;
-  switch (task) {
-    case "tiny":
-      tier = "fast";
-      break;
-    case "small":
-    case "section":
-      tier = "standard";
-      break;
-    case "page":
-    case "feature":
-      tier = "advanced";
-      break;
-    case "fullstack":
-      tier = "premium";
-      break;
-  }
-  if (requested) tier = requested;
-  // Auto routing never escalates to the frontier tier: it is a deliberate user choice.
-  if (!requested && tier === "frontier") tier = "premium";
-  // clamp to plan
-  while (!tierAllowed(plan, tier)) {
-    const i = TIER_ORDER.indexOf(tier);
-    if (i <= 0) break;
-    tier = TIER_ORDER[i - 1];
-  }
-  return tier;
-}
+export { classifyTask, tierForTask, type TaskClass } from "./task-routing";
 
 export interface ResolvedModel {
   tier: ModelTier;

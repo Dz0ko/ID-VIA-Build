@@ -2,7 +2,7 @@ export type PlanId = "FREE" | "STARTER" | "PRO" | "MAX" | "AGENCY";
 
 /**
  * fast → Claude Haiku 4.5 · standard → Claude Sonnet 5 · advanced → Claude Sonnet 5 (high effort)
- * premium → Claude Opus 5 · frontier → Claude Fable 5.1 / GPT-6 Astra (opt-in, Max and Agency only).
+ * premium → Claude Opus 5 · frontier → Claude Fable 5.1 / GPT-6 Astra for the most demanding work.
  */
 export type ModelTier = "fast" | "standard" | "advanced" | "premium" | "frontier";
 export const MODEL_TIERS = ["fast", "standard", "advanced", "premium", "frontier"] as const;
@@ -120,7 +120,7 @@ export const PLANS: Record<PlanId, Plan> = {
       "6,000 AI credits per month",
       "All 30 standard agents: adds Reference, Rebuild, Analytics, Conversion, Documentation, Refactoring, Dependency, Project Manager, Security, QA",
       "Premium reasoning tier (Claude Opus 5) for architecture and complex features",
-      "Frontier tier on demand: Claude Fable 5.1 and GPT-6 Astra for the hardest builds",
+      "Frontier reasoning: Claude Fable 5.1 and GPT-6 Astra for the hardest builds",
       "Agent teams and one-click workflows (Make it Premium, Production Ready)",
       "Project memory and background agents",
       "Larger context and priority generation",
