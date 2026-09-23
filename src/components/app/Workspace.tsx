@@ -523,13 +523,14 @@ export function Workspace(p: WorkspaceProps) {
                       <div className="whitespace-pre-wrap break-words">{m.content}</div>
                     </div>
                   ))}
-                  {busy && <div className="rounded-2xl border border-graphite p-5 text-fog space-y-3">
-                    <div role="status" className="flex items-center gap-2 text-sm text-signal-soft"><span className="w-2 h-2 rounded-full bg-signal pulse-dot" />{allAgents.find((x) => x.id === busy)?.name ?? busy} · {stream ? "Generating output" : "Preparing your request"}</div>
-                    <p className="text-sm text-ash">{stream ? `${stream.split("\n").length.toLocaleString()} lines received · The preview updates when the result is saved.` : "Waiting for the model to start responding…"}</p>
-                    {stream && <details open>
-                      <summary className="cursor-pointer text-sm text-fog">Live output</summary>
-                      <pre className="mt-3 font-mono text-xs leading-6 whitespace-pre-wrap break-words text-ash">{stream}</pre>
-                    </details>}
+                  {busy && <div className="rounded-2xl border border-graphite p-5 text-fog space-y-4">
+                    <div role="status" className="flex items-center gap-2 text-sm text-signal-soft"><span className="w-2 h-2 rounded-full bg-signal pulse-dot" />{allAgents.find((x) => x.id === busy)?.name ?? busy} is working</div>
+                    <div className="grid gap-2 text-xs text-ash">
+                      <div className="flex items-center gap-2"><span className="text-signal-soft">✓</span> Understanding your request and planning the work</div>
+                      <div className="flex items-center gap-2"><span className={stream ? "text-signal-soft" : "text-ash"}>{stream ? "✓" : "•"}</span>{isApp ? "Building and updating the app" : "Building and updating the website"}</div>
+                      <div className="flex items-center gap-2"><span className="text-ash">•</span> Reviewing the result and preparing the preview</div>
+                    </div>
+                    <p className="text-xs text-ash">You’ll see a summary when the agent finishes. Technical commands and build logs appear in Terminal.</p>
                   </div>}
                   {error && <div className="text-error text-xs">{error}</div>}
                   <div ref={chatEnd} />
