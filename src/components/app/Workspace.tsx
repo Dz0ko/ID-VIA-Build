@@ -425,11 +425,11 @@ export function Workspace(p: WorkspaceProps) {
         <button onClick={() => setShowFiles(!showFiles)} aria-expanded={showFiles} className="btn btn-ghost btn-sm" title="Toggle project files"><Folder size={14} />Files</button>
         <button onClick={() => setShowTeam(!showTeam)} aria-expanded={showTeam} className="btn btn-ghost btn-sm" title="Toggle AI team"><Users size={14} />Agents</button>
         {audit && <button onClick={() => setBottom("problems")} className="pill text-xs gap-1.5" title="Project health"><Activity size={11} className={audit.overall >= 90 ? "text-success" : audit.overall >= 70 ? "text-warning" : "text-error"} />{audit.overall}</button>}
-        <button onClick={() => { setBottom("share"); loadShare(); }} className="btn btn-outline btn-sm" title="Client portal & share"><Share2 size={13} /></button>
-        {!isApp && <button onClick={runAudit} className="btn btn-outline btn-sm" title="Production audit"><AlertTriangle size={13} />Audit</button>}
+        <button onClick={() => { setBottom("share"); setExpandedPanel(true); loadShare(); }} className="btn btn-outline btn-sm" title="Client portal & share"><Share2 size={13} /></button>
+        {!isApp && <button onClick={() => { setBottom("problems"); setExpandedPanel(true); runAudit(); }} className="btn btn-outline btn-sm" title="Production audit"><AlertTriangle size={13} />Audit</button>}
         <button onClick={exportZip} className="btn btn-outline btn-sm" title="Export code"><Download size={13} /></button>
         {status === "PUBLISHED" && <a href={`/s/${p.project.slug}`} target="_blank" rel="noopener" className="btn btn-outline btn-sm"><ExternalLink size={13} /></a>}
-        <button onClick={() => { if (isApp) { setBottom("terminal"); term("deploy vercel"); } else publish(); }} disabled={publishing || termBusy || (isApp ? files.length === 0 : !html)} title={isApp ? "Deploy using your connected Vercel account" : "Publish this website"} className="btn btn-signal btn-sm"><Rocket size={13} />{publishing ? "Deploying…" : status === "PUBLISHED" ? "Redeploy" : "Deploy"}</button>
+        <button onClick={() => { setExpandedPanel(true); if (isApp) { setBottom("terminal"); term("deploy vercel"); } else publish(); }} disabled={publishing || termBusy || (isApp ? files.length === 0 : !html)} title={isApp ? "Deploy using your connected Vercel account" : "Publish this website"} className="btn btn-signal btn-sm"><Rocket size={13} />{publishing ? "Deploying…" : status === "PUBLISHED" ? "Redeploy" : "Deploy"}</button>
       </div>
 
       {error && <div role="alert" className="shrink-0 px-4 py-2 border-b border-error/30 bg-void text-error text-xs flex items-center justify-between gap-3">{error}<button aria-label="Dismiss error" onClick={() => setError(null)}><X size={14} /></button></div>}
@@ -507,8 +507,8 @@ export function Workspace(p: WorkspaceProps) {
             )}
           </div>
 
-          {/* Bottom panel */}
-          <div className="shrink-0 min-h-0 border-t border-graphite flex flex-col" style={{ height: expandedPanel ? "100%" : "55%", minHeight: "min(440px, 70dvh)" }}>
+          {/* Chat and tools panel. Preview/Code mode gets the full center height. */}
+          {expandedPanel && <div className="shrink-0 min-h-0 border-t border-graphite flex flex-col" style={{ height: "100%" }}>
             <div className="h-10 shrink-0 flex items-center gap-1 px-2 border-b border-graphite text-xs overflow-x-auto">
               {([["chat", "AI Chat", MessageSquare], ["changes", "Changes", History], ["terminal", "Terminal", TerminalSquare], ["logs", "Logs", Activity], ["problems", "Problems", AlertTriangle], ["share", "Share / Client portal", Share2]] as const).map(([id, label, I]) => (
                 <button key={id} onClick={() => { setBottom(id); if (id === "terminal") setShellOpened(true); if (id === "share") loadShare(); }} className={`btn btn-sm ${bottom === id ? "bg-graphite text-paper" : "btn-ghost"}`}><I size={12} />{label}{id === "problems" && audit?.issues.length ? <span className="ml-1 text-[10px] text-warning">{audit.issues.length}</span> : null}</button>
@@ -627,7 +627,7 @@ export function Workspace(p: WorkspaceProps) {
                 </div>
               </div>
             )}
-          </div>
+          </div>}
         </section>
 
         {/* AI team */}
