@@ -109,5 +109,5 @@ export function recommendedProjectStack(request: string, kind: string): StackCho
 
 export function stackQuestion(request: string, kind: string) {
   const recommendation = recommendedProjectStack(request, kind);
-  return `Before I build this, which stack should I use? For this project I recommend **${recommendation.label}** — ${recommendation.description}. You can choose another: ${STACK_CHOICES.slice(0, 8).map((x) => x.label).join(", ")}, or tell me any other language/framework or frontend + backend + database combination you need. Reply "recommended" to use my suggestion. Source generation accepts custom stacks; live preview and deployment depend on the available runtime.`;
+  return `Before I build this, which stack should I use? I recommend ${recommendation.label} — ${recommendation.description}. Choose the recommended stack below, browse the other options, or type your own language/framework combination. Source generation accepts custom stacks; live preview and deployment depend on the available runtime.`;
 }

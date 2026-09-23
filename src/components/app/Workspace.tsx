@@ -14,6 +14,7 @@ import { readImportHandoff, clearImportHandoff } from "@/lib/import-handoff";
 import { shellIntent } from "@/lib/shell-intent";
 import { runtimeCommand } from "@/lib/runtime-command";
 import { ComposerSelect } from "./ComposerSelect";
+import { StackSuggestions } from "./StackSuggestions";
 import { WorkspaceMenuButton } from "./Shell";
 import type { AgentDef } from "@/lib/agents";
 import type { PlanId, ModelTier } from "@/lib/plans";
@@ -170,6 +171,7 @@ export function Workspace(p: WorkspaceProps) {
   const abortRef = useRef<AbortController | null>(null);
   const busyRef = useRef<string | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);
+  const promptInput = useRef<HTMLTextAreaElement>(null);
 
   const dirty = isApp ? JSON.stringify(files) !== JSON.stringify(savedFiles) : html !== savedHtml;
   const allAgents = useMemo(() => [
@@ -299,7 +301,7 @@ export function Workspace(p: WorkspaceProps) {
     for (const [i, id] of [agentToRun, ...chain].entries()) {
       const ok = await runOne(effectiveRequest, id, i === 0 ? imgs : []);
       if (ok) { setComponentIds([]); if (params.get("from") === "import") void clearImportHandoff(p.project.id).catch(() => {}); }
-      if (!ok) { setInput((current) => current || request); if (i === 0) setImages(imgs); break; }
+      if (!ok) { if (pendingStackRequest) setPendingStackRequest(pendingStackRequest); setInput((current) => current || request); if (i === 0) setImages(imgs); break; }
     }
   }, [agentId, images, pendingStackRequest, runOne, componentIds, allAgents, params, p.project.id]);
 
@@ -606,6 +608,7 @@ export function Workspace(p: WorkspaceProps) {
                       <div className="whitespace-pre-wrap break-words">{m.role === "user" ? m.content.replace(/\s*\[COMPONENT:[a-z0-9-]+\]/g, "") : m.content}</div>
                     </div>
                   ))}
+                  {pendingStackRequest && <StackSuggestions request={pendingStackRequest} kind={p.project.kind} disabled={!!busy} onChoose={choice => { void run(choice); }} onCustom={() => promptInput.current?.focus()} />}
                   {busy && activity.length > 0 && <div className="rounded-2xl border border-graphite p-4 text-fog">
                     <div role="status" className="mb-3 flex items-center gap-2 text-sm text-signal-soft"><span className={`w-2 h-2 rounded-full ${busy ? "bg-signal pulse-dot" : "bg-signal-soft"}`} />{busy ? `${allAgents.find((x) => x.id === busy)?.name ?? busy} is working` : "Agent activity"}</div>
                     <div className="divide-y divide-graphite/60">
@@ -639,7 +642,7 @@ export function Workspace(p: WorkspaceProps) {
                       ...MODEL_CHOICES.map((c) => ({ value: c.value, label: c.label, group: "Choose a model", description: TIERS.indexOf(c.tier) > TIERS.indexOf(p.maxTier) ? "Upgrade your plan to use this model" : undefined, disabled: TIERS.indexOf(c.tier) > TIERS.indexOf(p.maxTier) })),
                     ]} />
                   </div>
-                  <textarea aria-label="Project prompt" value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); const r = input; if (!busyRef.current && (r.trim() || componentIds.length)) { setInput(""); run(r); } } }} rows={2} className="input col-span-3 min-w-0 resize-none" placeholder={isAuto ? "Ask a question, or describe what to build or change." : agent.mode === "rewrite" ? "Ask a question, or describe what to build or change?" : `Ask ${agent.name} for a report…`} />
+                  <textarea ref={promptInput} aria-label="Project prompt" value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); const r = input; if (!busyRef.current && (r.trim() || componentIds.length)) { setInput(""); run(r); } } }} rows={2} className="input col-span-3 min-w-0 resize-none" placeholder={isAuto ? "Ask a question, or describe what to build or change." : agent.mode === "rewrite" ? "Ask a question, or describe what to build or change?" : `Ask ${agent.name} for a report…`} />
                   <span className="text-[11px] text-ash self-center">Enter to send · Shift + Enter for a new line</span>
                   <input ref={fileInput} type="file" accept="image/png,image/jpeg,image/webp,image/gif" multiple hidden onChange={(e) => { attachImages(e.target.files); e.target.value = ""; }} />
                   <div className="flex items-center gap-2">
