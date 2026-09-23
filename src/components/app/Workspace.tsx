@@ -165,6 +165,7 @@ export function Workspace(p: WorkspaceProps) {
       let acc = "";
       let usedCredits = 0;
       let completed = false;
+      let rewrote = false;
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
@@ -184,9 +185,15 @@ export function Workspace(p: WorkspaceProps) {
           } else if (ev.type === "delta") {
             acc += ev.text;
             setStream(acc);
-            setActivity((items) => items.some((item) => item.label === "Work in progress" && item.status === "running")
-              ? items
-              : [...items.map((item) => ({ ...item, status: "done" as const })), { id: `activity-${Date.now()}`, label: "Work in progress", detail: `Writing and reviewing the ${isApp ? "app" : "website"}`, status: "running" }]);
+            const fileMatch = [...acc.matchAll(/<<<FILE\s+([^\s>]+)\s*>>>/g)].at(-1)?.[1];
+            const detail = isApp
+              ? `Working on ${fileMatch ?? "project files"} · updating components and interactions`
+              : "Working on index.html · applying changes and checking interactions";
+            setActivity((items) => {
+              const current = items.find((item) => item.label === "Work in progress" && item.status === "running");
+              if (current) return items.map((item) => item.id === current.id ? { ...item, detail } : item);
+              return [...items.map((item) => ({ ...item, status: "done" as const })), { id: `activity-${Date.now()}`, label: "Work in progress", detail, status: "running" }];
+            });
           }
           else if (ev.type === "done") {
             completed = true;
@@ -197,6 +204,7 @@ export function Workspace(p: WorkspaceProps) {
               // chained workflow has completed, so every specialist can edit
               // the same source without starting competing runtimes.
               buildAfterRun.current = true;
+              rewrote = true;
               if (ev.files) { setFiles(ev.files); setSavedFiles(ev.files); setActiveFile((f) => (ev.files.some((x: ProjFile) => x.path === f) ? f : "/App.tsx")); }
               else { setHtml(ev.html); setSavedHtml(ev.html); }
               setVersions((v) => [{ id: `v${ev.versionNumber}`, number: ev.versionNumber, message: `${agentToRun}: ${request.slice(0, 120)}`, createdAt: new Date().toISOString() }, ...v]);
@@ -212,6 +220,7 @@ export function Workspace(p: WorkspaceProps) {
         }
       }
       if (!completed) throw new Error("The connection ended before the agent finished. Please try again.");
+      if (rewrote && !isApp) await runAuditRequest();
       setStream("");
       return true;
     } catch (e) {

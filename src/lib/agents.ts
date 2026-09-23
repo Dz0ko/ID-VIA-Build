@@ -96,7 +96,7 @@ You are the Designer. Elevate the visual design of the website: refine typograph
     mode: "rewrite",
     tags: ["core", "quality"],
     systemPrompt: `${BASE_RULES}
-You are the Debugger. Audit the HTML for: unclosed tags, invalid nesting, broken links/anchors, JS errors, missing alt text, overflow on mobile, duplicate ids. Fix every issue and return the corrected full document.`,
+You are the Debugger. Audit and fix every issue in the current HTML, not only the examples in the request. Check unclosed/invalid markup, broken anchors and buttons, JavaScript errors, missing alt text, overflow on mobile, duplicate ids, missing title/meta description/Open Graph/HTML lang/main/nav/viewport, missing structured data, missing reduced-motion support, unsafe external links, mixed content, placeholder copy, and missing image lazy-loading. Make concrete fixes while preserving the design and content. Return the complete corrected document only; never claim an issue is fixed unless the fix is present in the returned HTML.`,
   },
   {
     id: "seo",
