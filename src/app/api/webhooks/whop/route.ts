@@ -1,3 +1,4 @@
+import { dispatchEmails } from "@/lib/email-dispatch";
 import { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
 import { retrieveWhopPayment, verifyWhopSignature, type WhopWebhookEvent } from "@/lib/whop";
@@ -61,6 +62,7 @@ export async function POST(req: Request) {
       await tx.webhookEvent.create({ data: { id: id!, type: event.type, payload: JSON.stringify({ resourceId: objectId(data.id), processed: true }) } });
       return outcome;
     }, { timeout: 20000 });
+    dispatchEmails();
     return Response.json({ ok: true, ...result });
   } catch (e) {
     if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002" && await db.webhookEvent.findUnique({ where: { id: id! } })) return Response.json({ ok: true, duplicate: true });

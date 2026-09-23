@@ -1,3 +1,4 @@
+import { enqueueWelcome } from "./email";
 import { db } from "./db";
 import { PLANS } from "./plans";
 import { applyAttributionOnLogin, applyReferralOnSignup } from "./referrals";
@@ -138,17 +139,12 @@ export async function upsertOAuthUser(p: OAuthProvider, profile: OAuthProfile) {
   let created = false;
   if (!user) {
     created = true;
-    user = await db.user.create({
-      data: {
-        email,
-        name: profile.name ?? email.split("@")[0],
-        avatarUrl: profile.avatarUrl,
-        [idField]: profile.providerId,
-        plan: "FREE",
-        credits: PLANS.FREE.credits,
-      },
+    user = await db.$transaction(async tx => {
+      const createdUser = await tx.user.create({ data: { email, name: profile.name ?? email.split("@")[0], avatarUrl: profile.avatarUrl, [idField]: profile.providerId, plan: "FREE", credits: PLANS.FREE.credits } });
+      await tx.creditLedger.create({ data: { userId: createdUser.id, delta: PLANS.FREE.credits, reason: "signup" } });
+      await enqueueWelcome(tx, createdUser);
+      return createdUser;
     });
-    await db.creditLedger.create({ data: { userId: user.id, delta: PLANS.FREE.credits, reason: "signup" } });
     await applyReferralOnSignup(user.id);
   } else {
     if (user[idField] !== profile.providerId || (!user.avatarUrl && profile.avatarUrl)) {

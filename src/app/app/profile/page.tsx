@@ -1,3 +1,4 @@
+import { EmailPreferences } from "@/components/app/EmailPreferences";
 import Link from "next/link";
 import { db } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
@@ -47,6 +48,7 @@ export default async function Profile({ searchParams }: PageProps<"/app/profile"
     <>
       <PageHeader title="Your profile" subtitle="Your account, billing, earnings and security in one place" />
       <div className="flex-1 overflow-y-auto p-6 space-y-6">
+        {section === "account" && <EmailPreferences />}
         <section className="card p-6 flex flex-col md:flex-row md:items-center gap-6">
           {user.avatarUrl ? (
             // eslint-disable-next-line @next/next/no-img-element

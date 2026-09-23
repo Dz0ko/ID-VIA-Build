@@ -1,3 +1,5 @@
+import { enqueueEmail, appUrl } from "@/lib/email";
+import { dispatchEmails } from "@/lib/email-dispatch";
 import { z } from "zod";
 import { db } from "@/lib/db";
 import { error, json, withUser } from "@/lib/api";
@@ -40,7 +42,12 @@ export async function PATCH(req: Request) {
     if (!Object.keys(data).length) return error("Nothing to update.");
     if (data.passwordHash) {
       // Invalidate every other session and re-issue this one.
-      const updated = await db.user.update({ where: { id: user.id }, data: { ...data, sessionVersion: { increment: 1 } } });
+      const updated = await db.$transaction(async tx => {
+        const changed = await tx.user.update({ where: { id: user.id }, data: { ...data, sessionVersion: { increment: 1 } } });
+        await enqueueEmail(tx, { eventKey: `password:${user.id}:${changed.sessionVersion}`, userId: user.id, kind: "password", subject: "Your IDÆVIA password was changed", body: `Your account password was changed on ${new Date().toUTCString()}. Other sessions have been signed out.\n\nIf you did not make this change, contact support@idaevia.app immediately. We will never ask you to send your password by email.`, ctaLabel: "Review account security", ctaUrl: appUrl("/app/profile?section=security") });
+        return changed;
+      });
+      dispatchEmails();
       await createSession(updated.id, updated.sessionVersion);
       return json({ ok: true, sessionsRevoked: true });
     }

@@ -42,6 +42,7 @@ export function AuthForm({ mode, providers }: { mode: "login" | "signup"; provid
   // Same-site paths only (no "//evil.com" or absolute URLs).
   const next = rawNext.startsWith("/") && !rawNext.startsWith("//") && !rawNext.startsWith("/\\") ? rawNext : "/app";
   const [email, setEmail] = useState("");
+  const [marketingEmails, setMarketingEmails] = useState(false);
   const [password, setPassword] = useState("");
   const [name, setName] = useState("");
   const [error, setError] = useState<string | null>(() => {
@@ -58,7 +59,7 @@ export function AuthForm({ mode, providers }: { mode: "login" | "signup"; provid
     const res = await fetch(`/api/auth/${mode}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email, password, name: name || undefined }),
+      body: JSON.stringify({ email, password, marketingEmails, name: name || undefined }),
     });
     const data = await res.json().catch(() => ({}));
     setLoading(false);
@@ -100,6 +101,7 @@ export function AuthForm({ mode, providers }: { mode: "login" | "signup"; provid
       <label className="block text-sm"><span className="label">Password</span><input required type="password" minLength={8} className="input mt-1" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="8+ characters" autoComplete={mode === "login" ? "current-password" : "new-password"} /></label>
       {error && <div className="text-sm text-error">{error}</div>}
       <button disabled={loading} className="btn btn-primary w-full">{loading ? "…" : mode === "login" ? "Log in" : "Create account"}</button>
+      {mode === "signup" && <label className="flex items-start gap-2 text-xs text-ash"><input type="checkbox" checked={marketingEmails} onChange={event => setMarketingEmails(event.target.checked)} className="mt-0.5" />Email me product updates and promotions. Optional; unsubscribe anytime.</label>}
       {mode === "signup" && (
         <p className="text-[11px] text-ash text-center">By creating an account you agree to the <Link href="/terms" className="underline hover:text-paper">Terms of Service</Link> and <Link href="/privacy" className="underline hover:text-paper">Privacy Policy</Link>.</p>
       )}

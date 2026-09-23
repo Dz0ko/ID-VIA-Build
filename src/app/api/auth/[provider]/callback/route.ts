@@ -1,3 +1,4 @@
+import { dispatchEmails } from "@/lib/email-dispatch";
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { createSession, getCurrentUser } from "@/lib/auth";
@@ -35,6 +36,7 @@ export async function GET(req: Request, ctx: RouteContext<"/api/auth/[provider]/
       return NextResponse.redirect(new URL(next, url.origin));
     }
     const user = await upsertOAuthUser(provider, profile);
+    if (user.created) dispatchEmails();
     await createSession(user.id);
     const target = new URL(next, url.origin);
     if (user.created) target.searchParams.set("welcome", "1");

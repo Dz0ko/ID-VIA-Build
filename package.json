@@ -13,7 +13,7 @@
     "db:seed": "tsx prisma/seed.ts",
     "setup": "prisma db push --skip-generate && tsx prisma/seed.ts",
     "tauri": "tauri",
-    "vercel-build": "prisma generate && prisma db push --skip-generate && next build",
+    "vercel-build": "prisma generate && node scripts/prepare-email-schema.mjs && prisma db push --skip-generate && next build",
     "db:migrate": "prisma db push --skip-generate",
     "test:security": "tsx --test tests/payment-math.test.ts tests/desktop-security.test.ts",
     "test:financial-security": "node scripts/test-financial-security.mjs",

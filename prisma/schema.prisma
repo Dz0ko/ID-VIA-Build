@@ -49,6 +49,10 @@ model User {
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
+  marketingEmails Boolean @default(false)
+  marketingConsentAt DateTime?
+  emailOptOutToken String? @unique @default(uuid())
+  emailDeliveries EmailDelivery[]
   supportThread SupportThread?
   projects    Project[]
   ledger      CreditLedger[]
@@ -486,4 +490,50 @@ model SupportMessage {
 
   @@unique([threadId, clientId])
   @@index([threadId, createdAt, id])
+}
+
+
+model EmailDelivery {
+  id              String   @id @default(cuid())
+  eventKey        String   @unique
+  userId          String
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  kind            String
+  subject         String
+  body            String
+  ctaLabel        String?
+  ctaUrl          String?
+  marketing       Boolean  @default(false)
+  status          String   @default("PENDING") // PENDING | SENDING | SENT | FAILED | REVIEW | SUPPRESSED
+  attempts        Int      @default(0)
+  nextAttemptAt   DateTime @default(now())
+  firstAttemptAt  DateTime?
+  lockedUntil     DateTime?
+  lockToken       String?
+  wirePayload     String?
+  uncertain       Boolean  @default(false)
+  providerId      String?
+  lastError       String?
+  createdAt       DateTime @default(now())
+  sentAt          DateTime?
+  campaignId      String?
+  campaign        EmailCampaign? @relation(fields: [campaignId], references: [id], onDelete: SetNull)
+
+  @@index([status, nextAttemptAt])
+  @@index([userId, createdAt])
+  @@index([campaignId, status])
+}
+
+model EmailCampaign {
+  id         String   @id @default(cuid())
+  subject    String
+  body       String
+  ctaLabel   String?
+  ctaUrl     String?
+  plan       String?
+  createdBy  String
+  status     String   @default("DRAFT") // DRAFT | QUEUED | CANCELLED
+  createdAt  DateTime @default(now())
+  queuedAt   DateTime?
+  deliveries EmailDelivery[]
 }

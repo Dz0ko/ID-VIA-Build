@@ -1,3 +1,4 @@
+import { enqueueEmail, appUrl } from "./email";
 import type { Prisma } from "@prisma/client";
 import { CREDIT_PACKS, PLANS, isPlanId } from "./plans";
 import { commissionFor, paymentAmounts, retainedRatio, usdCents } from "./payment-math";
@@ -82,6 +83,7 @@ export async function settlePayment(tx: Tx, d: Record<string, unknown>, paidBonu
       }
     }
   }
+  await enqueueEmail(tx, { eventKey: `payment:${id}`, userId: user.id, kind: owner.kind === "plan" ? "plan" : "purchase", subject: owner.kind === "plan" && plan ? `Your IDÆVIA ${PLANS[plan].name} plan payment is confirmed` : "Your IDÆVIA purchase is confirmed", body: `We received your payment of $${(grossCents / 100).toFixed(2)} USD${plan ? ` for the ${PLANS[plan].name} plan` : pack ? ` for ${pack.credits.toLocaleString()} credits` : " for your marketplace purchase"}.\n\nPayment reference: ${id}\n\nYou can review your plan, credits and purchases in your account. Keep your payment provider's receipt for tax and payment details.`, ctaLabel: "Open your account", ctaUrl: appUrl("/app/profile?section=plan") });
   return { payment: id };
 }
 

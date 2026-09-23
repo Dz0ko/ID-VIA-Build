@@ -8,7 +8,7 @@ import { NextResponse, type NextRequest } from "next/server";
  * forged from another site is rejected before it reaches any handler. Webhooks
  * and cron endpoints are exempt (they authenticate with signatures / secrets).
  */
-const EXEMPT = [/^\/api\/webhooks\//, /^\/api\/cron\//];
+const EXEMPT = [/^\/api\/email\/unsubscribe$/, /^\/api\/webhooks\//, /^\/api\/cron\//];
 const MUTATING = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 
 export function proxy(req: NextRequest) {

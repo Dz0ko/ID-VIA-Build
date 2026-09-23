@@ -4,7 +4,7 @@ import { Markdown } from "@/components/Markdown";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 type Message = { id: string; role: string; content: string; authorName: string | null; createdAt: string };
-type Snapshot = { thread: { id: string; status: string; assignedTo?: string; botPending: boolean; user?: { name: string | null; email: string } }; messages: Message[]; hasMore: boolean };
+type Snapshot = { thread: { id: string; status: string; supportTier: string; assignedTo?: string; botPending: boolean; user?: { name: string | null; email: string } }; messages: Message[]; hasMore: boolean };
 const statuses: Record<string, string> = { BOT: "Automated support", WAITING: "Waiting for a manager", HUMAN: "Manager conversation", CLOSED: "Resolved" };
 async function request(url: string, init?: RequestInit) {
   const response = await fetch(url, { ...init, headers: { "Content-Type": "application/json" }, cache: "no-store" });
@@ -79,7 +79,7 @@ export function SupportChat({ threadId, adminId }: { threadId?: string; adminId?
   const ownedByOther = !!adminId && !!data?.thread.assignedTo && data.thread.assignedTo !== adminId;
   return <section className="flex flex-col min-h-0 h-full rounded-2xl border border-graphite bg-ink overflow-hidden" aria-label="Support conversation">
     <header className="p-5 border-b border-graphite flex flex-wrap items-center justify-between gap-3">
-      <div><h2 className="font-medium">{adminId ? data?.thread.user?.name || data?.thread.user?.email || "Conversation" : "IDÆVIA Live Support"}</h2><p className="text-xs text-ash mt-1">{data ? statuses[data.thread.status] : "Loading conversation…"}</p>{adminId && <p className="text-xs text-ash mt-1">{data?.thread.user?.email}</p>}</div>
+      <div><h2 className="font-medium">{adminId ? data?.thread.user?.name || data?.thread.user?.email || "Conversation" : "IDÆVIA Live Support"}</h2><p className="text-xs text-signal-soft mt-1">{data?.thread.supportTier === "premium" ? "Premium support · priority manager queue" : data?.thread.supportTier === "priority" ? "Priority support" : ""}</p><p className="text-xs text-ash mt-1">{data ? statuses[data.thread.status] : "Loading conversation…"}</p>{adminId && <p className="text-xs text-ash mt-1">{data?.thread.user?.email}</p>}</div>
       <div className="flex gap-2">{adminId ? <><button className="btn btn-ghost btn-sm" disabled={!data || busy} onClick={() => void send("claim")}>{ownedByOther ? "Take over" : "Join conversation"}</button><button className="btn btn-ghost btn-sm" disabled={!data || busy || ownedByOther || data.thread.status === "CLOSED"} onClick={() => void send("close")}>Resolve</button></> : <button className="btn btn-ghost btn-sm" disabled={!data || busy || ["WAITING", "HUMAN"].includes(data.thread.status)} onClick={() => void send("handoff")}>Talk to a person</button>}</div>
     </header>
     <div ref={scroll} onScroll={() => { if (scroll.current) follow.current = scroll.current.scrollHeight - scroll.current.scrollTop - scroll.current.clientHeight < 100; }} className="flex-1 min-h-0 overflow-y-auto p-5 space-y-4">

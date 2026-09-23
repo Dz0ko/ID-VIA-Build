@@ -125,7 +125,7 @@ export const PLANS: Record<PlanId, Plan> = {
       "Project memory and background agents",
       "Larger context and priority generation",
       "25% credit rollover",
-      "Priority support",
+      "Premium support with priority manager queue",
     ],
   },
   AGENCY: {
@@ -140,7 +140,7 @@ export const PLANS: Record<PlanId, Plan> = {
     projectLimit: "unlimited",
     maxTier: "frontier",
     rolloverPct: 25,
-    highlights: ["Teams, roles and the client portal", "White-label branding", "Custom and private agents", "Priority queue and dedicated support"],
+    highlights: ["Teams, roles and the client portal", "White-label branding", "Custom and private agents", "Priority queue and premium support"],
     features: [
       "15,000 AI credits per month, plus optional credit packs",
       "Every agent, plus custom and private agents",
@@ -151,7 +151,7 @@ export const PLANS: Record<PlanId, Plan> = {
       "Private templates, prompts and agents",
       "Priority queue and bulk generation",
       "25% credit rollover",
-      "Dedicated support",
+      "Premium support with priority manager queue",
     ],
   },
 };

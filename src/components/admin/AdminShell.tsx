@@ -14,6 +14,7 @@ const NAV = [
   { href: "/admin/affiliates", label: "Affiliates", icon: "affiliates" as BrandIconName, hint: "Partner links and commissions" },
   { href: "/admin/marketplace", label: "Marketplace", icon: "marketplace" as BrandIconName, hint: "Listings and orders" },
   { href: "/admin/support", label: "Support", icon: "users" as BrandIconName, hint: "Live conversations and manager handoffs" },
+  { href: "/admin/email", label: "Email", icon: "users" as BrandIconName, hint: "Account notifications, sender settings and promotions" },
   { href: "/admin/settings", label: "Settings", icon: "settings" as BrandIconName, hint: "Models, credits, referrals" },
 ];
 export function AdminShell({ user, children }: { user: SessionUser; children: React.ReactNode }) {

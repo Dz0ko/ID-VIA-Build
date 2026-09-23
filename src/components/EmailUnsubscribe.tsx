@@ -1,0 +1,6 @@
+"use client";
+import { useState } from "react";
+export function EmailUnsubscribe({ token }: { token: string }) {
+  const [state, setState] = useState("idle");
+  return <main className="min-h-dvh grid place-items-center p-6"><section className="card p-8 max-w-md space-y-5"><p className="label">IDÆVIA · Email preferences</p><h1 className="text-2xl font-medium">{state === "done" ? "You’re unsubscribed." : "Unsubscribe from promotions"}</h1><p className="text-sm text-ash">{state === "done" ? "You can opt in again from your profile. Account and security notifications are unaffected." : "Stop product updates and promotional emails. Your account and subscription stay unchanged."}</p>{state !== "done" && <button className="btn btn-primary" disabled={state === "busy" || !token} onClick={async () => { setState("busy"); try { const response = await fetch(`/api/email/unsubscribe?token=${encodeURIComponent(token)}`, { method: "POST" }); if (!response.ok) throw new Error(); setState("done"); } catch { setState("error"); } }}>Unsubscribe</button>}{state === "error" && <p role="alert" className="text-sm text-red-400">This link could not be used. You can update email preferences from your profile.</p>}</section></main>;
+}

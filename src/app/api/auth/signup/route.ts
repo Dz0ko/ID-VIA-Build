@@ -1,3 +1,5 @@
+import { enqueueWelcome } from "@/lib/email";
+import { dispatchEmails } from "@/lib/email-dispatch";
 import { z } from "zod";
 import { db } from "@/lib/db";
 import { createSession, hashPassword } from "@/lib/auth";
@@ -9,6 +11,7 @@ import { clientIp, rateLimit } from "@/lib/security";
 const schema = z.object({
   email: z.string().email(),
   password: z.string().min(8).max(128),
+  marketingEmails: z.boolean().default(false),
   name: z.string().min(1).max(80).optional(),
 });
 
@@ -20,16 +23,14 @@ export async function POST(req: Request) {
   const email = body.data.email.toLowerCase();
   const existing = await db.user.findUnique({ where: { email } });
   if (existing) return error("An account with this email already exists.", 409);
-  const user = await db.user.create({
-    data: {
-      email,
-      name: body.data.name ?? email.split("@")[0],
-      passwordHash: await hashPassword(body.data.password),
-      plan: "FREE",
-      credits: PLANS.FREE.credits,
-    },
+  const passwordHash = await hashPassword(body.data.password);
+  const user = await db.$transaction(async tx => {
+    const created = await tx.user.create({ data: { email, name: body.data.name ?? email.split("@")[0], passwordHash, plan: "FREE", credits: PLANS.FREE.credits, marketingEmails: body.data.marketingEmails, marketingConsentAt: body.data.marketingEmails ? new Date() : null } });
+    await tx.creditLedger.create({ data: { userId: created.id, delta: PLANS.FREE.credits, reason: "signup" } });
+    await enqueueWelcome(tx, created);
+    return created;
   });
-  await db.creditLedger.create({ data: { userId: user.id, delta: PLANS.FREE.credits, reason: "signup" } });
+  dispatchEmails();
   await applyReferralOnSignup(user.id);
   await createSession(user.id);
   return json({ ok: true });
