@@ -155,6 +155,7 @@ async function runAgentLocked(opts: RunOptions, assertActive: () => Promise<void
       userPrompt += `\n\nCURRENT VERIFIED CHECK FINDINGS:\n${auditSummary(findings)}`;
       system += "\nFix the actual source files and root causes. For framework apps preserve their file structure and use framework metadata/layout conventions; never insert a standalone HTML document into a component. Address each supplied finding. Do not claim tests or builds passed: you have not executed them. Return code changes, not instructions asking the user to fix them.";
     }
+    if (isApp && agent.mode === "rewrite") system += "\n\nPREVIEW RUNTIME: Projects run in isolated Linux VMs with 4 GiB RAM, Node 24, Python 3.11, Java 17, Maven/Gradle, Go, Rust, PHP 8.2/Composer, Ruby 3.1, and .NET 8/10. Choose compatible dependency versions. Use 0.0.0.0 and port 3000 for web servers. For custom entry points or monorepos include .idaevia/runtime.json with string build and start commands that install dependencies and launch the project. Never run destructive database resets or migrate a production database automatically. Native Apple/Android interfaces need their platform SDKs; do not promise a browser preview of a native app.";
     system += `\n\n${ANSWER_FALLBACK}`;
     const history = await db.message.findMany({ where: { projectId: project.id, role: { in: ["user", "assistant"] } }, orderBy: [{ createdAt: "desc" }, { id: "desc" }], take: 12, select: { role: true, content: true } });
     const reference = componentReference(opts.request);

@@ -1,3 +1,5 @@
+import { runtimeResources } from "./runtime-resources";
+import { reserveRuntimeCapacity, RuntimeCapacityError } from "./runtime-capacity";
 import { PREVIEW_TEMPLATE, preparePreviewEnvironment } from "./preview-environment";
 import { fileBytes } from "./file-content";
 import "server-only";
@@ -12,7 +14,7 @@ import { SERVER } from "./runtime-build";
 export const SHELL_TTL = 15 * 60_000;
 export const SHELL_ROOT = "/home/user/project";
 type Source = Project & { files: ProjectFile[] };
-export type ShellState = { sandboxId: string; pid: number; expiresAt: number; manifest?: Record<string, string> };
+export type ShellState = { sandboxId: string; pid: number; expiresAt: number; previewPort?: number; manifest?: Record<string, string> };
 export class ShellError extends Error {}
 const keyFor = (id: string) => `shell:${id}`;
 
@@ -80,6 +82,8 @@ export async function ensureShell(project: Source) {
   await db.setting.deleteMany({ where: { key: lockKey, updatedAt: { lt: new Date(Date.now() - 90_000) } } });
   try { await db.setting.create({ data: { key: lockKey, value: token } }); }
   catch { throw new ShellError("Another connection is starting. Try Connect again in a moment."); }
+  let releaseCapacity: (() => Promise<unknown>) | undefined;
+  const resources = runtimeResources(project.kind);
   let created: Sandbox | undefined;
   let previous: Awaited<ReturnType<typeof connectShell>> | undefined;
   let archive: Uint8Array | undefined;
@@ -98,13 +102,16 @@ export async function ensureShell(project: Source) {
         previous = active;
       } else await active.sandbox.kill();
     } catch (e) { if (!(e instanceof ShellError)) throw e; }
-    created = await Sandbox.create(PREVIEW_TEMPLATE, { timeoutMs: SHELL_TTL, metadata: { projectId: project.id, purpose: "terminal" }, network: { allowPublicTraffic: true } });
+    try { releaseCapacity = await reserveRuntimeCapacity(project.userId, keyFor(project.id)); } catch (e) { if (e instanceof RuntimeCapacityError) throw new ShellError(e.message); throw e; }
+    created = await Sandbox.create(resources.template, { timeoutMs: SHELL_TTL, metadata: { projectId: project.id, purpose: "terminal" }, network: { allowPublicTraffic: true } });
+    const info = await created.getInfo();
+    if (info.memoryMB < resources.memoryMB) throw new ShellError(`The configured runtime template needs at least ${resources.memoryMB} MiB RAM.`);
     const manifest = await uploadShellSource(created, project);
     if (archive) {
       await created.files.write("/tmp/idaevia-upgrade.tar.gz", new Uint8Array(archive).buffer);
       await created.commands.run(`tar -xzf /tmp/idaevia-upgrade.tar.gz -C ${SHELL_ROOT}`, { timeoutMs: 30_000 });
     }
-    const envs = await preparePreviewEnvironment(created, project.files, readProjectEnv(project));
+    const envs = await preparePreviewEnvironment(created, project.files, readProjectEnv(project), resources.memoryMB);
     const handle = await created.pty.create({ cwd: SHELL_ROOT, cols: 100, rows: 28, timeoutMs: 0, envs: { ...envs, TERM: "xterm-256color", PS1: "\\w $ " }, onData: () => {} });
     const state = { sandboxId: created.sandboxId, pid: handle.pid, manifest: previous?.state.manifest ?? manifest, expiresAt: Date.now() + SHELL_TTL };
     await db.setting.upsert({ where: { key: keyFor(project.id) }, create: { key: keyFor(project.id), value: JSON.stringify(state) }, update: { value: JSON.stringify(state) } });
@@ -114,14 +121,15 @@ export async function ensureShell(project: Source) {
     return state;
   } finally {
     await created?.kill().catch(() => {});
+    await releaseCapacity?.();
     await db.setting.deleteMany({ where: { key: lockKey, value: token } });
   }
 }
 
 export async function stopShell(projectId: string) {
-  const { sandbox } = await connectShell(projectId);
+  const { sandbox, state } = await connectShell(projectId);
   await sandbox.kill();
-  await db.setting.deleteMany({ where: { key: keyFor(projectId) } });
+  await db.setting.deleteMany({ where: { key: keyFor(projectId), value: JSON.stringify(state) } });
 }
 
 export async function refreshShellTimeout(projectId: string, sandbox: Sandbox, state: ShellState) {

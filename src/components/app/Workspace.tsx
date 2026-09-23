@@ -144,7 +144,7 @@ export function Workspace(p: WorkspaceProps) {
   const terminalAction = useRef<((cmd: string) => Promise<void>) | null>(null);
   const terminalRunning = useRef(false);
   const terminalAbort = useRef<AbortController | null>(null);
-  const [shellCommand, setShellCommand] = useState<{ id: number; text: string } | null>(null);
+  const [shellCommand, setShellCommand] = useState<{ id: number; text: string; previewPort?: number | null } | null>(null);
   const [shellOpened, setShellOpened] = useState(false);
   const [termBusy, setTermBusy] = useState(false);
   const [audit, setAudit] = useState<AuditResult | null>(p.project.health ? JSON.parse(p.project.health) : null);
@@ -424,7 +424,7 @@ export function Workspace(p: WorkspaceProps) {
         } catch { /* Start a fresh preview below. */ }
       }
       const text = execution === "preview" ? (isApp ? runtime.preview : "npm run dev") : execution === "stop" ? "\x03" : execution === "npm run build" ? runtime.build : shell!;
-      setShellCommand({ id: Date.now(), text }); setShellOpened(true); setBottom("terminal"); setExpandedPanel(true);
+      setShellCommand({ id: Date.now(), text, ...(execution === "preview" ? { previewPort: isApp ? runtime.previewPort : 3000 } : {}) }); setShellOpened(true); setBottom("terminal"); setExpandedPanel(true);
       return;
     }
     setBottom("terminal");

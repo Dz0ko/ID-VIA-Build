@@ -1,3 +1,4 @@
+import { readRequestJson } from "@/lib/request-body";
 import { z } from "zod";
 import { getCurrentUser } from "@/lib/auth";
 import { db } from "@/lib/db";
@@ -11,7 +12,7 @@ const schema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("input"), data: z.string().min(1).max(16_384) }),
   z.object({ action: z.literal("command"), data: z.string().min(1).max(8000) }),
   z.object({ action: z.literal("resize"), cols: z.number().int().min(10).max(500), rows: z.number().int().min(2).max(200) }),
-  z.object({ action: z.literal("preview"), port: z.number().int().min(1024).max(65535) }),
+  z.object({ action: z.literal("preview"), scan: z.boolean().default(true), port: z.number().int().min(1024).max(65535) }),
   z.object({ action: z.literal("stop") }),
   z.object({ action: z.literal("sync") }),
   z.object({ action: z.literal("download") }),
@@ -37,7 +38,7 @@ export async function POST(req: Request, ctx: RouteContext<"/api/projects/[id]/s
   const { id } = await ctx.params;
   const access = await owned(id);
   if (access.error) return access.error;
-  const parsed = schema.safeParse(await req.json().catch(() => null));
+  const parsed = schema.safeParse(await readRequestJson(req, 32768).catch(() => null));
   if (!parsed.success) return Response.json({ error: "Invalid terminal action" }, { status: 400 });
   const action = parsed.data;
   const limited = await rateLimit(`shell:${access.user.id}:${action.action === "connect" ? "connect" : "io"}`, action.action === "connect" ? 20 : 900, 60);
@@ -51,7 +52,7 @@ export async function POST(req: Request, ctx: RouteContext<"/api/projects/[id]/s
     const { sandbox, state } = await connectShell(id);
     if (action.action === "status") {
       if (!shellSourceMatches(state, access.project)) return Response.json({ ready: false });
-      const url = `https://${sandbox.getHost(3000)}`;
+      const url = `https://${sandbox.getHost(state.previewPort ?? 3000)}`;
       try {
         const response = await fetch(url, { signal: AbortSignal.timeout(3000), redirect: "manual", cache: "no-store" });
         if (response.status < 400) return Response.json({ ready: true, url });
@@ -93,14 +94,20 @@ export async function POST(req: Request, ctx: RouteContext<"/api/projects/[id]/s
       await sandbox.pty.resize(state.pid, { cols: action.cols, rows: action.rows });
     } else if (action.action === "preview") {
       let lastPort = action.port;
-      for (let port = action.port; port <= Math.min(action.port + 20, 65535); port++) {
+      let lastStatus: number | undefined;
+      for (let port = action.port; port <= Math.min(action.port + (action.scan ? 20 : 0), 65535); port++) {
         const url = `https://${sandbox.getHost(port)}`;
         lastPort = port;
         try {
-          const response = await fetch(url, { signal: AbortSignal.timeout(2500), redirect: "manual", cache: "no-store" });
-          if (response.status < 400) return Response.json({ url, port });
+          const response = await fetch(url, { signal: AbortSignal.timeout(action.scan ? 2500 : 8000), redirect: "manual", cache: "no-store" });
+          lastStatus = response.status;
+          if (response.status < 400) {
+            await db.setting.updateMany({ where: { key: `shell:${id}`, value: JSON.stringify(state) }, data: { value: JSON.stringify({ ...state, previewPort: port }) } });
+            return Response.json({ url, port });
+          }
         } catch { /* Try the next candidate port. */ }
       }
+      if (!action.scan && lastStatus && lastStatus !== 502) throw new ShellError(`The project returned HTTP ${lastStatus} on port ${action.port}. Check Terminal for application errors.`);
       throw new ShellError(`No working preview found between ports ${action.port} and ${lastPort}. Start the server with --host 0.0.0.0 and try again.`);
     }
     return Response.json({ ok: true });

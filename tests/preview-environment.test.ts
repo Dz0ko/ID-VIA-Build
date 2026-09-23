@@ -27,3 +27,12 @@ test("configured project database is preserved and never automatically migrated"
   assert.deepEqual(f.commands, []);
   assert.equal(env.NODE_OPTIONS, "--max-old-space-size=1536");
 });
+test("SQLite uses the project's declared variable and the app memory budget", async () => {
+  const f = fake();
+  const env = await preparePreviewEnvironment(f.sandbox, [{ path: "/prisma/schema.prisma", content: 'datasource db { provider = "sqlite"\nurl = env("PROJECT_DB") }' }], {}, 4096);
+  assert.equal(env.PROJECT_DB, "file:./idaevia-preview.db");
+  assert.equal(env.DATABASE_URL, undefined);
+  assert.equal(env.IDAEVIA_LOCAL_DATABASE, "1");
+  assert.equal(env.NODE_OPTIONS, "--max-old-space-size=3072");
+  assert.deepEqual(f.commands, []);
+});

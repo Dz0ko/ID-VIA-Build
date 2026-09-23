@@ -126,3 +126,34 @@ test("Prisma previews generate the client and prepare only the isolated local da
   assert.match(profile.preview, /if \[ "\$IDAEVIA_LOCAL_DATABASE" = 1 \]; then npx --no-install prisma db push --skip-generate; fi/);
   assert.doesNotMatch(profile.preview, /accept-data-loss|migrate reset/);
 });
+
+import { runtimeMemoryEnvironment, runtimeResources } from "../src/lib/runtime-resources";
+import { runtimeFailureHint } from "../src/lib/runtime-diagnostics";
+test("app memory budgets exceed static-site budgets and leave RAM outside the JS heap", () => {
+  assert.equal(runtimeResources("app").memoryMB, 4096);
+  assert.equal(runtimeResources("website").memoryMB, 2048);
+  assert.equal(runtimeMemoryEnvironment(4096).NODE_OPTIONS, "--max-old-space-size=3072");
+  assert.equal(runtimeMemoryEnvironment(2048).NODE_OPTIONS, "--max-old-space-size=1536");
+});
+test("runtime profiles preserve package managers, Python isolation and custom commands", () => {
+  const pkg = { path: "package.json", content: JSON.stringify({ scripts: { dev: "vite", build: "vite build" } }) };
+  for (const [lock, manager] of [["pnpm-lock.yaml", "pnpm"], ["yarn.lock", "yarn"]]) {
+    const profile = runtimeProfile([pkg, { path: lock, content: "" }], "");
+    assert.ok(profile.preview.includes(`corepack ${manager} run dev --host`));
+    assert.ok(profile.build.includes(`corepack ${manager} run build`));
+    assert.doesNotMatch(profile.preview, /\bnpm run dev/);
+  }
+  assert.match(runtimeProfile([{ path: "main.py", content: "print(1)" }], "").preview, /venv .*activate/);
+  const custom = runtimeProfile([{ path: ".idaevia/runtime.json", content: JSON.stringify({ build: "cd backend && make", start: "cd backend && ./server" }) }], "");
+  assert.equal(custom.preview, "cd backend && ./server");
+  assert.match(runtimeProfile([{ path: ".idaevia/runtime.json", content: "{}" }], "").preview, /Invalid/);
+  assert.match(runtimeProfile([{ path: "Package.swift", content: "" }], "").preview, /Required runtime tool is unavailable/);
+});
+test("runtime failures produce specific help without treating normal logs as errors", () => {
+  assert.match(runtimeFailureHint("FATAL ERROR: Reached heap limit Allocation failed - JavaScript heap out of memory")!, /memory/);
+  assert.match(runtimeFailureHint("ModuleNotFoundError: No module named flask")!, /dependency/);
+  assert.match(runtimeFailureHint("Environment variable not found: DATABASE_URL")!, /setting/);
+  assert.equal(runtimeFailureHint("Ready in 500ms. GET / 200"), null);
+  assert.equal(runtimeFailureHint(runtimeProfile([{ path: "go.mod", content: "module preview" }], "Go").preview), null);
+  assert.match(runtimeFailureHint("\r\nRequired runtime tool is unavailable: swift. Open a new session.")!, /toolchain/);
+});

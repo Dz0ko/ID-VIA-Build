@@ -1,4 +1,6 @@
-import { PREVIEW_TEMPLATE, PREVIEW_SYSTEM_ENV } from "./preview-environment";
+import { runtimeResources, runtimeMemoryEnvironment } from "./runtime-resources";
+import { reserveRuntimeCapacity } from "./runtime-capacity";
+import { PREVIEW_SYSTEM_ENV } from "./preview-environment";
 import { fileBytes } from "./file-content";
 import { recordProjectRelease } from "./project-releases";
 import "server-only";
@@ -23,6 +25,8 @@ export async function runProjectBuild(project: Project & { files: ProjectFile[] 
   await db.setting.deleteMany({ where: { key: leaseKey, updatedAt: { lt: new Date(Date.now() - 360_000) } } });
   try { await db.setting.create({ data: { key: leaseKey, value: lease } }); }
   catch { throw new Error("A build is already running for this project. Wait for it to finish."); }
+  const resources = runtimeResources(project.kind);
+  let releaseCapacity: (() => Promise<unknown>) | undefined;
   let sandbox: Sandbox | undefined;
   let ready = false;
   const cancel = () => { void sandbox?.kill().catch(() => {}); };
@@ -36,7 +40,10 @@ export async function runProjectBuild(project: Project & { files: ProjectFile[] 
     if (project.kind !== "app" && !project.html.trim()) throw new Error("There is no website to build yet.");
     await stopProjectRuntime(project.id);
     emit("Creating an isolated build environment…");
-    sandbox = await Sandbox.create(PREVIEW_TEMPLATE, { timeoutMs: LIFETIME, metadata: { projectId: project.id }, network: { allowPublicTraffic: true } });
+    releaseCapacity = await reserveRuntimeCapacity(project.userId, key);
+    sandbox = await Sandbox.create(resources.template, { timeoutMs: LIFETIME, metadata: { projectId: project.id }, network: { allowPublicTraffic: true } });
+    const info = await sandbox.getInfo();
+    if (info.memoryMB < resources.memoryMB) throw new Error(`The configured build template needs at least ${resources.memoryMB} MiB RAM.`);
     signal.throwIfAborted();
     emit(`Uploading ${files.length} project files…`);
     await sandbox.files.write(files.map((f) => ({ path: runtimePath(f.path), data: new Uint8Array(fileBytes(f.content)).buffer })));
@@ -44,7 +51,7 @@ export async function runProjectBuild(project: Project & { files: ProjectFile[] 
     const publicEnv = Object.fromEntries(Object.entries(readProjectEnv(project)).filter(([k]) => /^VITE_[A-Z0-9_]+$/.test(k)));
     const activeSandbox = sandbox;
     await executeProjectBuild({
-      command: async (command, timeoutMs) => { await activeSandbox.commands.run(command, { cwd: ROOT, envs: { ...publicEnv, ...PREVIEW_SYSTEM_ENV }, timeoutMs, onStdout: emit, onStderr: emit }); },
+      command: async (command, timeoutMs) => { await activeSandbox.commands.run(command, { cwd: ROOT, envs: { ...publicEnv, ...PREVIEW_SYSTEM_ENV, ...runtimeMemoryEnvironment(resources.memoryMB) }, timeoutMs, onStdout: emit, onStderr: emit }); },
       writeServer: async (source) => { await activeSandbox.files.write(`${ROOT}/.preview.cjs`, source); },
       startServer: async () => { await activeSandbox.commands.run("node .preview.cjs", { cwd: ROOT, background: true, timeoutMs: 0 }); },
     }, project.kind === "app", emit, signal);
@@ -60,6 +67,7 @@ export async function runProjectBuild(project: Project & { files: ProjectFile[] 
   } finally {
     signal.removeEventListener("abort", cancel);
     if (!ready) await sandbox?.kill().catch(() => {});
+    await releaseCapacity?.();
     await db.setting.deleteMany({ where: { key: leaseKey, value: lease } });
   }
 }

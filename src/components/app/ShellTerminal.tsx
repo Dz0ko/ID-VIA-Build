@@ -1,11 +1,12 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { runtimeFailureHint } from "@/lib/runtime-diagnostics";
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import "@xterm/xterm/css/xterm.css";
 
-type Command = { id: number; text: string };
+type Command = { id: number; text: string; previewPort?: number | null };
 export function ShellTerminal({ projectId, active, command, onPreview, onConsumed }: {
   projectId: string; active: boolean; command: Command | null;
   onPreview: (url: string) => void; onConsumed: (id: number) => void;
@@ -23,6 +24,9 @@ export function ShellTerminal({ projectId, active, command, onPreview, onConsume
   const autoConnected = useRef(false);
   const attempted = useRef<number | null>(null);
   const callbacks = useRef({ onPreview, onConsumed });
+  const [issue, setIssue] = useState<string | null>(null);
+  const seenPorts = useRef(new Set<number>());
+  const recentOutput = useRef("");
   const [status, setStatus] = useState("Disconnected");
   const [port, setPort] = useState("3000");
   const endpoint = `/api/projects/${projectId}/shell`;
@@ -37,13 +41,13 @@ export function ShellTerminal({ projectId, active, command, onPreview, onConsume
 
   const preview = useCallback(async (requestedPort: number, quiet = false) => {
     try {
-      const result = await request({ action: "preview", port: requestedPort });
+      const result = await request({ action: "preview", port: requestedPort, scan: !quiet });
       const url = new URL(result.url);
       if (url.protocol !== "https:" || !url.hostname.endsWith(".e2b.app")) throw new Error("Invalid preview address");
       if (!disposed.current && result.port) setPort(String(result.port));
       if (!disposed.current) callbacks.current.onPreview(url.href);
       return true;
-    } catch (e) { if (!quiet) terminal.current?.writeln(`\r\n${e instanceof Error ? e.message : "Preview unavailable"}`); return false; }
+    } catch (e) { if (!quiet) { const message = e instanceof Error ? e.message : "Preview unavailable"; setIssue(message); terminal.current?.writeln(`\r\n${message}`); } return false; }
   }, [request]);
 
   const connect = useCallback(async () => {
@@ -51,15 +55,16 @@ export function ShellTerminal({ projectId, active, command, onPreview, onConsume
     connecting.current = true;
     connected.current = false;
     setStatus("Connecting…");
+    setIssue(null);
     events.current?.close();
     try {
       await request({ action: "connect" });
       if (disposed.current) return;
       const source = new EventSource(endpoint);
       events.current = source;
-      let recent = "";
+      recentOutput.current = "";
+      seenPorts.current.clear();
       let failures = 0;
-      const seenPorts = new Set<number>();
       source.addEventListener("ready", () => {
         connected.current = true;
         failures = 0;
@@ -71,18 +76,21 @@ export function ShellTerminal({ projectId, active, command, onPreview, onConsume
       source.addEventListener("output", (event) => {
         const bytes = Uint8Array.from(atob(JSON.parse(event.data)), (c) => c.charCodeAt(0));
         terminal.current?.write(bytes);
-        recent = (recent + new TextDecoder().decode(bytes)).slice(-2000);
-        const matches = recent.matchAll(/(?:localhost|127\.0\.0\.1|0\.0\.0\.0):(\d{4,5})/g);
+        recentOutput.current = (recentOutput.current + new TextDecoder().decode(bytes)).slice(-4000);
+        const hint = runtimeFailureHint(recentOutput.current);
+        if (hint) setIssue(hint);
+        const matches = recentOutput.current.matchAll(/(?:localhost|127\.0\.0\.1|0\.0\.0\.0):(\d{4,5})/g);
         for (const match of matches) {
           const detected = Number(match[1]);
-          if (detected < 1024 || detected > 65535 || seenPorts.has(detected)) continue;
-          seenPorts.add(detected);
+          if (detected < 1024 || detected > 65535 || seenPorts.current.has(detected)) continue;
+          seenPorts.current.add(detected);
           setPort(String(detected));
           void (async () => {
-            for (let attempt = 0; attempt < 4 && !disposed.current; attempt++) {
-              if (await preview(detected, true)) break;
+            for (let attempt = 0; attempt < 10 && !disposed.current; attempt++) {
+              if (await preview(detected, true)) return;
               await new Promise((resolve) => setTimeout(resolve, 1000));
             }
+            if (!disposed.current) setIssue("The server has not become ready. Check Terminal for compile errors, then use Open preview to retry.");
           })();
         }
       });
@@ -93,6 +101,7 @@ export function ShellTerminal({ projectId, active, command, onPreview, onConsume
       source.onerror = () => { connected.current = false; if (++failures >= 3) { source.close(); setStatus("Disconnected"); terminal.current?.writeln("\r\nConnection lost. Click Connect to resume or restart an expired session."); } else setStatus("Reconnecting…"); };
     } catch (e) {
       setStatus("Disconnected");
+      setIssue(e instanceof Error ? e.message : "Could not connect");
       terminal.current?.writeln(`\r\n${e instanceof Error ? e.message : "Could not connect"}`);
     } finally { connecting.current = false; }
   }, [endpoint, preview, request]);
@@ -139,10 +148,27 @@ export function ShellTerminal({ projectId, active, command, onPreview, onConsume
       return;
     }
     consumed.current = command.id;
-    void request({ action: command.text === "\x03" ? "input" : "command", data: command.text }).catch((e) => {
+    setIssue(null);
+    recentOutput.current = "";
+    seenPorts.current.clear();
+    void request({ action: command.text === "\x03" ? "input" : "command", data: command.text }).then(() => {
+      if (command.previewPort) {
+        const requestedPort = command.previewPort;
+        seenPorts.current.add(requestedPort);
+        void (async () => {
+          const deadline = Date.now() + 180_000;
+          while (!disposed.current && consumed.current === command.id && Date.now() < deadline) {
+            if (await preview(requestedPort, true)) return;
+            await new Promise(resolve => setTimeout(resolve, 1500));
+          }
+          if (!disposed.current && consumed.current === command.id) setIssue("Preview did not become ready within 3 minutes. Check Terminal for the startup error or use Open preview when the server is ready.");
+        })();
+      }
+    }).catch((e) => {
+      setIssue(e instanceof Error ? e.message : "Command could not be sent");
       terminal.current?.writeln(`\r\n${e instanceof Error ? e.message : "Command could not be sent"}`);
     }).finally(() => callbacks.current.onConsumed(command.id));
-  }, [command, request, status]);
+  }, [command, preview, request, status]);
 
   useEffect(() => {
     if (command && !connected.current && attempted.current !== command.id) {
@@ -172,6 +198,7 @@ export function ShellTerminal({ projectId, active, command, onPreview, onConsume
       })().catch((e) => terminal.current?.writeln(String(e.message))); }}>Download files</button>
       <button className="btn btn-ghost btn-sm" onClick={() => { void request({ action: "stop" }).then(() => { events.current?.close(); connected.current = false; setStatus("Stopped"); }).catch((e) => terminal.current?.writeln(String(e.message))); }}>Stop session</button>
     </div>
+    {issue && <div role="alert" className="shrink-0 border-b border-error/30 bg-error/10 px-3 py-2 text-xs text-error">{issue}</div>}
     {command && <div className="shrink-0 px-3 py-2 text-xs text-signal-soft">Queued: <code>{command.text}</code>{status !== "Connected" && " · Click Connect to run"}</div>}
     <div ref={host} className="flex-1 min-h-0 p-3 overflow-hidden" />
   </div>;
