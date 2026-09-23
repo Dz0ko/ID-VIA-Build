@@ -28,6 +28,7 @@ type ShareLink = { id: string; token: string; label: string | null; hasPassword:
 type Comment = { id: string; authorName: string; body: string; kind: string; resolved: boolean; createdAt: string };
 type CustomAgent = { id: string; name: string; description: string; tier: string; mode: string };
 type RefImage = { name: string; mediaType: "image/png" | "image/jpeg" | "image/webp" | "image/gif"; data: string };
+type AgentActivity = { id: string; label: string; detail: string; status: "running" | "done" };
 
 export interface WorkspaceProps {
   project: {
@@ -89,6 +90,7 @@ export function Workspace(p: WorkspaceProps) {
   const [images, setImages] = useState<RefImage[]>([]);
   const [busy, setBusy] = useState<string | null>(null);
   const [stream, setStream] = useState("");
+  const [activity, setActivity] = useState<AgentActivity[]>([]);
   const [logs, setLogs] = useState<LogLine[]>([{ t: now(), text: "Workspace ready.", kind: "info" }]);
   const [runtimePreview, setRuntimePreview] = useState<{ url: string; source: string } | null>(null);
   const runtimeSource = isApp ? JSON.stringify(files) : html;
@@ -140,6 +142,7 @@ export function Workspace(p: WorkspaceProps) {
     busyRef.current = agentToRun;
     setBusy(agentToRun);
     setStream("");
+    setActivity([{ id: `activity-${Date.now()}`, label: "Start task", detail: "Preparing the agent workspace", status: "running" }]);
     setBottom("chat");
     setExpandedPanel(true);
     followChat.current = true;
@@ -171,14 +174,16 @@ export function Workspace(p: WorkspaceProps) {
           const line = part.split("\n").find((l) => l.startsWith("data: "));
           if (!line) continue;
           const ev = JSON.parse(line.slice(6));
-          if (ev.type === "picked") { const a = allAgents.find((x) => x.id === ev.agent); log(`Router → handing this to ${a?.name ?? ev.agent}${a?.profession ? ` (${a.profession})` : ""}`); setBusy(ev.agent); busyRef.current = ev.agent; }
-          else if (ev.type === "agent") { setMessages((m) => [...m, { id: `i-${Date.now()}`, role: "assistant", content: ev.text, agentId: ev.agent, creditsUsed: 0, model: null, createdAt: new Date().toISOString() }]); log(`${ev.name} (${ev.profession}) started`); }
+          if (ev.type === "picked") { const a = allAgents.find((x) => x.id === ev.agent); log(`Router → handing this to ${a?.name ?? ev.agent}${a?.profession ? ` (${a.profession})` : ""}`); setBusy(ev.agent); busyRef.current = ev.agent; setActivity((items) => [...items.map((item) => ({ ...item, status: "done" as const })), { id: `activity-${Date.now()}`, label: "Route request", detail: `Handing this to ${a?.name ?? ev.agent}`, status: "running" }]); }
+          else if (ev.type === "agent") { setMessages((m) => [...m, { id: `i-${Date.now()}`, role: "assistant", content: ev.text, agentId: ev.agent, creditsUsed: 0, model: null, createdAt: new Date().toISOString() }]); log(`${ev.name} (${ev.profession}) started`); setActivity((items) => [...items.map((item) => ({ ...item, status: "done" as const })), { id: `activity-${Date.now()}`, label: ev.name, detail: `${ev.profession} started`, status: "running" }]); }
           else if (ev.type === "meta") {
             usedCredits = ev.credits; setCredits((c) => c - ev.credits);
             log(`Routed → ${ev.tier} tier · ${ev.provider}/${ev.model} · task=${ev.taskClass} · ${ev.credits} credits${ev.fallback ? " · template engine" : ""}`);
+            setActivity((items) => [...items.map((item) => ({ ...item, status: "done" as const })), { id: `activity-${Date.now()}`, label: "Plan work", detail: `${ev.tier} model · ${ev.taskClass} task`, status: "running" }]);
           } else if (ev.type === "delta") { acc += ev.text; setStream(acc); }
           else if (ev.type === "done") {
             completed = true;
+            setActivity((items) => [...items.map((item) => ({ ...item, status: "done" as const })), { id: `activity-${Date.now()}`, label: "Save result", detail: ev.mode === "rewrite" ? `Version ${ev.versionNumber} saved` : "Report ready", status: "done" }]);
             if (ev.mode === "rewrite") {
               // A code-writing agent hands off to the isolated terminal after it
               // finishes. The build is intentionally queued only once, after a
@@ -523,14 +528,12 @@ export function Workspace(p: WorkspaceProps) {
                       <div className="whitespace-pre-wrap break-words">{m.content}</div>
                     </div>
                   ))}
-                  {busy && <div className="rounded-2xl border border-graphite p-5 text-fog space-y-4">
-                    <div role="status" className="flex items-center gap-2 text-sm text-signal-soft"><span className="w-2 h-2 rounded-full bg-signal pulse-dot" />{allAgents.find((x) => x.id === busy)?.name ?? busy} is working</div>
-                    <div className="grid gap-2 text-xs text-ash">
-                      <div className="flex items-center gap-2"><span className="text-signal-soft">✓</span> Understanding your request and planning the work</div>
-                      <div className="flex items-center gap-2"><span className={stream ? "text-signal-soft" : "text-ash"}>{stream ? "✓" : "•"}</span>{isApp ? "Building and updating the app" : "Building and updating the website"}</div>
-                      <div className="flex items-center gap-2"><span className="text-ash">•</span> Reviewing the result and preparing the preview</div>
+                  {(busy || activity.length > 0) && activity.length > 0 && <div className="rounded-2xl border border-graphite p-4 text-fog">
+                    <div role="status" className="mb-3 flex items-center gap-2 text-sm text-signal-soft"><span className={`w-2 h-2 rounded-full ${busy ? "bg-signal pulse-dot" : "bg-signal-soft"}`} />{busy ? `${allAgents.find((x) => x.id === busy)?.name ?? busy} is working` : "Agent activity"}</div>
+                    <div className="divide-y divide-graphite/60">
+                      {activity.map((item) => <div key={item.id} className="flex items-center gap-3 py-2 text-xs"><span className={`shrink-0 text-sm ${item.status === "done" ? "text-signal-soft" : "text-ash"}`}>{item.status === "done" ? "✓" : "◌"}</span><span className="min-w-0 flex-1 truncate text-fog">{item.label}</span><span className="max-w-[52%] truncate text-ash">{item.detail}</span></div>)}
                     </div>
-                    <p className="text-xs text-ash">You’ll see a summary when the agent finishes. Technical commands and build logs appear in Terminal.</p>
+                    {busy && <p className="mt-3 text-xs text-ash">The agent summary appears here when finished. Technical commands and build logs are available in Terminal.</p>}
                   </div>}
                   {error && <div className="text-error text-xs">{error}</div>}
                   <div ref={chatEnd} />
