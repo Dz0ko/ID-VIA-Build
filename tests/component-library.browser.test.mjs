@@ -12,7 +12,7 @@ const base = 'http://127.0.0.1:3848';
 let server, ws, originalUrl, previousCookies = [], nextId = 0;
 const initScripts = [];
 const pending = new Map();
-function rpc(method, params = {}) { return new Promise((resolve, reject) => { const id = ++nextId; const timer = setTimeout(() => { pending.delete(id); reject(new Error(`CDP timeout: ${method}`)); }, 10000); pending.set(id, (value) => { clearTimeout(timer); if (value.error) reject(new Error(value.error.message)); else resolve(value.result); }); ws.send(JSON.stringify({ id, method, params })); }); }
+function rpc(method, params = {}) { return new Promise((resolve, reject) => { const id = ++nextId; const timer = setTimeout(() => { pending.delete(id); reject(new Error(`CDP timeout: ${method}`)); }, method === 'Page.captureScreenshot' ? 30000 : 10000); pending.set(id, (value) => { clearTimeout(timer); if (value.error) reject(new Error(value.error.message)); else resolve(value.result); }); ws.send(JSON.stringify({ id, method, params })); }); }
 async function evaluate(expression) { const r = await rpc('Runtime.evaluate', { expression, returnByValue: true, awaitPromise: true }); if (r.exceptionDetails) throw new Error(r.exceptionDetails.text); return r.result.value; }
 async function until(expression) { for (let i = 0; i < 60; i++) { if (await evaluate(expression)) return; await new Promise(r => setTimeout(r, 100)); } throw new Error(`Not ready: ${expression}`); }
 async function click(text) { await evaluate(`[...document.querySelectorAll('button')].find(b=>b.textContent.trim()===${JSON.stringify(text)})?.click()`); }
@@ -57,7 +57,7 @@ test('catalog renders, filters, previews, exposes exact source and hands off its
   assert.ok(await evaluate('document.documentElement.scrollWidth<=innerWidth'), 'catalog must not overflow');
   assert.ok(await evaluate("[...document.querySelectorAll('iframe')].every(f=>f.getAttribute('sandbox')==='allow-scripts')"));
   assert.ok(await evaluate("document.querySelectorAll('iframe').length<=9"));
-  await click('Liquid Glass'); await until("document.querySelectorAll('[data-component-id]').length===4");
+  await click('Forms & controls'); await until("document.querySelectorAll('[data-component-id]').length===4");
   await evaluate("document.querySelector('[data-component-id=glass-switch] button[aria-label^=Expand]').click()");
   await until("document.querySelector('dialog[open] iframe')!==null");
   assert.ok(await evaluate("document.querySelector('dialog[open]').getAttribute('aria-label').includes('Glass switch')"));
@@ -73,10 +73,10 @@ test('catalog renders, filters, previews, exposes exact source and hands off its
   await click('Preview project'); await until("location.pathname.includes('/app/projects/')");
   assert.ok(await evaluate("new URLSearchParams(location.search).get('prompt').includes('[COMPONENT:glass-switch]')"));
   await rpc('Page.navigate', { url: `${base}/app/components` }); await until("document.querySelectorAll('[data-component-id]').length===9");
-  await click('ThreeUI'); await until("document.querySelectorAll('[data-component-id]').length===4");
+  await click('3D & shaders'); await until("document.querySelectorAll('[data-component-id]').length===4");
   await new Promise(r => setTimeout(r, 700));
   await rpc('Page.captureScreenshot', { format: 'png' }).then(x => writeFile('.next/component-library-desktop.png', Buffer.from(x.data, 'base64')));
-  await click('All collections');
+  await click('All categories');
   await evaluate("(()=>{const el=document.querySelector('input[type=search]');Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(el,'no-such-effect');el.dispatchEvent(new Event('input',{bubbles:true}));})()");
   await until("document.body.innerText.includes('No matching components')");
   await click('Clear filters'); await until("document.querySelectorAll('[data-component-id]').length===9");

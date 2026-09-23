@@ -79,7 +79,6 @@ export function componentReference(request: string): string {
       const html = essential && componentPreview(id);
       return essential && html ? [`COMPONENT REFERENCE: ${essential.name}\nAdapt this IDÆVIA component to the existing project stack, preserve other content, scope styles and retain accessibility. Extract the relevant markup and behavior rather than replacing the project with this demo.\n${html}`] : [];
     }
-    const source = COMPONENT_SOURCES.find((entry) => entry.id === item.source)!;
-    return [`COMPONENT REFERENCE: ${item.name}\nOriginal IDÆVIA example inspired by ${source.url}. ${source.note}\nAdapt the implementation below into the user's selected stack and existing design. Preserve its interactions, accessibility and reduced-motion behavior. Extract the relevant markup, scoped styles and behavior; do not copy the document wrapper or Content-Security-Policy into an existing page. For component frameworks, scope selectors and clean up event listeners, observers and GPU resources on unmount. Do not replace the whole project with this standalone demo. Do not claim this is upstream source.\n${item.html}`];
+    return [`COMPONENT REFERENCE: ${item.name}\nOriginal IDÆVIA component example.\nAdapt the implementation below into the user's selected stack and existing design. Preserve its interactions, accessibility and reduced-motion behavior. Extract the relevant markup, scoped styles and behavior; do not copy the document wrapper or Content-Security-Policy into an existing page. For component frameworks, scope selectors and clean up event listeners, observers and GPU resources on unmount. Do not replace the whole project with this standalone demo. Do not claim this is upstream source.\n${item.html}`];
   }).join("\n\n");
 }
