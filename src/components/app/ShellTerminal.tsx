@@ -39,6 +39,7 @@ export function ShellTerminal({ projectId, active, command, onPreview, onConsume
       const result = await request({ action: "preview", port: requestedPort });
       const url = new URL(result.url);
       if (url.protocol !== "https:" || !url.hostname.endsWith(".e2b.app")) throw new Error("Invalid preview address");
+      if (!disposed.current && result.port) setPort(String(result.port));
       if (!disposed.current) callbacks.current.onPreview(url.href);
       return true;
     } catch (e) { if (!quiet) terminal.current?.writeln(`\r\n${e instanceof Error ? e.message : "Preview unavailable"}`); return false; }

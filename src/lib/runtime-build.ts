@@ -2,9 +2,10 @@
 export const SERVER = `const http = require('node:http');
 const fs = require('node:fs/promises');
 const path = require('node:path');
+const requestedPort = Number(process.env.PORT) || 3000;
 const root = path.resolve('dist');
 const mime = {'.html':'text/html','.js':'text/javascript','.css':'text/css','.json':'application/json','.svg':'image/svg+xml','.png':'image/png','.jpg':'image/jpeg','.woff2':'font/woff2'};
-http.createServer(async (req,res) => {
+const server = http.createServer(async (req,res) => {
  try {
   const name = decodeURIComponent(new URL(req.url,'http://localhost').pathname);
   const target = path.resolve(root, '.' + name);
@@ -18,7 +19,15 @@ http.createServer(async (req,res) => {
   res.writeHead(200, {'Content-Type':mime[path.extname(file)] || 'application/octet-stream','Cache-Control':'no-store','X-Content-Type-Options':'nosniff','Referrer-Policy':'no-referrer'});
   res.end(data);
  } catch { res.writeHead(404).end(); }
-}).listen(3000,'0.0.0.0',function(){console.log('Preview ready at http://localhost:' + this.address().port)});`;
+});
+function listen(port) {
+ server.once('error', (error) => {
+  if (error.code === 'EADDRINUSE' && port < requestedPort + 20) return listen(port + 1);
+  throw error;
+ });
+ server.listen(port,'0.0.0.0',function(){console.log('Preview ready at http://localhost:' + this.address().port)});
+}
+listen(requestedPort);`;
 
 export interface BuildRuntime {
   command(command: string, timeoutMs: number): Promise<void>;

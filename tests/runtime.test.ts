@@ -69,7 +69,7 @@ test("preview HTTP server serves built assets and blocks source symlinks", async
     await writeFile(`${root}/dist/index.html`, "<h1>Built preview</h1>");
     await writeFile(`${root}/source.txt`, "not public");
     await symlink(`${root}/source.txt`, `${root}/dist/leak.txt`);
-    server = server.replace(".listen(3000,'0.0.0.0'", ".listen(0,'127.0.0.1'");
+    server = server.replace("server.listen(port,'0.0.0.0'", "server.listen(0,'127.0.0.1'");
     child = spawn(process.execPath, ["-e", server], { cwd: root, stdio: ["ignore", "pipe", "pipe"] });
     const [data] = await once(child.stdout!, "data", { signal: AbortSignal.timeout(5000) });
     const port = String(data).match(/localhost:(\d+)/)?.[1];

@@ -68,10 +68,16 @@ export async function POST(req: Request, ctx: RouteContext<"/api/projects/[id]/s
     } else if (action.action === "resize") {
       await sandbox.pty.resize(state.pid, { cols: action.cols, rows: action.rows });
     } else if (action.action === "preview") {
-      const url = `https://${sandbox.getHost(action.port)}`;
-      const response = await fetch(url, { signal: AbortSignal.timeout(8000), redirect: "manual", cache: "no-store" });
-      if (response.status >= 400) throw new ShellError(`No working preview on port ${action.port}. Start the server with --host 0.0.0.0 and try again.`);
-      return Response.json({ url });
+      let lastPort = action.port;
+      for (let port = action.port; port <= Math.min(action.port + 20, 65535); port++) {
+        const url = `https://${sandbox.getHost(port)}`;
+        lastPort = port;
+        try {
+          const response = await fetch(url, { signal: AbortSignal.timeout(2500), redirect: "manual", cache: "no-store" });
+          if (response.status < 400) return Response.json({ url, port });
+        } catch { /* Try the next candidate port. */ }
+      }
+      throw new ShellError(`No working preview found between ports ${action.port} and ${lastPort}. Start the server with --host 0.0.0.0 and try again.`);
     }
     return Response.json({ ok: true });
   } catch (e) { return failure(e); }
