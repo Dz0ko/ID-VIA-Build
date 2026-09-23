@@ -1,6 +1,7 @@
 /** Deterministic production audit of a single-file site (no AI needed). */
 
 export interface AuditResult {
+  scope?: "html" | "source";
   performance: number;
   seo: number;
   accessibility: number;
@@ -85,4 +86,20 @@ export function auditHtml(html: string): AuditResult {
   };
   const overall = clamp((r.performance + r.seo + r.accessibility + r.security + r.codeQuality + r.mobile) / 6);
   return { ...r, overall, issues };
+}
+
+/** Source checks for app projects; never score an empty HTML field as a rendered app. */
+export function auditProject(project: { kind: string; html: string; files: { path: string; content: string }[] }): AuditResult {
+  if (project.kind !== "app") return { ...auditHtml(project.html), scope: "html" };
+  const issues: AuditResult["issues"] = [];
+  for (const file of project.files) {
+    if (!/\.(tsx|jsx|html|vue|svelte)$/.test(file.path)) continue;
+    if (/<img\b(?![^>]*\balt\s*=)[^>]*>/i.test(file.content)) issues.push({ area: "Accessibility", severity: "medium", message: `${file.path}: image without an alt attribute. Check whether it needs descriptive text or alt="".` });
+    if (/<html\b(?![^>]*\blang\s*=)[^>]*>/i.test(file.content)) issues.push({ area: "Accessibility", severity: "medium", message: `${file.path}: root html element has no lang attribute.` });
+  }
+  return { scope: "source", performance: 0, seo: 0, accessibility: 0, security: 0, codeQuality: 0, mobile: 0, overall: 0, issues };
+}
+
+export function auditSummary(result: AuditResult) {
+  return `${result.scope === "source" ? "Source checks" : "HTML checks"}: ${result.issues.length} remaining finding(s). ${result.issues.length ? result.issues.map(i => i.message).join(" ") : "No findings in these checks."} Build, runtime behavior and visual quality still require validation.`;
 }

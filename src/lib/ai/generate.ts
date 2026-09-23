@@ -1,3 +1,4 @@
+import { auditProject, auditSummary } from "../audit";
 import { isConversationRequest, CONVERSATION_SYSTEM, ANSWER_FALLBACK, extractAnswer } from "./conversation";
 import { acquireProjectLease, GENERATION_TIMEOUT_MS } from "../project-lock";
 import { componentReference } from "../component-examples";
@@ -87,10 +88,11 @@ async function runAgentLocked(opts: RunOptions, assertActive: () => Promise<void
   const reactStack = isReactSandboxStack(stack);
 
   const taskClass: TaskClass = agent.mode === "report" ? "small" : classifyTask(opts.request, hasContent);
+  const debuggingTask = agent.mode === "rewrite" && agent.id === "debugger";
   const visualDesignTask = agent.mode === "rewrite" && requiresFrontierDesign(opts.request, agent.id);
-  const taskTier = visualDesignTask ? "frontier" : tierForTask(taskClass, opts.plan);
+  const taskTier = (visualDesignTask || debuggingTask) ? "frontier" : tierForTask(taskClass, opts.plan);
   const merged = ORDER[Math.max(ORDER.indexOf(taskTier), ORDER.indexOf(agent.tier))];
-  const tier = tierForTask(taskClass, opts.plan, visualDesignTask ? "frontier" : opts.requestedTier ?? merged);
+  const tier = tierForTask(taskClass, opts.plan, (visualDesignTask || debuggingTask) ? "frontier" : opts.requestedTier ?? merged);
   const visionBump = opts.images?.length ? 1.5 : 1;
 
   const automaticProvider = preferredProviderForTask(opts.request, agent.id, isApp);
@@ -118,7 +120,7 @@ async function runAgentLocked(opts: RunOptions, assertActive: () => Promise<void
   const heavy = taskClass === "fullstack" || taskClass === "feature" || taskClass === "page";
   const maxOutput = agent.mode === "report" ? Math.min(resolved.config.maxOutput, 8000) : Math.min(resolved.config.maxOutput, Math.max(isApp ? 32000 : 12000, Math.ceil(docTokens * 1.6) + 6000));
   const EFFORT_RANK = { low: 0, medium: 1, high: 2, xhigh: 3, max: 4 } as const;
-  const capEffort = heavy || visualDesignTask ? "xhigh" : taskClass === "section" ? "high" : "medium";
+  const capEffort = heavy || visualDesignTask || debuggingTask ? "xhigh" : taskClass === "section" ? "high" : "medium";
   const effort = resolved.config.effort && EFFORT_RANK[resolved.config.effort] > EFFORT_RANK[capEffort] ? capEffort : resolved.config.effort;
 
   let run: { id: string } | undefined;
@@ -147,6 +149,11 @@ async function runAgentLocked(opts: RunOptions, assertActive: () => Promise<void
     } else {
       system = `${identity}\n\n${agent.id === "builder" ? BUILDER_SYSTEM : agent.systemPrompt}`;
       userPrompt = buildUserPrompt({ request: opts.request, html: project.html, memory });
+    }
+    if (debuggingTask) {
+      const findings = auditProject(project);
+      userPrompt += `\n\nCURRENT VERIFIED CHECK FINDINGS:\n${auditSummary(findings)}`;
+      system += "\nFix the actual source files and root causes. For framework apps preserve their file structure and use framework metadata/layout conventions; never insert a standalone HTML document into a component. Address each supplied finding. Do not claim tests or builds passed: you have not executed them. Return code changes, not instructions asking the user to fix them.";
     }
     system += `\n\n${ANSWER_FALLBACK}`;
     const history = await db.message.findMany({ where: { projectId: project.id, role: { in: ["user", "assistant"] } }, orderBy: [{ createdAt: "desc" }, { id: "desc" }], take: 12, select: { role: true, content: true } });
@@ -196,13 +203,14 @@ async function runAgentLocked(opts: RunOptions, assertActive: () => Promise<void
       if (!files.length) throw new Error("Model did not return any project files.");
       if (reactStack && !files.some((f) => f.path === "/App.tsx" || f.path === "/package.json")) throw new Error("Model did not return /App.tsx.");
       const lastApp = await db.version.findFirst({ where: { projectId: project.id }, orderBy: { number: "desc" }, select: { number: true } });
-      const noteApp = extractNote(result.text) ?? persona.done((lastApp?.number ?? 0) + 1);
+      const checked = auditProject({ kind: "app", html: "", files });
+      const noteApp = debuggingTask ? `Changes saved. ${auditSummary(checked)}` : extractNote(result.text) ?? persona.done((lastApp?.number ?? 0) + 1);
       const last = await db.version.findFirst({ where: { projectId: project.id }, orderBy: { number: "desc" } });
       const number = (last?.number ?? 0) + 1;
       await db.$transaction([
         db.projectFile.deleteMany({ where: { projectId: project.id } }),
         ...files.map((f) => db.projectFile.create({ data: { projectId: project.id, path: f.path, content: f.content } })),
-        db.project.update({ where: { id: project.id }, data: { kind: "app", memory: JSON.stringify({ ...memory, stack }) } }),
+        db.project.update({ where: { id: project.id }, data: { kind: "app", health: JSON.stringify(checked), memory: JSON.stringify({ ...memory, stack }) } }),
         db.version.create({ data: { projectId: project.id, number, html: JSON.stringify(files), message: `${agent.name}: ${opts.request.slice(0, 120)}` } }),
         db.message.create({ data: { projectId: project.id, role: "assistant", content: noteApp, agentId: agent.id, model: result.model, creditsUsed: creditsCharged } }),
         db.agentRun.update({ where: { id: run.id }, data: { status: "DONE", finishedAt: new Date(), output: `v${number}`, ...usage } }),
@@ -216,9 +224,10 @@ async function runAgentLocked(opts: RunOptions, assertActive: () => Promise<void
       if (!/<html[\s>]/i.test(html)) throw new Error("Model did not return an HTML document.");
       const last = await db.version.findFirst({ where: { projectId: project.id }, orderBy: { number: "desc" } });
       const number = (last?.number ?? 0) + 1;
-      const noteHtml = extractNote(result.text) ?? persona.done(number);
+      const checked = auditProject({ kind: "website", html, files: [] });
+      const noteHtml = debuggingTask ? `Changes saved. ${auditSummary(checked)}` : extractNote(result.text) ?? persona.done(number);
       await db.$transaction([
-        db.project.update({ where: { id: project.id }, data: { html, memory: JSON.stringify({ ...memory, stack }) } }),
+        db.project.update({ where: { id: project.id }, data: { html, health: JSON.stringify(checked), memory: JSON.stringify({ ...memory, stack }) } }),
         db.version.create({ data: { projectId: project.id, number, html, message: `${agent.name}: ${opts.request.slice(0, 120)}` } }),
         db.message.create({ data: { projectId: project.id, role: "assistant", content: noteHtml, agentId: agent.id, model: result.model, creditsUsed: creditsCharged } }),
         db.agentRun.update({ where: { id: run.id }, data: { status: "DONE", finishedAt: new Date(), output: `v${number}`, ...usage } }),

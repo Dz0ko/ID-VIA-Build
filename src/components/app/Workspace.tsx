@@ -265,7 +265,7 @@ export function Workspace(p: WorkspaceProps) {
         }
       }
       if (!completed && !clarified) throw new Error("The connection ended before the agent finished. Please try again.");
-      if (rewrote && !isApp) await runAuditRequest();
+      if (rewrote) await runAuditRequest(false);
       setStream("");
       return true;
     } catch (e) {
@@ -371,12 +371,11 @@ export function Workspace(p: WorkspaceProps) {
     if (res.ok) { await refreshReleases(); setStatus("PUBLISHED"); log(`🚀 Published → ${d.url}`, "ok"); setBottom("logs"); } else throw new Error(d.error ?? "Request failed");
   }
   const runAudit = () => perform(() => runAuditRequest());
-  async function runAuditRequest() {
-    if (isApp) { setError("Production audit currently covers website projects; run the QA / Security agents for apps."); return; }
-    if (dirty) await persistCode(false);
+  async function runAuditRequest(saveDraft = true) {
+    if (saveDraft && dirty) await persistCode(false);
     const res = await fetch(`/api/projects/${p.project.id}/audit`, { method: "POST" });
     const d = await res.json();
-    if (res.ok) { setAudit(d.audit); setBottom("problems"); log(`Audit: overall ${d.audit.overall}/100, ${d.audit.issues.length} issues`); } else throw new Error(d.error ?? "Audit failed");
+    if (res.ok) { setAudit(d.audit); setBottom("problems"); log(`Audit: ${d.audit.scope === "source" ? "source checks" : `${d.audit.overall}/100`}, ${d.audit.issues.length} findings`); } else throw new Error(d.error ?? "Audit failed");
   }
   const exportZip = () => setDownloadOpen(true);
 
@@ -487,9 +486,9 @@ export function Workspace(p: WorkspaceProps) {
         </div>}
         <button onClick={() => setShowFiles(!showFiles)} aria-expanded={showFiles} className="btn btn-ghost btn-sm" title="Toggle project files"><Folder size={14} />Files</button>
         <button onClick={() => setShowTeam(!showTeam)} aria-expanded={showTeam} className="btn btn-ghost btn-sm" title="Toggle AI team"><Users size={14} />Agents</button>
-        {audit && <button onClick={() => setBottom("problems")} className="pill text-xs gap-1.5" title="Project health"><Activity size={11} className={audit.overall >= 90 ? "text-success" : audit.overall >= 70 ? "text-warning" : "text-error"} />{audit.overall}</button>}
+        {audit && <button onClick={() => setBottom("problems")} className="pill text-xs gap-1.5" title="Project health"><Activity size={11} className={audit.overall >= 90 ? "text-success" : audit.overall >= 70 ? "text-warning" : "text-error"} />{audit.scope === "source" ? `${audit.issues.length} findings` : audit.overall}</button>}
         <button onClick={() => { setBottom("share"); setExpandedPanel(true); loadShare(); }} className="btn btn-outline btn-sm" title="Client portal & share"><Share2 size={13} /></button>
-        {!isApp && <button onClick={() => { setBottom("problems"); setExpandedPanel(true); runAudit(); }} className="btn btn-outline btn-sm" title="Production audit"><AlertTriangle size={13} />Audit</button>}
+        {<button onClick={() => { setBottom("problems"); setExpandedPanel(true); runAudit(); }} className="btn btn-outline btn-sm" title="Production audit"><AlertTriangle size={13} />Audit</button>}
         <button onClick={exportZip} className="btn btn-outline btn-sm" title="Export code"><Download size={13} /></button>
         {status === "PUBLISHED" && <a href={`/s/${p.project.slug}`} target="_blank" rel="noopener" className="btn btn-outline btn-sm"><ExternalLink size={13} /></a>}
         <button onClick={() => { setExpandedPanel(true); if (isApp) { setBottom("terminal"); term("deploy vercel"); } else publish(); }} disabled={publishing || termBusy || (isApp ? files.length === 0 : !html)} title={isApp ? "Deploy using your connected Vercel account" : "Publish this website"} className="btn btn-signal btn-sm"><Rocket size={13} />{publishing ? "Deploying…" : status === "PUBLISHED" ? "Redeploy" : "Deploy"}</button>
@@ -580,7 +579,7 @@ export function Workspace(p: WorkspaceProps) {
           {expandedPanel && <div className="shrink-0 min-h-0 border-t border-graphite flex flex-col" style={{ height: "100%" }}>
             <div className="h-10 shrink-0 flex items-center gap-1 px-2 border-b border-graphite text-xs overflow-x-auto">
               {([["chat", "AI Chat", MessageSquare], ["changes", "Changes", History], ["terminal", "Terminal", TerminalSquare], ["logs", "Logs", Activity], ["problems", "Problems", AlertTriangle], ["share", "Share / Client portal", Share2]] as const).map(([id, label, I]) => (
-                <button key={id} onClick={() => { setBottom(id); if (id === "terminal") setShellOpened(true); if (id === "share") loadShare(); }} className={`btn btn-sm ${bottom === id ? "bg-graphite text-paper" : "btn-ghost"}`}><I size={12} />{label}{id === "problems" && audit?.issues.length ? <span className="ml-1 text-[10px] text-warning">{audit.issues.length}</span> : null}</button>
+                <button key={id} onClick={() => { setBottom(id); if (id === "problems") runAudit(); if (id === "terminal") setShellOpened(true); if (id === "share") loadShare(); }} className={`btn btn-sm ${bottom === id ? "bg-graphite text-paper" : "btn-ghost"}`}><I size={12} />{label}{id === "problems" && audit?.issues.length ? <span className="ml-1 text-[10px] text-warning">{audit.issues.length}</span> : null}</button>
               ))}
               <button onClick={() => setExpandedPanel(!expandedPanel)} aria-label={expandedPanel ? "Show preview and chat" : "Focus chat panel"} title={expandedPanel ? "Show preview and chat" : "Focus chat panel"} aria-expanded={expandedPanel} className="btn btn-ghost btn-sm ml-auto">{expandedPanel ? "↓" : "↑"}</button>
               {termBusy && <button onClick={() => terminalAbort.current?.abort()} className="btn btn-ghost btn-sm">Cancel command</button>}
@@ -681,8 +680,9 @@ export function Workspace(p: WorkspaceProps) {
               <div className="flex-1 overflow-y-auto p-3 text-xs">
                 {!audit ? <div className="text-ash">Run an audit to see Performance, SEO, Accessibility, Security, Code and Mobile scores. <button onClick={runAudit} className="text-signal-soft underline">Run now</button></div> : (
                   <>
-                    <div className="grid grid-cols-7 gap-2 mb-3">{([["Overall", audit.overall], ["Performance", audit.performance], ["SEO", audit.seo], ["A11y", audit.accessibility], ["Security", audit.security], ["Code", audit.codeQuality], ["Mobile", audit.mobile]] as const).map(([l, v]) => <div key={l} className="card p-2"><div className="text-[10px] text-ash">{l}</div><div className={`text-lg font-semibold ${v >= 90 ? "text-success" : v >= 70 ? "text-warning" : "text-error"}`}>{v}</div></div>)}</div>
-                    {audit.issues.length === 0 ? <div className="text-success">No issues found. Production ready.</div> : (
+                    {audit.scope !== "source" && <div className="grid grid-cols-7 gap-2 mb-3">{([["Overall", audit.overall], ["Performance", audit.performance], ["SEO", audit.seo], ["A11y", audit.accessibility], ["Security", audit.security], ["Code", audit.codeQuality], ["Mobile", audit.mobile]] as const).map(([l, v]) => <div key={l} className="card p-2"><div className="text-[10px] text-ash">{l}</div><div className={`text-lg font-semibold ${v >= 90 ? "text-success" : v >= 70 ? "text-warning" : "text-error"}`}>{v}</div></div>)}</div>}
+                    {audit.scope === "source" && <p className="text-ash mb-3">Source checks only. Run Build and Preview to check compilation and runtime behavior. SEO and performance require the rendered pages.</p>}
+                    {audit.issues.length === 0 ? <div className="text-success">No findings in these checks. Build and runtime validation are still required.</div> : (
                       <div className="space-y-1">{audit.issues.map((i, k) => <div key={k} className="flex gap-2"><span className={`pill text-[10px] ${i.severity === "high" ? "text-error border-error/40" : i.severity === "medium" ? "text-warning border-warning/40" : ""}`}>{i.area}</span><span className="text-fog">{i.message}</span></div>)}
                         <button disabled={!!busy} onClick={() => run(`Fix all of these audit issues without changing the design:\n- ${audit.issues.map((i) => i.message).join("\n- ")}`, "debugger")} className="btn btn-signal btn-sm mt-2">Fix all with Debugger</button></div>
                     )}
