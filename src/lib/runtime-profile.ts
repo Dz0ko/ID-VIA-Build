@@ -31,9 +31,20 @@ export function runtimeProfile(files: RuntimeFile[], stack = ""): RuntimeProfile
         has("composer.json") ? "composer install --no-interaction" : "",
       ].filter(Boolean).map(step => `${step} && `).join("");
       const setup = install + (custom.setup?.trim() ? `(\n${custom.setup}\n) && ` : "");
-      // The start command usually runs build output (node dist/server.js); a preview therefore builds first,
-      // exactly like the package.json profile does, so "Open preview" never fails on a missing dist.
-      return result("custom", typeof custom.label === "string" ? custom.label.slice(0, 80) : "Custom runtime", setup + `(\n${custom.build}\n)`, setup + `(\n${custom.build}\n) && (\n${custom.start}\n)`, has("package.json") ? (runner === "npm" ? ["node", "npm"] : runner === "bun" ? ["bun"] : ["node", "corepack"]) : [], custom.port === null ? null : custom.port ?? 3000);
+      // A production start (npm start, node dist/…) previews through the project's dev script when it has one, so saved
+      // changes hot-reload in the running preview; the build command stays the production build used for verification.
+      let dev = "";
+      if (has("package.json") && /^\s*(?:npm|pnpm|yarn|bun)\s+(?:run\s+)?start\s*$|^\s*node\s+(?:dist|build|out)\//.test(custom.start)) {
+        try {
+          const scripts = (JSON.parse(entries.get("package.json")!).scripts ?? {}) as Record<string, string>;
+          if (typeof scripts.dev === "string") {
+            const flags = /\bnext\b/.test(scripts.dev) ? " --hostname 0.0.0.0 --port 3000" : /\b(?:vite|astro|nuxt|nuxi|ng serve)\b/.test(scripts.dev) ? " --host 0.0.0.0 --port 3000" : "";
+            dev = `PORT=3000 HOST=0.0.0.0 ${runner} run dev${flags ? (runner === "npm" ? " --" : "") + flags : ""}`;
+          }
+        } catch { /* invalid package.json is reported by the source checks */ }
+      }
+      // Without a dev script the start command usually runs build output (node dist/server.js); a preview therefore builds first.
+      return result("custom", typeof custom.label === "string" ? custom.label.slice(0, 80) : "Custom runtime", setup + `(\n${custom.build}\n)`, dev ? setup + dev : setup + `(\n${custom.build}\n) && (\n${custom.start}\n)`, has("package.json") ? (runner === "npm" ? ["node", "npm"] : runner === "bun" ? ["bun"] : ["node", "corepack"]) : [], custom.port === null ? null : custom.port ?? 3000);
     } catch {
       const issue = "Invalid .idaevia/runtime.json: provide build and start commands, optional setup, and port 1024–65535 (or null for terminal apps).";
       return result("invalid", "Runtime configuration", fail(issue), fail(issue), [], null, issue);

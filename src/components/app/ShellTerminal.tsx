@@ -6,7 +6,7 @@ import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import "@xterm/xterm/css/xterm.css";
 
-type Command = { id: number; text: string; previewPort?: number | null };
+type Command = { id: number; text: string; previewPort?: number | null; sync?: boolean };
 export function ShellTerminal({ projectId, active, command, onPreview, onConsumed, onLog, onIssue }: {
   projectId: string; active: boolean; command: Command | null;
   onPreview: (url: string, blocked?: string | null) => void; onConsumed: (id: number) => void; onLog?: (text: string) => void; onIssue?: (issue: string | null) => void;
@@ -153,7 +153,7 @@ export function ShellTerminal({ projectId, active, command, onPreview, onConsume
     setIssue(null);
     recentOutput.current = "";
     seenPorts.current.clear();
-    void request({ action: command.text === "\x03" ? "input" : "command", data: command.text }).then(() => {
+    void (command.sync ? request({ action: "sync" }).then(() => { terminal.current?.writeln("\r\n[platform] Saved changes synced into the running preview."); }) : request({ action: command.text === "\x03" ? "input" : "command", data: command.text })).then(() => {
       if (command.previewPort) {
         const requestedPort = command.previewPort;
         seenPorts.current.add(requestedPort);

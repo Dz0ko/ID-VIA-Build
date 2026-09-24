@@ -139,3 +139,16 @@ test("a custom runtime installs its dependencies unless its own commands already
   const bare = runtimeProfile([{ path: ".idaevia/runtime.json", content: JSON.stringify({ build: "make", start: "./server" }) }], "");
   assert.doesNotMatch(bare.build, /npm|pip|composer/);
 });
+
+test("a custom runtime with a production start previews through its dev script so saved changes hot-reload", () => {
+  const files = [
+    { path: ".idaevia/runtime.json", content: JSON.stringify({ build: "npm run build", start: "npm start", port: 3000 }) },
+    { path: "package.json", content: JSON.stringify({ scripts: { dev: "next dev", build: "prisma generate && next build", start: "next start" } }) },
+  ];
+  const profile = runtimeProfile(files, "");
+  assert.ok(profile.preview.includes("npm run dev -- --hostname 0.0.0.0 --port 3000"), profile.preview);
+  assert.doesNotMatch(profile.preview, /npm start/);
+  assert.ok(profile.build.includes("npm run build") && !profile.build.includes("npm run dev")); // verification keeps the production build
+  const noDev = runtimeProfile([files[0], { path: "package.json", content: JSON.stringify({ scripts: { build: "tsc", start: "node dist/server.js" } }) }], "");
+  assert.ok(noDev.preview.includes("npm run build") && noDev.preview.includes("npm start"));
+});

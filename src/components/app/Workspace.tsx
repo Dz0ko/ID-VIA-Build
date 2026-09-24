@@ -196,8 +196,13 @@ export function Workspace(p: WorkspaceProps) {
   const terminalAction = useRef<((cmd: string) => Promise<void>) | null>(null);
   const terminalRunning = useRef(false);
   const terminalAbort = useRef<AbortController | null>(null);
-  const [shellCommand, setShellCommand] = useState<{ id: number; text: string; previewPort?: number | null } | null>(null);
+  const [shellCommand, setShellCommand] = useState<{ id: number; text: string; previewPort?: number | null; sync?: boolean } | null>(null);
+  // Reloads the embedded preview after saved changes were synced into a running dev server without hot reload.
+  const [previewNonce, setPreviewNonce] = useState(0);
   const [shellOpened, setShellOpened] = useState(false);
+  // The memoized run callback reads the live preview state through a ref (it is not among its dependencies).
+  const livePreview = useRef({ runtimePreview, shellOpened });
+  livePreview.current = { runtimePreview, shellOpened };
   const [termBusy, setTermBusy] = useState(false);
   const [audit, setAudit] = useState<AuditResult | null>(p.project.health ? JSON.parse(p.project.health) : null);
   const runtimeProblem = Boolean(runtimeIssue || buildReport?.status === "error");
@@ -349,7 +354,12 @@ export function Workspace(p: WorkspaceProps) {
               setSavedBrief(null);
               // An app change the server could not verify (or that still fails) is built and, if needed, repaired right away, so the
               // user is never handed a project that does not compile. A verified change needs no extra build.
-              if (isApp && ev.files && !ev.continuation && ev.verified !== true && !autoRebuild.current) { repairRounds.current = 0; lastFailure.current = ""; autoRebuild.current = true; log(ev.verified === false ? "The build still fails · building again with automatic repair…" : "Change saved · building the project to verify it…"); }
+              if (isApp && ev.files && !ev.continuation && livePreview.current.runtimePreview && livePreview.current.runtimePreview.kind !== "build" && livePreview.current.shellOpened) {
+                // A dev server is showing the project: merge the saved change into it, then refresh the frame (hot reload covers the rest).
+                setShellCommand({ id: Date.now(), text: "", sync: true });
+                setTimeout(() => setPreviewNonce((n) => n + 1), 2500);
+                log("Change saved · synced into the running preview");
+              } else if (isApp && ev.files && !ev.continuation && !autoRebuild.current && (ev.verified !== true || livePreview.current.runtimePreview?.kind === "build")) { repairRounds.current = 0; lastFailure.current = ""; autoRebuild.current = true; log(ev.verified === false ? "The build still fails · building again with automatic repair…" : ev.verified ? "Change saved · rebuilding the preview…" : "Change saved · building the project to verify it…"); }
               if (ev.continuation) { continuationRef.current = ev.continuation; setBuildContinuation(ev.continuation); log(`✓ Part saved (${ev.creditsUsed} credits) · ${ev.continuation.filesDone} files so far · continuing with part ${ev.continuation.round}`, "ok"); }
               else { setBuildContinuation(null); log(`✓ Change saved (${ev.creditsUsed} credits)`, "ok"); }
             } else {
@@ -622,7 +632,7 @@ export function Workspace(p: WorkspaceProps) {
         </div>
         <div className="mx-auto flex items-center gap-1 border border-graphite rounded-full p-0.5">
           <button onClick={() => { setBottom("chat"); setExpandedPanel(true); }} className={`btn btn-sm ${expandedPanel && bottom === "chat" ? "btn-primary" : "btn-ghost"}`}><MessageSquare size={13} />Chat</button>
-          <button onClick={() => { if (isApp && !isReactApp && !runtimeUrl) { repairRounds.current = 0; lastFailure.current = ""; void term("npm run build"); } else { setView("preview"); setExpandedPanel(false); } }} className={`btn btn-sm ${!expandedPanel && view === "preview" ? "btn-primary" : "btn-ghost"}`}><Eye size={13} />Preview</button>
+          <button onClick={() => { if (isApp && !isReactApp && !runtimeUrl) { repairRounds.current = 0; lastFailure.current = ""; void term(buildReport?.status === "success" && buildReport.current ? "preview" : "npm run build"); } else { setView("preview"); setExpandedPanel(false); } }} className={`btn btn-sm ${!expandedPanel && view === "preview" ? "btn-primary" : "btn-ghost"}`}><Eye size={13} />Preview</button>
           <button onClick={() => { setView("code"); setExpandedPanel(false); setShowFiles(true); }} className={`btn btn-sm ${!expandedPanel && view === "code" ? "btn-primary" : "btn-ghost"}`}><Code2 size={13} />Code</button>
         </div>
         <button disabled={!!busy || termBusy} onClick={() => { repairRounds.current = 0; lastFailure.current = ""; void term("npm run build"); }} className="btn btn-outline btn-sm"><Play size={13} />{termBusy ? "Running…" : runtime.previewPort === null ? "Build / check" : "Build & preview"}</button>
@@ -687,7 +697,7 @@ export function Workspace(p: WorkspaceProps) {
                   <span className="min-w-0 flex-1">This app refuses to be embedded here ({runtimePreview.blocked}), so the frame below stays blank while “Open preview” works. The builder can allow the platform preview without weakening the other security headers.</span>
                   <button type="button" className="btn btn-primary btn-sm" disabled={!!busy} onClick={() => { void run(embedFixRequest(runtimePreview.blocked!), "builder"); }}>Allow embedding</button>
                 </div>}
-                <iframe title="Built project preview" src={runtimeUrl} className="w-full flex-1 min-h-0 rounded-lg border border-graphite bg-white" sandbox="allow-scripts allow-forms allow-popups allow-modals allow-same-origin" />
+                <iframe key={previewNonce} title="Built project preview" src={runtimeUrl} className="w-full flex-1 min-h-0 rounded-lg border border-graphite bg-white" sandbox="allow-scripts allow-forms allow-popups allow-modals allow-same-origin" />
               </div> : isReactApp && !files.some(f => f.path === "/package.json") ? (
                 <div className="h-full rounded-lg overflow-hidden border border-graphite bg-white">
                   {files.length ? <AppSandbox files={files} /> : <div className="h-full grid place-items-center text-sm text-ash bg-void">Describe the app you want in the chat below: e.g. “Build an admin dashboard for a SaaS with sidebar, KPI cards, a revenue chart and a customers table.”</div>}
