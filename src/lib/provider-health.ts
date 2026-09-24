@@ -66,7 +66,18 @@ export async function markProviderHealthy(provider: ProviderId, force = false): 
   const now = Date.now();
   if (!force && (lastCleared.get(provider) ?? 0) > now - 600_000) return;
   lastCleared.set(provider, now);
-  try { await db.setting.deleteMany({ where: { key: KEY(provider) } }); } catch { /* the next successful call retries */ }
+  for (const kind of ["billing", "auth", "capacity"]) lastReported.delete(`${provider}:${kind}`); // a relapse is reported at once
+  try {
+    const cleared = await db.setting.deleteMany({ where: { key: KEY(provider) } });
+    // The account works again, so the open outage incidents are closed with the recovery time; a new
+    // failure reopens them through the usual fingerprint.
+    if (cleared.count > 0 || force) {
+      await db.platformIncident.updateMany({
+        where: { source: { startsWith: `provider-${provider}-` }, status: { not: "RESOLVED" } },
+        data: { status: "RESOLVED", resolvedAt: new Date(now), revision: { increment: 1 }, note: `Resolved automatically: ${PROVIDER_LABELS[provider]} answered a request at ${new Date(now).toUTCString()}.` },
+      });
+    }
+  } catch { /* the next successful call retries */ }
 }
 
 export async function providerHealth(): Promise<ProviderHealth[]> {

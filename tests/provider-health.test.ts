@@ -49,6 +49,12 @@ test("an exhausted provider account alerts every administrator once, is visible 
     PROVIDERS.anthropic.generate = async model => ({ text: "ok", model, provider: "anthropic", inputTokens: 1, outputTokens: 1 });
     await markProviderHealthy("anthropic", true);
     assert.equal((await providerHealth()).find(h => h.provider === "anthropic")!.state, "healthy");
+    const closed = await db.platformIncident.findUniqueOrThrow({ where: { id: incident.id } });
+    assert.equal(closed.status, "RESOLVED"); assert.ok(closed.resolvedAt); assert.match(closed.note, /Resolved automatically/);
+    // The next failure reopens the same incident rather than hiding behind the resolved one.
+    PROVIDERS.anthropic.generate = async () => { throw billing; };
+    await generateWithFallback(resolved, input);
+    assert.equal((await db.platformIncident.findUniqueOrThrow({ where: { id: incident.id } })).status, "NEW");
   } finally {
     PROVIDERS.anthropic.available = original.anthropicAvailable; PROVIDERS.anthropic.generate = original.anthropicGenerate;
     PROVIDERS.openai.available = original.openaiAvailable; PROVIDERS.openai.generate = original.openaiGenerate;
