@@ -8,7 +8,9 @@ export function databaseConnection(raw: string, production = process.env.NODE_EN
   if (!/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(schema)) throw new Error("Invalid database schema.");
   const local = ["localhost", "127.0.0.1", "[::1]"].includes(url.hostname);
   const supabase = url.hostname.endsWith(".supabase.com") || url.hostname.endsWith(".supabase.co");
-  const max = Math.max(1, Math.min(10, Number(url.searchParams.get("connection_limit")) || 3));
+  // One serverless instance serves several requests at once; credit settlements hold a connection
+  // for their short transaction, so a burst must not exhaust the pool (the Supabase pooler multiplexes).
+  const max = Math.max(1, Math.min(10, Number(url.searchParams.get("connection_limit")) || 8));
   // node-postgres lets SSL URL flags replace an explicit SSL object. Remove them
   // before supplying our own fail-closed policy, including the trusted CA.
   for (const key of ["sslmode", "sslaccept", "sslcert", "sslrootcert", "sslkey", "sslpassword", "sslidentity", "ssl", "schema", "connection_limit", "pgbouncer", "pool_timeout", "options"]) url.searchParams.delete(key);

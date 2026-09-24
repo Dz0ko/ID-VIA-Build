@@ -181,8 +181,9 @@ async function runAgentLocked(opts: RunOptions, assertActive: () => Promise<void
   const maxOutput = agent.mode === "report" ? Math.min(resolved.config.maxOutput, 8000) : Math.min(resolved.config.maxOutput, Math.max(32000, Math.ceil(docTokens * 1.6) + 12000));
   const EFFORT_RANK = { low: 0, medium: 1, high: 2, xhigh: 3, max: 4 } as const;
   // A whole-document restyle streams the entire site back; thinking time comes out of the same budget.
-  // GPT-6 Astra reasons for longer before its first token, so it drops to medium on smaller documents.
-  const capEffort = overhaul ? (docTokens > (resolved.provider.id === "openai" ? 4000 : 7000) ? "medium" : "high") : heavy || visualDesignTask || debuggingTask ? "xhigh" : taskClass === "section" ? "high" : "medium";
+  // Quality first within the server limit: Claude restyles at high effort (measured 238 s end to end on an 11k-token
+  // site, so the largest sites drop to medium, ~195 s); GPT-6 Astra reasons ~100 s before its first token at high.
+  const capEffort = overhaul ? (docTokens > (resolved.provider.id === "openai" ? 4000 : 10_000) ? "medium" : "high") : heavy || visualDesignTask || debuggingTask ? "xhigh" : taskClass === "section" ? "high" : "medium";
   const effort = resolved.config.effort && EFFORT_RANK[resolved.config.effort] > EFFORT_RANK[capEffort] ? capEffort : resolved.config.effort;
 
   let run: { id: string } | undefined;
@@ -296,7 +297,8 @@ async function runAgentLocked(opts: RunOptions, assertActive: () => Promise<void
         }
         answer = extractAnswer(result.text);
         if (!(answer ?? result.text).trim()) throw new Error("Model returned an empty response.");
-        if (targetedEdit && answer !== null && !/[?？]/.test(answer)) throw new Error("Model did not return the requested edits or a focused clarification question. Do not claim an edit was made without returning the edit operations.");
+        // An informational answer is fine; an answer that claims a change without edit operations is not.
+        if (targetedEdit && answer !== null && !/[?？]/.test(answer) && /\b(?:i|we)(?:'ve| have)? (?:just |now |also )?(?:updated|changed|replaced|added|removed|edited|applied|fixed|implemented|swapped|moved|inserted|restyled|redesigned)\b|\b(?:has|have) been (?:updated|changed|replaced|added|removed|edited|applied|fixed|implemented)\b|^(?:done|updated|changed|replaced|fixed)[.!]?$/i.test(answer)) throw new Error("Model did not return the requested edits or a focused clarification question. Do not claim an edit was made without returning the edit operations.");
         const deletable = new Set(sourceFiles.filter(f=>/\b(?:delete|remove)\b[\s\S]*\bfiles?\b/i.test(opts.request) && opts.request.includes(f.path.slice(1))).map(f=>f.path));
         generatedFiles = agent.mode === "rewrite" && answer === null && isApp ? (targetedFiles ? applyFileEdits(result.text,sourceFiles,readableFiles,deletable) : parseFileManifest(result.text,sourceFiles)) : null;
         generatedHtml = agent.mode === "rewrite" && answer === null && !isApp ? (targetedHtml ? applyHtmlEdits(result.text,sourceHtml) : protectProjectNavigation(extractHtml(result.text))) : null;

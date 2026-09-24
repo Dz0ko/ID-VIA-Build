@@ -94,8 +94,11 @@ async function settleCredits(opts: { userId: string; ledgerId: string; purchased
     await tx.user.update({ where: { id: user.id }, data: { credits, purchasedCredits } });
     await tx.creditLedger.update({ where: { id: row.id }, data: { delta: -due, note: opts.note, meta: JSON.stringify({ ...previous, ...meta, finalCredits: due, settlement: status, purchasedUsed: purchasedUsed - restored + Math.max(0, user.purchasedCredits - purchasedCredits) }) } });
     return due;
-  });
+  }, TRANSACTION_OPTIONS);
 }
+
+/** Under a burst a settlement may queue for a connection; waiting beats failing a paid run. */
+const TRANSACTION_OPTIONS = { maxWait: 10_000, timeout: 15_000 };
 
 export async function releaseCredits(opts: { userId: string; ledgerId: string; hold: number; keep: number; purchasedHeld?: number; note: string }) {
   return settleCredits(opts, opts.keep, "refunded");
@@ -124,7 +127,7 @@ export async function reserveCredits(userId: string, amount: number, reason: str
     // Recorded on the row so a refund after a lost server process still restores purchased credits.
     const row = await tx.creditLedger.create({ data: { userId, delta: -amount, reason, projectId, note, meta: JSON.stringify({ purchasedUsed: purchasedSpent }) } });
     return { purchasedSpent, ledgerId: row.id };
-  });
+  }, TRANSACTION_OPTIONS);
 }
 
 /**

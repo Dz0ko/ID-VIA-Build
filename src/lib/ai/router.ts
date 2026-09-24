@@ -39,13 +39,21 @@ export async function generateWithFallback(resolved: ResolvedModel, input: Gener
   try {
     return await resolved.provider.generate(resolved.config.model, { ...input, onText: (text) => { emittedText = true; input.onText?.(text); } });
   } catch (e) {
-    const canFallback = !input.signal?.aborted && !emittedText && resolved.provider.id === "anthropic" && PROVIDERS.openai.available() && isAccountOrCapacityError(e);
-    if (!canFallback) throw e;
-    anthropicPausedUntil = Date.now() + PAUSE_MS;
-    console.warn(`[ai] Anthropic unavailable, falling back to OpenAI for ${resolved.tier}`);
-    const model = process.env.OPENAI_MODEL || OPENAI_TIER_MODELS[resolved.tier];
-    const result = await PROVIDERS.openai.generate(model, input);
-    return { ...result, fellBack: true };
+    // Under load either provider can rate-limit or overload; the other one answers the same request once.
+    if (input.signal?.aborted || emittedText || !isAccountOrCapacityError(e)) throw e;
+    if (resolved.provider.id === "anthropic" && PROVIDERS.openai.available()) {
+      anthropicPausedUntil = Date.now() + PAUSE_MS;
+      console.warn(`[ai] Anthropic unavailable, falling back to OpenAI for ${resolved.tier}`);
+      const model = process.env.OPENAI_MODEL || OPENAI_TIER_MODELS[resolved.tier];
+      const result = await PROVIDERS.openai.generate(model, input);
+      return { ...result, fellBack: true };
+    }
+    if (resolved.provider.id === "openai" && PROVIDERS.anthropic.available() && Date.now() >= anthropicPausedUntil) {
+      console.warn(`[ai] OpenAI unavailable, falling back to Anthropic for ${resolved.tier}`);
+      const result = await PROVIDERS.anthropic.generate(DEFAULT_SETTINGS.tiers[resolved.tier].model, input);
+      return { ...result, fellBack: true };
+    }
+    throw e;
   }
 }
 

@@ -127,6 +127,8 @@ model Project {
   files      ProjectFile[]
   shareLinks ShareLink[]
   comments   Comment[]
+
+  @@index([userId, updatedAt])
 }
 
 model Version {
@@ -151,6 +153,8 @@ model Message {
   model       String?
   creditsUsed Int      @default(0)
   createdAt   DateTime @default(now())
+
+  @@index([projectId, createdAt])
 }
 
 model AgentRun {
@@ -172,6 +176,10 @@ model AgentRun {
   ledgerId    String?
   startedAt   DateTime  @default(now())
   finishedAt  DateTime?
+
+  @@index([projectId, startedAt])
+  @@index([userId, startedAt])
+  @@index([status, startedAt])
 }
 
 model CreditLedger {
