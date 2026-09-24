@@ -12,6 +12,7 @@ import { BrandIcon, type BrandIconName } from "@/components/BrandIcon";
 import type { SessionUser } from "@/lib/auth";
 import { PLANS } from "@/lib/plans";
 import { planAtLeast } from "@/lib/agents";
+import { canManageSupport } from "@/lib/support-access";
 
 const NavigationContext = createContext({ open: false, toggle: () => {} });
 export function WorkspaceMenuButton() {
@@ -86,6 +87,11 @@ function ShellLayout({ user, children }: { user: SessionUser; children: React.Re
               </div>
             </div>
           ))}
+          {canManageSupport(user.role) && (
+            <Link href="/app/support" className="workspace-nav-link" aria-current={pathname === "/app/support" ? "page" : undefined}>
+              <BrandIcon name="message" size={16} className="text-ash" /><span className="flex-1">Live support</span>
+            </Link>
+          )}
           {user.role === "ADMIN" && (
             <Link href="/admin" className="workspace-nav-link">
               <BrandIcon name="admin" size={16} className="text-ash" /><span className="flex-1">Admin console</span><span className="text-[10px] text-ash">↗</span>

@@ -19,7 +19,7 @@ export async function GET() {
 export async function PATCH(req: Request) {
   return withUser(async (user) => {
     if (user.role !== "ADMIN") return error("Forbidden", 403);
-    const body = z.object({ id: z.string().max(64), plan: z.string().optional(), addCredits: z.number().int().min(1).max(1_000_000).optional(), role: z.enum(["USER", "ADMIN"]).optional() }).safeParse(await req.json().catch(() => null));
+    const body = z.object({ id: z.string().max(64), plan: z.string().optional(), addCredits: z.number().int().min(1).max(1_000_000).optional(), role: z.enum(["USER", "SUPPORTER", "ADMIN"]).optional() }).safeParse(await req.json().catch(() => null));
     if (!body.success) return error("Invalid input.");
     if (body.data.role && body.data.id === user.id) return error("You cannot change your own role.", 400);
     const data: Record<string, unknown> = {};

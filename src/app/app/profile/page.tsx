@@ -62,6 +62,7 @@ export default async function Profile({ searchParams }: PageProps<"/app/profile"
             <div className="mt-2 flex flex-wrap gap-1.5">
               <span className="pill text-[10px] border-signal text-signal-soft">{plan.name} plan</span>
               {user.role === "ADMIN" && <span className="pill text-[10px]">Admin</span>}
+              {user.role === "SUPPORTER" && <span className="pill text-[10px]">Supporter</span>}
               {user.providers.google && <span className="pill text-[10px]">Google linked</span>}
               {user.providers.github && <span className="pill text-[10px]">GitHub linked</span>}
               {user.providers.password && <span className="pill text-[10px]">Email + password</span>}

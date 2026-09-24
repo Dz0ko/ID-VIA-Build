@@ -22,7 +22,7 @@ model User {
   whopUserId     String?  @unique // Whop customer id (payments only)
   googleId       String?  @unique
   githubId       String?  @unique
-  role           String   @default("USER") // USER | ADMIN
+  role           String   @default("USER") // USER | SUPPORTER | ADMIN
   plan           String   @default("FREE") // FREE | STARTER | PRO | MAX | AGENCY
   credits        Int      @default(100)
   /// Part of `credits` that was bought as packs; never expires at the monthly renewal. Always <= credits.

@@ -9,6 +9,7 @@ export const dynamic = "force-dynamic";
 export default async function AdminLayout({ children }: LayoutProps<"/admin">) {
   const user = await getCurrentUser();
   if (!user) redirect("/login?next=/admin");
+  if (user.role === "SUPPORTER") redirect("/app/support");
   if (user.role !== "ADMIN") redirect("/app");
   return (
     <>

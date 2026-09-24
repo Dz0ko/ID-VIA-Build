@@ -26,7 +26,7 @@ async function api(path: string, cookie = "", method = "GET", body?: unknown) {
 }
 const input = (message: string, action = "message") => ({ message, action, clientId: randomUUID() });
 
-test("support is private, tenant-isolated and admins alone can access the inbox", async () => {
+test("support is private, tenant-isolated and customers cannot access the staff inbox", async () => {
   const a = await account(), b = await account(), admin = await account("ADMIN");
   const created = await Promise.all([api("/api/support", a.cookie, "POST"), api("/api/support", a.cookie, "POST")]);
   const [one, two] = await Promise.all(created.map(r => r.json()));
@@ -42,6 +42,64 @@ test("support is private, tenant-isolated and admins alone can access the inbox"
   assert.equal((await api(path, a.cookie, "POST", input("", "claim"))).status, 403);
   assert.equal((await api("/api/admin/support", admin.cookie)).status, 200);
   assert.match((await api(path, a.cookie)).headers.get("cache-control")!, /no-store/);
+});
+
+test("admins can grant supporter; supporters reply live without other admin or project permissions", async () => {
+  const admin = await account("ADMIN"), supporter = await account(), customer = await account();
+  const thread = await db.supportThread.create({ data: { userId: customer.id, status: "WAITING" } });
+  const path = `/api/support/${thread.id}`;
+  assert.equal((await api("/api/admin/users", supporter.cookie, "PATCH", { id: supporter.id, role: "SUPPORTER" })).status, 403);
+  assert.equal((await api("/api/admin/users", admin.cookie, "PATCH", { id: supporter.id, role: "SUPPORTER" })).status, 200);
+  // The existing session sees the new role without logging out or minting another token.
+  assert.equal((await api("/api/admin/support", supporter.cookie)).status, 200);
+  const page = await (await api("/app/support", supporter.cookie)).text();
+  assert.match(page, /Select a conversation to read and reply/);
+  assert.doesNotMatch(page, /href="\/admin"/);
+  for (const route of ["users", "settings", "email", "payouts", "affiliates", "marketplace"]) {
+    assert.equal((await api(`/api/admin/${route}`, supporter.cookie)).status, 403, route);
+  }
+  assert.equal((await api("/api/admin/users", supporter.cookie, "PATCH", { id: supporter.id, role: "ADMIN" })).status, 403);
+  assert.equal((await api("/api/admin/users", supporter.cookie, "PATCH", { id: customer.id, addCredits: 1000 })).status, 403);
+  const project = await db.project.create({ data: { userId: customer.id, name: "Private customer project", slug: randomUUID() } });
+  assert.equal((await api(`/api/projects/${project.id}`, supporter.cookie)).status, 404);
+  assert.equal((await api(`/api/admin/projects/${project.id}/runtime`, supporter.cookie)).status, 403);
+  assert.equal((await api(path, supporter.cookie, "POST", input("", "claim"))).status, 200);
+  assert.equal((await api(path, admin.cookie, "POST", input("Competing reply"))).status, 409);
+  const stream = await api(path + "/events", customer.cookie);
+  const reader = stream.body!.getReader();
+  await reader.read();
+  const message = input("A supporter is here to help.");
+  assert.equal((await api(path, supporter.cookie, "POST", message)).status, 200);
+  assert.equal((await api(path, supporter.cookie, "POST", message)).status, 200);
+  let received = "";
+  for (let i = 0; i < 5 && !received.includes(message.message); i++) {
+    const chunk = await reader.read(); if (chunk.done) break;
+    received += new TextDecoder().decode(chunk.value);
+  }
+  await reader.cancel();
+  assert.ok(received.includes(message.message), "Customer receives the supporter reply live");
+  const saved = await db.supportMessage.findMany({ where: { threadId: thread.id, clientId: message.clientId } });
+  assert.equal(saved.length, 1); assert.equal(saved[0].role, "manager");
+  assert.equal((await api(path, supporter.cookie, "POST", input("", "close"))).status, 200);
+  assert.equal((await (await api(path, customer.cookie)).json()).thread.status, "CLOSED");
+  assert.equal((await db.user.findUniqueOrThrow({ where: { id: customer.id } })).credits, customer.credits);
+});
+
+test("removing supporter immediately blocks inbox, replies and open event streams", async () => {
+  const admin = await account("ADMIN"), supporter = await account("SUPPORTER"), customer = await account();
+  const thread = await db.supportThread.create({ data: { userId: customer.id, status: "WAITING" } });
+  const path = `/api/support/${thread.id}`;
+  const stream = await api(path + "/events", supporter.cookie);
+  assert.equal(stream.status, 200);
+  const reader = stream.body!.getReader(); await reader.read();
+  assert.equal((await api("/api/admin/users", admin.cookie, "PATCH", { id: supporter.id, role: "USER" })).status, 200);
+  let closed = false;
+  for (let i = 0; i < 5; i++) { if ((await reader.read()).done) { closed = true; break; } }
+  await reader.cancel(); assert.ok(closed, "Demoted supporters stop receiving customer messages");
+  assert.equal((await api("/api/admin/support", supporter.cookie)).status, 403);
+  assert.equal((await api(path, supporter.cookie)).status, 404);
+  assert.equal((await api(path + "/events", supporter.cookie)).status, 404);
+  assert.equal((await api(path, supporter.cookie, "POST", { ...input("Blocked reply"), asManager: true })).status, 404);
 });
 
 test("provider failure hands off durably, retries are idempotent and support costs no user credits", async () => {

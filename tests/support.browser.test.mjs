@@ -109,6 +109,37 @@ test('long prompts can be filtered, customised and passed intact into a project'
   assert.match(await evaluate("new URLSearchParams(location.search).get('prompt')"), /Northstar/);
 });
 
+test('admin grants Supporter from Users and the supporter answers through Live support', async () => {
+  const supporter = await db.user.create({ data: { email: 'supporter@fixture.invalid', name: 'Supporter Preview' } });
+  await rpc('Network.setCookie', { name: 'idaevia_session', value: adminCookie, url: base, httpOnly: true, sameSite: 'Lax' });
+  await rpc('Page.navigate', { url: `${base}/admin/users` });
+  await until(`!!document.querySelector('[aria-label="Role for supporter@fixture.invalid"]')`);
+  await evaluate(`(()=>{const el=document.querySelector('[aria-label="Role for supporter@fixture.invalid"]');el.value='SUPPORTER';el.dispatchEvent(new Event('change',{bubbles:true}));})()`);
+  await until(`document.querySelector('[aria-label="Role for supporter@fixture.invalid"]')?.value==='SUPPORTER' && !document.querySelector('[aria-label="Role for supporter@fixture.invalid"]').disabled`);
+  assert.equal((await db.user.findUniqueOrThrow({ where: { id: supporter.id } })).role, 'SUPPORTER');
+  const token = await new SignJWT({ sub: supporter.id, ver: 0 }).setProtectedHeader({ alg: 'HS256' }).setExpirationTime('1h').sign(new TextEncoder().encode(process.env.AUTH_SECRET));
+  await rpc('Network.setCookie', { name: 'idaevia_session', value: token, url: base, httpOnly: true, sameSite: 'Lax' });
+  await rpc('Page.navigate', { url: `${base}/app` });
+  await until(`!!document.querySelector('a[href="/app/support"]')`);
+  assert.equal(await evaluate(`!!document.querySelector('a[href="/admin"]')`), false);
+  await evaluate(`document.querySelector('a[href="/app/support"]').click()`);
+  await until("document.body?.innerText.includes('Support Preview')");
+  await evaluate("[...document.querySelectorAll('button')].find(b=>b.textContent.includes('Support Preview')).click()");
+  await until("document.body?.innerText.includes('Live updates connected')");
+  // A previous manager may own this conversation; explicitly take over first.
+  await evaluate("[...document.querySelectorAll('button')].find(b=>['Take over','Join conversation'].includes(b.textContent.trim()))?.click()");
+  await until("[...document.querySelectorAll('button')].some(b=>b.textContent.trim()==='Join conversation' && !b.disabled)");
+  await type('[aria-label="Support conversation"] textarea', 'Your supporter can help with this question.');
+  await click('Send message');
+  await until("document.querySelector('[role=log]').innerText.includes('Your supporter can help')");
+  assert.ok(await evaluate('document.documentElement.scrollWidth<=innerWidth'));
+  await rpc('Page.captureScreenshot', { format: 'png' }).then(x => writeFile('.next/supporter-inbox.png', Buffer.from(x.data, 'base64')));
+  await rpc('Network.setCookie', { name: 'idaevia_session', value: customerCookie, url: base, httpOnly: true, sameSite: 'Lax' });
+  await rpc('Page.navigate', { url: `${base}/app/support` });
+  await until("document.querySelector('[role=log]')?.innerText.includes('Your supporter can help')");
+  assert.ok(await evaluate("document.querySelector('[role=log]').innerText.includes('Supporter Preview')"));
+});
+
 test('new project accepts the full detailed brief while keeping its description concise', async () => {
   const prompt = 'Build a complete SaaS CRM. ' + 'Include secure workspaces, deals and contacts with a polished responsive dashboard. '.repeat(35);
   await rpc('Page.navigate', { url: `${base}/app?prompt=${encodeURIComponent(prompt)}` });

@@ -1,9 +1,10 @@
 import { db } from "@/lib/db";
 import { error, json, withUser } from "@/lib/api";
 import { supportTier } from "@/lib/support-tier";
+import { canManageSupport } from "@/lib/support-access";
 export async function GET(req: Request) {
   return withUser(async user => {
-    if (user.role !== "ADMIN") return error("Admin access required.", 403);
+    if (!canManageSupport(user.role)) return error("Support staff access required.", 403);
     const params = new URL(req.url).searchParams;
     const status = params.get("status"), tier = params.get("tier");
     const query = (params.get("q") ?? "").slice(0, 100);

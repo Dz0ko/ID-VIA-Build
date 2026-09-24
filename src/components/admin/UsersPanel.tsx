@@ -11,6 +11,8 @@ export function UsersPanel() {
   const [filter, setFilter] = useState("");
   const [plan, setPlan] = useState("");
   const [grant, setGrant] = useState<Record<string, number>>({});
+  const [error, setError] = useState("");
+  const [saving, setSaving] = useState<string | null>(null);
 
   async function load() {
     const u = await fetch("/api/admin/users").then((r) => r.json());
@@ -19,8 +21,14 @@ export function UsersPanel() {
   useEffect(() => { const id = setTimeout(load, 0); return () => clearTimeout(id); }, []);
 
   async function patchUser(id: string, data: Record<string, unknown>) {
-    await fetch("/api/admin/users", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id, ...data }) });
-    load();
+    setSaving(id); setError("");
+    try {
+      const response = await fetch("/api/admin/users", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id, ...data }) });
+      const body = await response.json();
+      if (!response.ok) throw new Error(body.error || "Could not update this user.");
+      await load();
+    } catch (e) { setError(e instanceof Error ? e.message : "Could not update this user. Please try again."); }
+    finally { setSaving(null); }
   }
 
   if (!users) return <div className="text-sm text-ash">Loading…</div>;
@@ -30,6 +38,7 @@ export function UsersPanel() {
 
   return (
     <div className="space-y-4">
+      {error && <p role="alert" className="text-sm text-red-400">{error}</p>}
       <section className="admin-metrics">
         <div className="p-4"><div className="label">Total</div><div className="mt-1 text-2xl font-semibold">{users.length}</div></div>
         <div className="p-4"><div className="label">Paying</div><div className="mt-1 text-2xl font-semibold">{paid}</div></div>
@@ -38,6 +47,7 @@ export function UsersPanel() {
       </section>
 
       <section className="card overflow-hidden">
+        <p className="px-4 py-3 text-xs text-ash border-b border-graphite">Supporters can read and reply to customer conversations from Live support. Only admins can manage users, billing and platform settings.</p>
         <div className="px-4 py-3 border-b border-graphite flex flex-wrap items-center gap-3">
           <div className="text-sm font-medium">Users <span className="text-ash font-normal">({visible.length})</span></div>
           <div className="ml-auto flex items-center gap-2">
@@ -64,7 +74,7 @@ export function UsersPanel() {
                   <td className="p-3"><Link className="underline underline-offset-4" href={`/admin/projects?owner=${encodeURIComponent(u.id)}`}>{u._count.projects} projects →</Link></td>
                   <td className="p-3">{u._count.referrals}</td>
                   <td className="p-3 font-mono">{u.sellerBalanceCents ? `$${(u.sellerBalanceCents / 100).toFixed(2)}` : "—"}</td>
-                  <td className="p-3"><select className="input py-1 w-24" value={u.role} onChange={(e) => patchUser(u.id, { role: e.target.value })}><option>USER</option><option>ADMIN</option></select></td>
+                  <td className="p-3"><select aria-label={`Role for ${u.email}`} className="input py-1 w-32" disabled={saving !== null} value={u.role} onChange={(e) => patchUser(u.id, { role: e.target.value })}><option value="USER">User</option><option value="SUPPORTER">Supporter</option><option value="ADMIN">Admin</option></select></td>
                   <td className="p-3 text-ash whitespace-nowrap">{new Date(u.createdAt).toLocaleDateString()}</td>
                   <td className="p-3 text-right whitespace-nowrap">
                     <input type="number" className="input py-1 w-20 inline-block mr-1" value={grant[u.id] ?? 500} onChange={(e) => setGrant({ ...grant, [u.id]: Number(e.target.value) })} />
