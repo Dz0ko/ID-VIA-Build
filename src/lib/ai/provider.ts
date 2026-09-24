@@ -2,6 +2,7 @@ import "server-only";
 import Anthropic from "@anthropic-ai/sdk";
 import OpenAI from "openai";
 import type { ModelConfig } from "../settings";
+import { outputTokenLimit } from "./output-limit";
 
 export interface InputImage {
   mediaType: "image/png" | "image/jpeg" | "image/webp" | "image/gif";
@@ -74,7 +75,8 @@ export const anthropicProvider: AIProvider = {
     const frontier = /fable|mythos/.test(model);
     const params = {
       model,
-      max_tokens: input.maxOutput ?? 32000,
+      // Thinking counts against max_tokens on adaptive models; leave room for it beyond the visible budget.
+      max_tokens: outputTokenLimit(model, input.maxOutput ?? 32000, input.effort, adaptive),
       system: [{ type: "text" as const, text: input.system, cache_control: { type: "ephemeral" as const } }],
       messages: anthropicMessages(input),
       ...(adaptive
@@ -154,7 +156,8 @@ export const openaiProvider: AIProvider = {
         stream: true,
         stream_options: { include_usage: true },
         messages,
-        max_completion_tokens: input.maxOutput ?? 32000,
+        // Reasoning tokens count against the completion limit; leave room for them beyond the visible budget.
+        max_completion_tokens: outputTokenLimit(model, input.maxOutput ?? 32000, input.effort, reasoning),
         ...(reasoning && input.effort ? { reasoning_effort: input.effort } : {}),
       },
       { signal: input.signal },

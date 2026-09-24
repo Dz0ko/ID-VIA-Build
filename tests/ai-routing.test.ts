@@ -52,6 +52,17 @@ test("a new overall look is a whole-document restyle, a named target stays a tar
   assert.equal(classifyTask("change the button color to blue", true), "tiny");
 });
 
+test("the request output limit leaves room for thinking on reasoning models", async () => {
+  const { outputTokenLimit, modelMaxOutput } = await import("../src/lib/ai/output-limit");
+  assert.equal(outputTokenLimit("claude-fable-5-1", 32000, "xhigh", true), 96000);
+  assert.equal(outputTokenLimit("claude-fable-5-1", 64000, "max", true), 128000);
+  assert.equal(outputTokenLimit("claude-sonnet-5", 32000, "high", true), 64000);
+  assert.equal(outputTokenLimit("claude-haiku-4-5", 16000, undefined, false), 16000);
+  assert.equal(outputTokenLimit("gpt-6-astra", 32000, "high", true), 64000);
+  assert.equal(outputTokenLimit("gpt-4.1", 32000, undefined, false), 16000);
+  assert.equal(modelMaxOutput("claude-opus-5"), 128000);
+});
+
 test("navbar requests select the visual design path even without a design adjective", () => {
   for (const request of ['add a navbar', 'improve the navigation', 'create a header', 'build a hero']) {
     assert.equal(requiresFrontierDesign(request, 'builder'), true);
