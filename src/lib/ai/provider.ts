@@ -261,7 +261,9 @@ export const openaiProvider: AIProvider = {
       messages: openaiToolMessages(input.system, input.turns),
       tools: input.tools.map((t) => ({ type: "function" as const, function: { name: t.name, description: t.description, parameters: t.parameters } })),
       max_completion_tokens: outputTokenLimit(model, input.maxOutput ?? 16000, input.effort, reasoning),
-      ...(reasoning && input.effort ? { reasoning_effort: input.effort } : {}),
+      // Chat Completions rejects function tools together with reasoning on GPT-5.6/6 ("set reasoning_effort to
+      // 'none'"); the step-by-step tool loop supplies the deliberation instead. Reasoning with tools needs /v1/responses.
+      ...(reasoning ? { reasoning_effort: "none" } : {}),
     }, { signal: input.signal });
     const choice = completion.choices[0];
     const message = choice?.message;
