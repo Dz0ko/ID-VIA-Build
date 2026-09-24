@@ -101,6 +101,12 @@ export function auditProject(project: { kind: string; html: string; files: { pat
     if (/(?:^|\/)(?:package|composer|vercel|runtime)\.json$/.test(file.path)) {
       try { JSON.parse(file.content); } catch { issues.push({ area: "Code", severity: "high", message: `${file.path}: invalid JSON configuration.` }); }
     }
+    if (/\.prisma$/.test(file.path)) {
+      // Prisma accepts one enum value per line; several on one line fail `prisma generate` with "not an enum value definition".
+      const bad = [...file.content.matchAll(/^\s*enum\s+\w+\s*\{([^}]*)\}/gm)].filter(m => m[1].split("\n").some(line => /^\s*[A-Za-z_]\w*(?:\s+[A-Za-z_]\w*)+\s*(?:\/\/.*)?$/.test(line) && !/@map|@@/.test(line)));
+      if (bad.length) issues.push({ area: "Code", severity: "high", message: `${file.path}: enum values must be one per line (${bad.length} enum${bad.length === 1 ? "" : "s"} with several values on one line); prisma generate rejects the schema.` });
+      if (!/^\s*datasource\s+\w+\s*\{/m.test(file.content) || !/^\s*generator\s+\w+\s*\{/m.test(file.content)) issues.push({ area: "Code", severity: "high", message: `${file.path}: a Prisma schema needs both a datasource and a generator block.` });
+    }
     if (!/\.(tsx|jsx|html|vue|svelte)$/.test(file.path)) continue;
     if (/<img\b(?![^>]*\balt\s*=)[^>]*>/i.test(file.content)) issues.push({ area: "Accessibility", severity: "medium", message: `${file.path}: image without an alt attribute. Check whether it needs descriptive text or alt="".` });
     if (/<html\b(?![^>]*\blang\s*=)[^>]*>/i.test(file.content)) issues.push({ area: "Accessibility", severity: "medium", message: `${file.path}: root html element has no lang attribute.` });

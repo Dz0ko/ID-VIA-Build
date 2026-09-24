@@ -114,7 +114,13 @@ export function Workspace(p: WorkspaceProps) {
   const deployment = useMemo(() => deploymentProfile(isApp ? files : [{ path: "index.html", content: html }, ...files]), [files, isApp, html]);
   const [buildReport, setBuildReport] = useState<RuntimeReport | null>(null);
   const [runtimeIssue, setRuntimeIssue] = useState<string | null>(null);
-  const refreshRuntime = useCallback(async () => { const res = await fetch(`/api/projects/${p.project.id}/runtime`, { cache: "no-store" }); if (res.ok) setBuildReport((await res.json()).report); }, [p.project.id]);
+  const refreshRuntime = useCallback(async (): Promise<RuntimeReport | null> => { const res = await fetch(`/api/projects/${p.project.id}/runtime`, { cache: "no-store" }); if (!res.ok) return null; const report = (await res.json()).report as RuntimeReport | null; setBuildReport(report); return report; }, [p.project.id]);
+  // A failed build is repaired by the Debugger and rebuilt by itself, at most twice per click, so a preview opens without the user reading compiler output.
+  const repairRounds = useRef(0);
+  const autoRebuild = useRef(false);
+  // The memoized run callback reaches the current terminal function through a ref (term is redefined every render).
+  const termRef = useRef<(cmd: string) => Promise<void>>(async () => {});
+  termRef.current = term;
   const [savedFiles, setSavedFiles] = useState<ProjFile[]>(p.project.files);
   const [activeFile, setActiveFile] = useState<string>(p.project.files[0]?.path ?? "/App.tsx");
   const [releases, setReleases] = useState(p.releases ?? []);
@@ -386,14 +392,17 @@ export function Workspace(p: WorkspaceProps) {
     if (pendingStackRequest) setPendingStackRequest(null);
     setQualityChoices(null);
     const imgs = importImages ?? images; setImages([]);
+    let saved = false;
     for (const [i, id] of [agentToRun, ...chain].entries()) {
       const outcome = await runOne(effectiveRequest, id, i === 0 ? imgs : []);
-      if (outcome === "done") { setComponentIds([]); if (params.get("from") === "import") void clearImportHandoff(p.project.id).catch(() => {}); }
+      if (outcome === "done") { saved = true; setComponentIds([]); if (params.get("from") === "import") void clearImportHandoff(p.project.id).catch(() => {}); }
       if (outcome === "clarified") { setComponentIds([]); break; }
       if (!outcome) { if (pendingStackRequest) setPendingStackRequest(pendingStackRequest); setInput((current) => current || request); if (i === 0) setImages(imgs); break; }
     }
     // The time limit split the build: the next part starts by itself from the saved files.
     if (continuationRef.current) { continuationRef.current = null; await run("CONTINUE BUILD", "builder"); }
+    // An automatic repair is followed by a rebuild, which opens the preview or hands the next failure back to the Debugger.
+    if (autoRebuild.current) { autoRebuild.current = false; if (saved) await termRef.current("npm run build"); }
   }, [agentId, images, pendingStackRequest, runOne, componentIds, allAgents, params, p.project.id]);
 
   useEffect(() => {
@@ -566,7 +575,15 @@ export function Workspace(p: WorkspaceProps) {
           }
         }
       } catch (e) { push(`✗ ${e instanceof Error ? e.message : "terminal error"}`); }
-      finally { await refreshRuntime().catch(() => {}); await refreshReleases().catch(() => {}); setTermBusy(false); terminalRunning.current = false; terminalAbort.current = null; }
+      finally {
+        const report = await refreshRuntime().catch(() => null); await refreshReleases().catch(() => {}); setTermBusy(false); terminalRunning.current = false; terminalAbort.current = null;
+        if (cmd === "npm run build" && report?.status === "error" && report.current && repairRounds.current < 2 && !busyRef.current) {
+          repairRounds.current += 1; autoRebuild.current = true;
+          log(`Build failed · the Debugger is fixing it automatically (attempt ${repairRounds.current} of 2)…`);
+          setBottom("chat"); setExpandedPanel(true);
+          void run(`Fix the actual compilation/startup failure in this ${runtime.label} project, preserve the requested stack and design.\n${report.log.slice(-16000)}`, "debugger");
+        }
+      }
       return;
     }
 
@@ -593,10 +610,10 @@ export function Workspace(p: WorkspaceProps) {
         </div>
         <div className="mx-auto flex items-center gap-1 border border-graphite rounded-full p-0.5">
           <button onClick={() => { setBottom("chat"); setExpandedPanel(true); }} className={`btn btn-sm ${expandedPanel && bottom === "chat" ? "btn-primary" : "btn-ghost"}`}><MessageSquare size={13} />Chat</button>
-          <button onClick={() => { if (isApp && !isReactApp && !runtimeUrl) { void term("preview"); } else { setView("preview"); setExpandedPanel(false); } }} className={`btn btn-sm ${!expandedPanel && view === "preview" ? "btn-primary" : "btn-ghost"}`}><Eye size={13} />Preview</button>
+          <button onClick={() => { if (isApp && !isReactApp && !runtimeUrl) { repairRounds.current = 0; void term("npm run build"); } else { setView("preview"); setExpandedPanel(false); } }} className={`btn btn-sm ${!expandedPanel && view === "preview" ? "btn-primary" : "btn-ghost"}`}><Eye size={13} />Preview</button>
           <button onClick={() => { setView("code"); setExpandedPanel(false); setShowFiles(true); }} className={`btn btn-sm ${!expandedPanel && view === "code" ? "btn-primary" : "btn-ghost"}`}><Code2 size={13} />Code</button>
         </div>
-        <button disabled={!!busy || termBusy} onClick={() => term("npm run build")} className="btn btn-outline btn-sm"><Play size={13} />{termBusy ? "Running…" : runtime.previewPort === null ? "Build / check" : "Build & preview"}</button>
+        <button disabled={!!busy || termBusy} onClick={() => { repairRounds.current = 0; void term("npm run build"); }} className="btn btn-outline btn-sm"><Play size={13} />{termBusy ? "Running…" : runtime.previewPort === null ? "Build / check" : "Build & preview"}</button>
         {!isApp && <div className="hidden lg:flex items-center gap-0.5 border border-graphite rounded-full p-0.5">
           {([["desktop", Monitor], ["tablet", Tablet], ["mobile", Smartphone]] as const).map(([d, I]) => (
             <button key={d} onClick={() => setDevice(d)} className={`btn btn-sm ${device === d ? "bg-graphite" : "btn-ghost"}`} title={d}><I size={13} /></button>
