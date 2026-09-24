@@ -69,6 +69,8 @@ test("browser ingestion is authenticated, bounded, untrusted and project-owner c
   assert.equal((await api("/api/monitoring", other.cookie, "POST", report)).status, 404);
   assert.equal((await api("/api/monitoring", user.cookie, "POST", report, "https://attacker.invalid")).status, 403);
   assert.equal((await api("/api/monitoring", user.cookie, "POST", { ...report, message: "x".repeat(2001) })).status, 400);
+  assert.equal((await api("/api/monitoring", user.cookie, "POST", { ...report, message: "signal is aborted without reason" })).status, 200);
+  assert.equal(await db.platformIncident.count({ where: { userId: user.id, source: "browser" } }), 0); // a cancelled request is not an incident
   assert.equal((await api("/api/monitoring", user.cookie, "POST", report)).status, 200);
   const row = await db.platformIncident.findFirstOrThrow({ where: { userId: user.id, source: "browser" } });
   assert.equal(row.severity, "MEDIUM"); assert.equal(row.area, "UNKNOWN"); assert.equal(row.route, `/app/projects/${p.id}`);

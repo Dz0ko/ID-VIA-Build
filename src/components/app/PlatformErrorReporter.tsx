@@ -1,8 +1,14 @@
 "use client";
 import { useEffect } from "react";
-import { redactIncidentText } from "@/lib/platform-error-details";
+import { expectedOperationalError, redactIncidentText } from "@/lib/platform-error-details";
+
+/** A request cancelled by navigation or an unmount is not an interface failure. */
+export function isCancelledRequest(error: Error): boolean {
+  return error.name === "AbortError" || /\baborted\b|AbortError/i.test(error.message);
+}
 
 export function reportBrowserError(error: Error) {
+  if (isCancelledRequest(error) || expectedOperationalError(error)) return;
   const key = redactIncidentText(error.message).slice(0, 200);
   if (seen.has(key) || seen.size >= 8) return;
   seen.add(key);

@@ -18,6 +18,8 @@ export async function POST(req: Request) {
     if (projectId && !await db.project.findFirst({ where: { id: projectId, userId: user.id }, select: { id: true } })) return error("Not found", 404);
     const reported = new Error(body.data.message);
     reported.stack = body.data.stack;
+    // Cancelled requests (navigation, unmount, closed tab) are not interface failures; older clients still send them.
+    if (/\baborted\b|AbortError/i.test(reported.message)) return json({ ok: true, ignored: true });
     await recordPlatformError(reported, { source: "browser", userId: user.id, projectId, route: path });
     return json({ ok: true });
   });
