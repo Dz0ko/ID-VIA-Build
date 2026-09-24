@@ -258,6 +258,10 @@ export function Workspace(p: WorkspaceProps) {
             usedCredits = ev.credits; setCredits((c) => c - ev.credits);
             log(`Routed → ${ev.tier} tier · ${ev.provider}/${ev.model} · task=${ev.taskClass} · ${ev.credits} credits${ev.fallback ? " · template engine" : ""}`);
             setActivity((items) => [...items.map((item) => ({ ...item, status: "done" as const })), { id: `activity-${Date.now()}`, label: "Plan work", detail: `${ev.tier} model · ${ev.taskClass} task`, status: "running" }]);
+          } else if (ev.type === "reading") {
+            acc = ""; setStream("");
+            const detail = `Reading ${ev.files.join(", ")}`; log(detail);
+            setActivity((items) => [...items.map((item) => ({ ...item, status: "done" as const })), { id: `activity-${Date.now()}`, label: "Read source", detail, status: "running" }]);
           } else if (ev.type === "retry") {
             acc = ""; setStream(""); log(ev.message);
             setActivity((items) => [...items.map((item) => ({ ...item, status: "done" as const })), { id: `activity-${Date.now()}`, label: "Automatic retry", detail: ev.message, status: "running" }]);
@@ -277,7 +281,7 @@ export function Workspace(p: WorkspaceProps) {
           else if (ev.type === "done") {
             completed = true;
             setCredits(c => c + usedCredits - ev.creditsUsed);
-            setActivity((items) => [...items.map((item) => ({ ...item, status: "done" as const })), { id: `activity-${Date.now()}`, label: "Save result", detail: ev.mode === "rewrite" ? "Change saved" : "Answer ready", status: "done" }]);
+            setActivity([]); setStream("");
             if (ev.mode === "rewrite") {
               rewrote = true;
               if (ev.files) { setDiffs(makeDiffs(savedFiles, ev.files)); setFiles(ev.files); setSavedFiles(ev.files); setActiveFile((f) => (ev.files.some((x: ProjFile) => x.path === f) ? f : "/App.tsx")); }
@@ -297,7 +301,7 @@ export function Workspace(p: WorkspaceProps) {
       if (!completed && !clarified) throw new Error("The connection ended before the agent finished. Please try again.");
       if (rewrote) await runAuditRequest(false);
       setStream("");
-      return true;
+      return completed;
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Failed";
       setError(msg); log(`✗ ${msg}`, "err"); setStream("");
@@ -356,11 +360,15 @@ export function Workspace(p: WorkspaceProps) {
     const next: RefImage[] = [];
     for (const f of Array.from(list).slice(0, 4 - images.length)) {
       if (!/^image\/(png|jpeg|webp|gif)$/.test(f.type) || f.size > 4_500_000) { setError("Images must be PNG/JPEG/WebP/GIF under 4.5 MB."); continue; }
-      const data = await new Promise<string>((res) => { const r = new FileReader(); r.onload = () => res(String(r.result).split(",")[1]); r.readAsDataURL(f); });
-      next.push({ name: f.name, mediaType: f.type as RefImage["mediaType"], data });
+      try {
+        const data = await new Promise<string>((res, reject) => { const r = new FileReader(); r.onload = () => res(String(r.result).split(",")[1]); r.onerror = () => reject(new Error("Could not read image")); r.readAsDataURL(f); });
+        const decoded = new Image(); decoded.src = `data:${f.type};base64,${data}`;
+        await decoded.decode();
+        next.push({ name: f.name, mediaType: f.type as RefImage["mediaType"], data });
+      } catch { setError(`Could not open ${f.name}. Choose a valid PNG, JPEG, WebP or GIF image.`); }
     }
-    setImages((i) => [...i, ...next]);
-    if (next.length && !input) setInput("Recreate the attached reference design as a complete, original website with the same layout, typography, colours and spacing.");
+    setImages((i) => [...i, ...next].slice(0, 4));
+    if (next.length && !input) setInput((isApp ? savedFiles.length > 0 : Boolean(savedHtml.trim())) ? "Use the attached image in this project. Ask me where to place it if the intended target is unclear, and preserve everything else." : "Recreate the attached reference design as a complete, original website with the same layout, typography, colours and spacing.");
   }
 
   async function perform(task: () => Promise<unknown>) {

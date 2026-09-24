@@ -56,7 +56,8 @@ export function friendlyAiError(e: unknown): string {
   if (isAccountOrCapacityError(e) || /no credits remaining|insufficient_quota|billing/i.test(msg)) {
     return "The AI providers are temporarily unavailable. Your credits were refunded; please try again in a few minutes.";
   }
-  if (err?.status === 400) return "The request could not be processed by the model. Try a shorter or clearer prompt.";
+  if (err?.status === 400 && /(?:process|unsupported|invalid|decode).*image|image.*(?:invalid|unsupported|decode)/i.test(msg)) return "An attached image could not be read by the model. Re-export it as PNG or JPEG and attach it again. This run was fully refunded; your project was preserved.";
+  if (err?.status === 400) return "The request could not be processed by the model. This run was fully refunded. Try a shorter or clearer prompt.";
   if (err?.status === 401 || err?.status === 403) return "The AI service is temporarily unavailable. Please contact support if this continues.";
   if (/did not return|empty response|truncated/.test(msg)) return "The model did not finish a usable result. Your project was preserved and this run was fully refunded. Please retry.";
   if (e instanceof Error && e.name === "AbortError") return "Generation was interrupted. This run was fully refunded.";

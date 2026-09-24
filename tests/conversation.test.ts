@@ -10,3 +10,8 @@ test('only an explicit answer envelope bypasses code application', () => {
   assert.equal(extractAnswer('<html><body>hello</body></html>'), null);
   assert.equal(extractAnswer('<<<FILE /App.tsx>>>code<<<END>>>'), null);
 });
+
+test('polite edit requests and image changes remain edits even with a question mark',()=>{
+ for(const p of ['Can you replace only the logo?','Could you edit this headline?','Can you also please change the logo?','Could you help me add a navbar?','I want to change only the button text','Use the attached image as my logo?','dali mozes da go smenis logoto?','можеш ли да го смениш логото?'])assert.equal(isConversationRequest(p),false,p);
+ for(const p of ['How can I change the logo?','Can you explain how to edit the headline?','What does this logo mean?'])assert.equal(isConversationRequest(p),true,p);
+});

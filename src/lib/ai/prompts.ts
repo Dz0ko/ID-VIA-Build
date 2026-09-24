@@ -1,5 +1,6 @@
 import { BINARY_PREFIX } from "../file-content";
 import { designSkill } from "./design-skill";
+import { safeProjectPath } from "../project-source";
 
 export const BUILDER_SYSTEM = `You are IDÆVIA Build, an elite AI web engineer and designer.
 
@@ -116,15 +117,20 @@ export function parseFileManifest(text: string, existing: { path: string; conten
   const re = /<<<FILE\s+([^\s>]+)\s*>>>\n?([\s\S]*?)\n?<<<END>>>/g;
   let m: RegExpExecArray | null;
   while ((m = re.exec(text))) {
-    const path = m[1].startsWith("/") ? m[1] : `/${m[1]}`;
+    const path = safeProjectPath(m[1]);
+    if (!path || files.has(path)) throw new Error("Model did not return unique safe project paths.");
     files.set(path, m[2].replace(/^```[a-z]*\n?/i, "").replace(/\n?```$/, ""));
   }
   const keepRe = /<<<KEEP\s+([^\s>]+)\s*>>>/g;
   while ((m = keepRe.exec(text))) {
-    const path = m[1].startsWith("/") ? m[1] : `/${m[1]}`;
+    const path = safeProjectPath(m[1]);
+    if (!path) throw new Error("Model did not return safe kept-file paths.");
     const prev = existing.find((f) => f.path === path);
+    if (!prev) throw new Error("Model did not return an existing kept-file path.");
     if (prev && !files.has(path)) files.set(path, prev.content);
   }
+  if (text.replace(re, "").replace(keepRe, "").replace(/<<<NOTE>>>[\s\S]*?<<<END NOTE>>>/g, "").trim()) throw new Error("Model did not return a complete file manifest; unparsed or unfinished output remains.");
+  if (files.size > 500) throw new Error("Model did not return a bounded file manifest.");
   if (files.size) for (const file of existing) if (file.content.startsWith(BINARY_PREFIX)) files.set(file.path, file.content);
   return Array.from(files, ([path, content]) => ({ path, content }));
 }

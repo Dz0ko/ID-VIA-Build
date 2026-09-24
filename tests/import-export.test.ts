@@ -37,5 +37,7 @@ test('editing imported projects preserves binary assets without exposing base64 
   const files = [{ path: '/logo.png', content: 'IDAEVIA_BINARY_V1:AQID' }, { path: '/main.py', content: 'print(1)' }];
   assert.doesNotMatch(buildAppUserPrompt({ files, request: 'update' }), /AQID/);
   assert.equal(parseFileManifest('<<<FILE /main.py>>>\nprint(2)\n<<<END>>>', files).find(f => f.path === '/logo.png')?.content, files[0].content);
-  assert.equal(parseFileManifest('invalid response', files).length, 0);
+  assert.throws(() => parseFileManifest('invalid response', files));
+  assert.throws(() => parseFileManifest('<<<FILE /main.py>>>\nprint(2)\n<<<END>>>\n<<<FILE /unfinished.py>>>\nprint(', files));
+  assert.throws(() => parseFileManifest('<<<FILE /../secret>>>\ninvalid\n<<<END>>>', files));
 });

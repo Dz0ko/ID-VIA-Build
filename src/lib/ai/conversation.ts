@@ -1,7 +1,10 @@
 /** Questions are read-only even when the selected specialist normally edits files. */
 export function isConversationRequest(request: string): boolean {
   const p = request.trim().toLowerCase();
-  if (/^(?:please\s+)?(?:can|could|would) you\s+(?:please\s+)?(?:build|create|add|fix|change|update|remove|implement|make|redesign)\b/.test(p)) return false;
+  if (/^(?:please\s+)?(?:can|could|would|will) you\s+(?:(?:please|also|just|now)\s+)*(?:help me (?:to )?)?(?:build|create|add|fix|change|update|remove|implement|make|redesign|edit|replace|rename|use|swap|move|resize|translate|rewrite)\b/.test(p)) return false;
+  if (/^(?:please\s+)?(?:edit|replace|rename|use|swap|move|resize|translate|rewrite|set|delete|design|animate|improve)\b/.test(p)) return false;
+  if (/^(?:i (?:want|need)(?: you)? to|let's|lets)\s+(?:edit|replace|change|add|remove|update|build|create|make|fix)\b/.test(p)) return false;
+  if (/^(?:(?:dali\s+)?mo[zž]e[sš]?\s+(?:li\s+)?(?:da\s+)?(?:go\s+|ja\s+)?|(?:дали\s+)?може(?:ш)?\s+(?:ли\s+)?(?:да\s+)?(?:го\s+|ја\s+)?)(?:smeni|smenis|izmeni|izmenis|dodadi|dodades|napravi|napravis|замениш|смениш|смени|измени|измениш|додадеш|додади|направиш|направи)/u.test(p)) return false;
   if (/^(?:please\s+)?(?:build|create|add|fix|change|update|remove|implement|make|redesign|napravi|dodadi|smeni|popravi|направи|додади|смени|поправи)(?:\s|:)/u.test(p)) return false;
   return /^(?:how|why|what|where|when|which|who|is|are|do|does|did|should|could|can|would)\b/.test(p)
     || /^(?:explain|tell me|show me how|help me understand|walk me through|give me (?:the )?steps|thanks|thank you|hello|hi|yes|no|and then|what next)\b/.test(p)
