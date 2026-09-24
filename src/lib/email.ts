@@ -18,7 +18,7 @@ export async function saveEmailConfig(input: Omit<EmailConfig, "apiKey"> & { api
 export function appUrl(path: string) { return new URL(path, process.env.APP_URL || "https://idaevia.app").toString(); }
 const escape = (text: string) => text.replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]!));
 export function renderEmail(input: { subject: string; body: string; ctaLabel?: string | null; ctaUrl?: string | null; unsubscribe?: string; kind?: string }) {
-  const category = input.unsubscribe ? "News from IDÆVIA" : ({ welcome: "Welcome aboard", password: "Account security", payment: "Payment confirmed", plan: "Payment confirmed", pack: "Credits confirmed", marketplace: "Purchase confirmed", test: "You’re connected" }[input.kind || ""] || "Your IDÆVIA account");
+  const category = input.unsubscribe ? "News from IDÆVIA" : ({ welcome: "Welcome aboard", password: "Account security", payment: "Payment confirmed", plan: "Payment confirmed", pack: "Credits confirmed", marketplace: "Purchase confirmed", test: "You’re connected", alert: "Platform alert" }[input.kind || ""] || "Your IDÆVIA account");
   const footer = input.unsubscribe ? `You opted in to IDÆVIA updates and promotions. Unsubscribe: ${input.unsubscribe}` : "You’re receiving this because of activity on your IDÆVIA account.";
   const safeCta = input.ctaUrl && /^https:\/\//.test(input.ctaUrl) ? input.ctaUrl : null;
   const text = `IDÆVIA BUILD · ${category}\n\n${input.subject}\n\n${input.body}${safeCta ? `\n\n${input.ctaLabel || "Open IDÆVIA"}: ${safeCta}` : ""}\n\nThe IDÆVIA team\nQuestions? info@idaevia.app\n\n${footer}`;

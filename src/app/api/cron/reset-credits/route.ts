@@ -1,6 +1,7 @@
 import { db } from "@/lib/db";
 import { renewCreditsIfDue } from "@/lib/credits";
 import { reconcileStaleRuns } from "@/lib/stale-runs";
+import { probeProviders } from "@/lib/provider-health";
 
 /**
  * Monthly credit renewal. Runs daily (Vercel Cron, see vercel.json) and renews
@@ -31,5 +32,7 @@ export async function GET(req: Request) {
   }
   // Runs whose process was stopped by the host before settlement: refund and close them.
   const reconciledRuns = await reconcileStaleRuns();
-  return Response.json({ ok: true, renewed, reconciledRuns, checkedAt: now.toISOString() });
+  // One minimal request per AI provider: an empty account is alerted before users hit it.
+  const providers = (await probeProviders().catch(() => [])).map(p => ({ provider: p.provider, state: p.state }));
+  return Response.json({ ok: true, renewed, reconciledRuns, providers, checkedAt: now.toISOString() });
 }

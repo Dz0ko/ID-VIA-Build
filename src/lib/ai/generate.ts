@@ -54,12 +54,28 @@ export interface RunOptions {
 export const RESTYLE_MAX_DOC_TOKENS = 12_000;
 /** A repaired attempt needs at least this much of the budget left, and at least as long as the attempt it replaces. */
 const RETRY_MIN_MS = 60_000;
+/** Heartbeat interval for progress events; also keeps the SSE connection alive through proxies. */
+export const PROGRESS_INTERVAL_MS = 3_000;
+
+const clock = (ms: number) => { const s = Math.floor(ms / 1000); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`; };
+/** What the user reads while waiting; the wording changes with time so a long think still looks alive. */
+export function progressMessage(phase: "thinking" | "writing" | "checking" | "saving", elapsedMs: number, chars: number, whole: boolean): string {
+  const t = clock(elapsedMs);
+  if (phase === "writing") return `Writing the ${whole ? "new version of the site" : "change"} · ${chars < 1024 ? `${chars} characters` : `${(chars / 1024).toFixed(chars < 10240 ? 1 : 0)} KB`} so far · ${t}`;
+  if (phase === "checking") return `Checking the result against your current project · ${t}`;
+  if (phase === "saving") return `Saving the change and refreshing the preview · ${t}`;
+  const s = elapsedMs / 1000;
+  const step = s < 8 ? "Reading your project and the request" : s < 25 ? "Planning the change" : s < 60 ? "Working out the details before writing" : s < 120 ? `Still thinking; a ${whole ? "full restyle" : "careful change"} can take a few minutes` : "Still working; the model is taking its time to get this right";
+  return `${step} · ${t}`;
+}
 
 export type RunEvent =
   | { type: "meta"; agent: string; tier: ModelTier; model: string; provider: string; credits: number; taskClass: TaskClass; fallback: boolean; mode?: "rewrite" | "report" }
   | { type: "picked"; agent: string }
   | { type: "agent"; agent: string; name: string; profession: string; text: string }
   | { type: "delta"; text: string }
+  /** Sent every few seconds while the model thinks, writes, or the result is checked and saved, so the UI never looks frozen. */
+  | { type: "progress"; phase: "thinking" | "writing" | "checking" | "saving"; elapsedMs: number; chars: number; message: string }
   | { type: "retry"; message: string }
   | { type: "reading"; files: string[] }
   | { type: "done"; mode: "rewrite" | "report"; versionNumber?: number; html?: string; files?: { path: string; content: string }[]; report?: string; creditsUsed: number; note?: string }
@@ -250,20 +266,30 @@ async function runAgentLocked(opts: RunOptions, assertActive: () => Promise<void
       images: opts.images,
       maxOutput,
       effort,
-      onText: (t: string) => opts.onEvent?.({ type: "delta", text: t }),
+      onText: (t: string) => { streamedChars += t.length; opts.onEvent?.({ type: "delta", text: t }); },
       signal: opts.signal,
     };
-    let costUsd = 0, inputTokens = 0, outputTokens = 0, attempts = 0, readCostUsd = 0, lastAttemptMs = 0;
+    let costUsd = 0, inputTokens = 0, outputTokens = 0, attempts = 0, readCostUsd = 0, lastAttemptMs = 0, streamedChars = 0;
     const startedAt = Date.now();
     const budgetMs = opts.budgetMs ?? GENERATION_TIMEOUT_MS;
+    const progress = (phase: "thinking" | "writing" | "checking" | "saving") => {
+      const elapsedMs = Date.now() - startedAt;
+      opts.onEvent?.({ type: "progress", phase, elapsedMs, chars: streamedChars, message: progressMessage(phase, elapsedMs, streamedChars, overhaul || !targetedEdit) });
+    };
     const attempt = async (retryReason?: string) => {
       opts.signal?.throwIfAborted();
       await assertActive();
       const attemptStarted = Date.now();
-      const response = await generateWithFallback(resolved, retryReason ? { ...input,
-        maxOutput: Math.min(resolved.config.maxOutput, Math.max(maxOutput * 2, maxOutput + 8000)),
-        system: `${system}\nThe previous response was discarded: ${retryReason}. Correct the response using the ORIGINAL supplied source. Produce a complete, concise result. Preserve required functionality; omit no required code. ${targetedHtml ? "Return only targeted HTML_EDITS and a short note, or a focused clarification if needed." : targetedFiles ? "Return only FILE_EDITS for the requested targets, or request missing file contents." : isApp ? "Use <<<KEEP /path>>> for every unchanged existing file." : "Avoid verbose comments and unnecessary repetition."}`,
-      } : input);
+      streamedChars = 0;
+      progress("thinking");
+      const heartbeat = setInterval(() => progress(streamedChars ? "writing" : "thinking"), PROGRESS_INTERVAL_MS);
+      let response;
+      try {
+        response = await generateWithFallback(resolved, retryReason ? { ...input,
+          maxOutput: Math.min(resolved.config.maxOutput, Math.max(maxOutput * 2, maxOutput + 8000)),
+          system: `${system}\nThe previous response was discarded: ${retryReason}. Correct the response using the ORIGINAL supplied source. Produce a complete, concise result. Preserve required functionality; omit no required code. ${targetedHtml ? "Return only targeted HTML_EDITS and a short note, or a focused clarification if needed." : targetedFiles ? "Return only FILE_EDITS for the requested targets, or request missing file contents." : isApp ? "Use <<<KEEP /path>>> for every unchanged existing file." : "Avoid verbose comments and unnecessary repetition."}`,
+        } : input);
+      } finally { clearInterval(heartbeat); }
       attempts++;
       lastAttemptMs = Date.now() - attemptStarted;
       costUsd += response.provider === "mock" ? 0 : estimateUsd(response.model, response);
@@ -273,6 +299,7 @@ async function runAgentLocked(opts: RunOptions, assertActive: () => Promise<void
       return response;
     };
     let result = await attempt();
+    progress("checking");
     let recovered = false, reads = 0;
     let generatedFiles: {path:string;content:string}[] | null = null, generatedHtml: string | null = null, answer: string | null = null;
     while (true) {
@@ -327,6 +354,7 @@ async function runAgentLocked(opts: RunOptions, assertActive: () => Promise<void
     // lease, timeout and credit reservation; failed-attempt costs stay with us.
     opts.signal?.throwIfAborted();
     await assertActive();
+    progress("saving");
     const responseText = answer ?? result.text;
     // Final charge = max(class price, real cost × creditsPerUsd); the rest of the hold is released.
     const outK = Math.round(result.outputTokens / 1000);

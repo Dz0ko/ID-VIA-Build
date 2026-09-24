@@ -2,7 +2,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 export function PlatformErrorAlert() {
-  const [summary, setSummary] = useState<{ openCount: number; criticalCount: number } | null>(null);
+  const [summary, setSummary] = useState<{ openCount: number; criticalCount: number; providers?: { label: string; state: string }[] } | null>(null);
   const [unavailable, setUnavailable] = useState(false);
   useEffect(() => {
     const controller = new AbortController(); let timer: ReturnType<typeof setTimeout>;
@@ -19,6 +19,10 @@ export function PlatformErrorAlert() {
     }
     void tick(); return () => { controller.abort(); clearTimeout(timer); };
   }, []);
-  if (!unavailable && !summary?.openCount) return null;
-  return <Link href="/admin/errors" className="block border-b border-graphite bg-ink px-8 py-3 text-sm text-signal-soft" role="status" aria-live="polite">{unavailable ? "Error monitoring is unavailable. Open Platform errors to check." : `${summary!.openCount} platform incident${summary!.openCount === 1 ? " needs" : "s need"} attention${summary!.criticalCount ? ` · ${summary!.criticalCount} critical` : ""}. View details →`}</Link>;
+  const outage = summary?.providers?.find(p => p.state === "billing" || p.state === "auth");
+  if (!unavailable && !summary?.openCount && !outage) return null;
+  const text = unavailable ? "Error monitoring is unavailable. Open Platform errors to check."
+    : outage ? `${outage.label} API ${outage.state === "billing" ? "has no credits: top up the account" : "rejected its API key: check the key"}. Generations use the other provider meanwhile. Open Platform errors →`
+    : `${summary!.openCount} platform incident${summary!.openCount === 1 ? " needs" : "s need"} attention${summary!.criticalCount ? ` · ${summary!.criticalCount} critical` : ""}. View details →`;
+  return <Link href="/admin/errors" className={`block border-b border-graphite px-8 py-3 text-sm ${outage ? "bg-red-950/60 text-red-200 font-medium" : "bg-ink text-signal-soft"}`} role={outage ? "alert" : "status"} aria-live={outage ? "assertive" : "polite"}>{text}</Link>;
 }

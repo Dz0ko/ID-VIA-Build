@@ -159,6 +159,29 @@ test('a repair attempt is skipped and refunded when the time budget cannot fit i
   } finally { PROVIDERS.openai.generate = generate; PROVIDERS.openai.available = available; }
 });
 
+test('progress heartbeats report thinking, writing, checking and saving with elapsed time', async () => {
+  const { owner, project } = await fixture('<!doctype html><html><body>Original</body></html>');
+  const generate = PROVIDERS.openai.generate, available = PROVIDERS.openai.available;
+  PROVIDERS.openai.available = () => true;
+  PROVIDERS.openai.generate = async (_model, input) => {
+    await new Promise(r => setTimeout(r, 3400));
+    input.onText?.('<<<HTML_EDITS>>>');
+    await new Promise(r => setTimeout(r, 3400));
+    return { text: '<<<HTML_EDITS>>>[{"search":"Original","replace":"Updated"}]<<<END HTML_EDITS>>>', stopReason: 'stop', model: 'gpt-5.6-terra', provider: 'openai', inputTokens: 20, outputTokens: 40 };
+  };
+  try {
+    const events: { type: string; phase?: string; message?: string; elapsedMs?: number }[] = [];
+    await runAgent({ userId: owner.id, projectId: project.id, plan: 'MAX', request: 'Change the title text to Updated', preferProvider: 'openai', onEvent: event => events.push(event as typeof events[number]) });
+    const progress = events.filter(e => e.type === 'progress');
+    const phases = progress.map(e => e.phase);
+    assert.ok(phases.indexOf('thinking') >= 0 && phases.indexOf('writing') > phases.indexOf('thinking'), phases.join(','));
+    assert.ok(phases.indexOf('checking') > phases.indexOf('writing') && phases.indexOf('saving') > phases.indexOf('checking'), phases.join(','));
+    assert.ok(progress.every(e => /\d+:\d\d$/.test(e.message!)), progress.map(e => e.message).join(' | '));
+    assert.ok(progress.find(e => e.phase === 'writing')!.message!.includes('so far'));
+    assert.ok(progress.some(e => e.elapsedMs! >= 3000));
+  } finally { PROVIDERS.openai.generate = generate; PROVIDERS.openai.available = available; }
+});
+
 test('a run whose server process was stopped is refunded, closed and reported once', async () => {
   const { reconcileStaleRuns, STALE_RUN_MS } = await import('../src/lib/stale-runs');
   const { reserveCredits } = await import('../src/lib/credits');

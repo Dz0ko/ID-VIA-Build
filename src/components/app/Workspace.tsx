@@ -143,6 +143,8 @@ export function Workspace(p: WorkspaceProps) {
   const [stream, setStream] = useState("");
   const [responseMode, setResponseMode] = useState<"rewrite" | "report">("rewrite");
   const [activity, setActivity] = useState<AgentActivity[]>([]);
+  // Seconds since the current run started; ticks locally so the panel moves even between server events.
+  const [elapsed, setElapsed] = useState(0);
   const [diffs, setDiffs] = useState<DiffFile[]>([]);
   const [pendingStackRequest, setPendingStackRequest] = useState<string | null>(() => {
     try { const pending = JSON.parse(p.project.memory || "{}").pendingBuildRequest; return typeof pending === "string" ? pending : null; } catch { return null; }
@@ -202,6 +204,12 @@ export function Workspace(p: WorkspaceProps) {
   const log = useCallback((text: string, kind: LogLine["kind"] = "info") => setLogs((l) => [...l, { t: now(), text, kind }].slice(-600)), []);
 
   useEffect(() => { const el = chatEnd.current?.parentElement; if (el && followChat.current) el.scrollTop = el.scrollHeight; }, [messages, stream, busy, bottom]);
+  useEffect(() => {
+    if (!busy) return;
+    const started = Date.now();
+    const timer = setInterval(() => setElapsed(Math.floor((Date.now() - started) / 1000)), 1000);
+    return () => clearInterval(timer);
+  }, [busy]);
   useEffect(() => { const el = terminalEnd.current?.parentElement; if (el) el.scrollTop = el.scrollHeight; }, [termLines, bottom]);
   useEffect(() => {
     const t = setTimeout(() => setTermLines(["IDÆVIA terminal · project commands and isolated builds. Type `help`.", "Try: npm run build · preview · stop · status · git push · deploy vercel"]), 0);
@@ -217,6 +225,7 @@ export function Workspace(p: WorkspaceProps) {
     setResponseMode("rewrite");
     setDiffs([]);
     setActivity([{ id: `activity-${Date.now()}`, label: "Start task", detail: "Preparing the agent workspace", status: "running" }]);
+    setElapsed(0);
     setBottom("chat");
     setExpandedPanel(true);
     followChat.current = true;
@@ -269,13 +278,19 @@ export function Workspace(p: WorkspaceProps) {
             acc += ev.text;
             setStream(acc);
             const fileMatch = [...acc.matchAll(/<<<FILE\s+([^\s>]+)\s*>>>/g)].at(-1)?.[1];
-            const detail = /^<<<ANSWER>>>/.test(acc) ? "Writing an answer" : fileMatch ? `Generating ${fileMatch}` : isApp
-              ? "Generating a response"
-              : "Generating a response";
-            setActivity((items) => {
+            const detail = /^<<<ANSWER>>>/.test(acc) ? "Writing an answer" : fileMatch ? `Generating ${fileMatch}` : null;
+            if (detail) setActivity((items) => {
               const current = items.find((item) => item.label === "Work in progress" && item.status === "running");
               if (current) return items.map((item) => item.id === current.id ? { ...item, detail } : item);
               return [...items.map((item) => ({ ...item, status: "done" as const })), { id: `activity-${Date.now()}`, label: "Work in progress", detail, status: "running" }];
+            });
+          } else if (ev.type === "progress") {
+            // Server heartbeat every few seconds: thinking, writing, checking, saving, with elapsed time.
+            const label = ev.phase === "checking" ? "Check result" : ev.phase === "saving" ? "Save change" : "Work in progress";
+            setActivity((items) => {
+              const current = items.find((item) => item.label === label && item.status === "running");
+              if (current) return items.map((item) => item.id === current.id ? { ...item, detail: ev.message } : item);
+              return [...items.map((item) => ({ ...item, status: "done" as const })), { id: `activity-${Date.now()}`, label, detail: ev.message, status: "running" }];
             });
           }
           else if (ev.type === "done") {
@@ -658,7 +673,7 @@ export function Workspace(p: WorkspaceProps) {
                   ))}
                   {pendingStackRequest && <StackSuggestions request={pendingStackRequest} kind={p.project.kind} disabled={!!busy} onChoose={choice => { void run(choice); }} onCustom={() => promptInput.current?.focus()} />}
                   {busy && activity.length > 0 && <div className="rounded-2xl border border-graphite p-4 text-fog">
-                    <div role="status" className="mb-3 flex items-center gap-2 text-sm text-signal-soft"><span className={`w-2 h-2 rounded-full ${busy ? "bg-signal pulse-dot" : "bg-signal-soft"}`} />{busy ? `${allAgents.find((x) => x.id === busy)?.name ?? busy} is working` : "Agent activity"}</div>
+                    <div role="status" className="mb-3 flex items-center gap-2 text-sm text-signal-soft"><span className={`w-2 h-2 rounded-full ${busy ? "bg-signal pulse-dot" : "bg-signal-soft"}`} />{busy ? `${allAgents.find((x) => x.id === busy)?.name ?? busy} is working` : "Agent activity"}{busy && <span className="ml-auto font-mono text-xs text-ash" aria-label="Elapsed time">{`${Math.floor(elapsed / 60)}:${String(elapsed % 60).padStart(2, "0")}`}</span>}</div>
                     <div className="divide-y divide-graphite/60">
                       {activity.map((item) => <div key={item.id} className="flex items-center gap-3 py-2 text-xs"><span className={`shrink-0 text-sm ${item.status === "done" ? "text-signal-soft" : "text-ash"}`}>{item.status === "done" ? "✓" : "◌"}</span><span className="min-w-0 flex-1 truncate text-fog">{item.label}</span><span className="max-w-[52%] truncate text-ash">{item.detail}</span></div>)}
                     </div>

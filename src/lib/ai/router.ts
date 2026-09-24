@@ -1,6 +1,7 @@
 import type { ModelTier } from "../plans";
 import { getSettings, DEFAULT_SETTINGS, OPENAI_TIER_MODELS, type ModelConfig } from "../settings";
 import { PROVIDERS, type AIProvider, type GenerateInput, type GenerateResult } from "./provider";
+import { classifyProviderError, markProviderHealthy, reportProviderOutage } from "../provider-health";
 export { classifyTask, preferredProviderForTask, requiresFrontierDesign, tierForTask, type ModelProvider, type TaskClass } from "./task-routing";
 
 export interface ResolvedModel {
@@ -36,8 +37,22 @@ export async function generateWithFallback(resolved: ResolvedModel, input: Gener
     throw Object.assign(new Error("No AI provider is available."), { status: 503 });
   }
   let emittedText = false;
+  // An account problem (no credits, rejected key, overload) is recorded for the admin even when the
+  // fallback rescues this request; a working call clears the alert.
+  const call = async (provider: AIProvider, model: string, request: GenerateInput) => {
+    const id = provider.id;
+    try {
+      const result = await provider.generate(model, request);
+      if (id !== "mock") await markProviderHealthy(id);
+      return result;
+    } catch (e) {
+      const outage = id !== "mock" && !request.signal?.aborted ? classifyProviderError(e) : null;
+      if (id !== "mock" && outage) await reportProviderOutage(id, outage, e);
+      throw e;
+    }
+  };
   try {
-    return await resolved.provider.generate(resolved.config.model, { ...input, onText: (text) => { emittedText = true; input.onText?.(text); } });
+    return await call(resolved.provider, resolved.config.model, { ...input, onText: (text) => { emittedText = true; input.onText?.(text); } });
   } catch (e) {
     // Under load either provider can rate-limit or overload; the other one answers the same request once.
     if (input.signal?.aborted || emittedText || !isAccountOrCapacityError(e)) throw e;
@@ -45,12 +60,12 @@ export async function generateWithFallback(resolved: ResolvedModel, input: Gener
       anthropicPausedUntil = Date.now() + PAUSE_MS;
       console.warn(`[ai] Anthropic unavailable, falling back to OpenAI for ${resolved.tier}`);
       const model = process.env.OPENAI_MODEL || OPENAI_TIER_MODELS[resolved.tier];
-      const result = await PROVIDERS.openai.generate(model, input);
+      const result = await call(PROVIDERS.openai, model, input);
       return { ...result, fellBack: true };
     }
     if (resolved.provider.id === "openai" && PROVIDERS.anthropic.available() && Date.now() >= anthropicPausedUntil) {
       console.warn(`[ai] OpenAI unavailable, falling back to Anthropic for ${resolved.tier}`);
-      const result = await PROVIDERS.anthropic.generate(DEFAULT_SETTINGS.tiers[resolved.tier].model, input);
+      const result = await call(PROVIDERS.anthropic, DEFAULT_SETTINGS.tiers[resolved.tier].model, input);
       return { ...result, fellBack: true };
     }
     throw e;

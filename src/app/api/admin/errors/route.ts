@@ -4,6 +4,7 @@ import { db } from "@/lib/db";
 import { error, json, withUser } from "@/lib/api";
 import { readRequestJson } from "@/lib/request-body";
 import { redactIncidentText } from "@/lib/platform-error-details";
+import { providerHealth } from "@/lib/provider-health";
 
 export async function GET(req: Request) {
   return withUser(async user => {
@@ -17,7 +18,7 @@ export async function GET(req: Request) {
       db.platformIncident.count({ where: { ...open, severity: "CRITICAL" } }),
       db.platformIncident.count({ where: { lastSeenAt: { gte: new Date(Date.now() - 86400000) } } }),
     ]);
-    if (params.get("summary") === "1") return json({ openCount, criticalCount, last24Hours });
+    if (params.get("summary") === "1") return json({ openCount, criticalCount, last24Hours, providers: (await providerHealth()).filter(p => p.state !== "healthy") });
     const matches = query ? await db.user.findMany({ where: { OR: [{ email: { contains: query, mode: "insensitive" } }, { name: { contains: query, mode: "insensitive" } }] }, select: { id: true }, take: 100 }) : [];
     const where: Prisma.PlatformIncidentWhereInput = {
       ...(status === "OPEN" ? open : ["NEW", "INVESTIGATING", "RESOLVED"].includes(status) ? { status } : {}),
