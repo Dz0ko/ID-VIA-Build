@@ -48,3 +48,11 @@ test('a whole-document edit disguised as a patch is rejected',()=>{
  const html='<!doctype html><html><body>'+('original '.repeat(400))+'</body></html>';
  assert.throws(()=>applyHtmlEdits(`<<<HTML_EDITS>>>${JSON.stringify([{search:html,replace:html.replace('original','unrelated')}])}<<<END HTML_EDITS>>>`,html));
 });
+test('a rename replaces every occurrence in a file only when the edit says so, and mismatches name the text',()=>{
+  const src=[{path:'/src/site.ts',content:'export const name="Willow"; export const title="Willow Clinic · Willow"'}];
+  const readableOne=new Set(['/src/site.ts']);
+  const files=applyFileEdits(block([{op:'edit',path:'/src/site.ts',edits:[{search:'Willow',replace:'Dr Kiko',all:true}]}]),src,readableOne,new Set());
+  assert.equal(files[0].content,'export const name="Dr Kiko"; export const title="Dr Kiko Clinic · Dr Kiko"');
+  assert.throws(()=>applyFileEdits(block([{op:'edit',path:'/src/site.ts',edits:[{search:'Willow',replace:'Dr Kiko'}]}]),src,readableOne,new Set()),/occurs 3 times[\s\S]*"all": true/);
+  assert.throws(()=>applyFileEdits(block([{op:'edit',path:'/src/site.ts',edits:[{search:'Maple',replace:'Oak'}]}]),src,readableOne,new Set()),/"Maple" does not occur/);
+});

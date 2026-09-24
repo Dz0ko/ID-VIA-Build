@@ -9,7 +9,7 @@ import "@xterm/xterm/css/xterm.css";
 type Command = { id: number; text: string; previewPort?: number | null };
 export function ShellTerminal({ projectId, active, command, onPreview, onConsumed, onLog, onIssue }: {
   projectId: string; active: boolean; command: Command | null;
-  onPreview: (url: string) => void; onConsumed: (id: number) => void; onLog?: (text: string) => void; onIssue?: (issue: string | null) => void;
+  onPreview: (url: string, blocked?: string | null) => void; onConsumed: (id: number) => void; onLog?: (text: string) => void; onIssue?: (issue: string | null) => void;
 }) {
   const host = useRef<HTMLDivElement>(null);
   const terminal = useRef<Terminal | null>(null);
@@ -46,7 +46,7 @@ export function ShellTerminal({ projectId, active, command, onPreview, onConsume
       const url = new URL(result.url);
       if (url.protocol !== "https:" || !url.hostname.endsWith(".e2b.app")) throw new Error("Invalid preview address");
       if (!disposed.current && result.port) setPort(String(result.port));
-      if (!disposed.current) callbacks.current.onPreview(url.href);
+      if (!disposed.current) callbacks.current.onPreview(url.href, typeof result.blocked === "string" ? result.blocked : null);
       return true;
     } catch (e) { if (!quiet) { const message = e instanceof Error ? e.message : "Preview unavailable"; setIssue(message); terminal.current?.writeln(`\r\n${message}`); } return false; }
   }, [request]);

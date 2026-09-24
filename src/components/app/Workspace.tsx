@@ -21,6 +21,7 @@ import { RuntimeDetails } from "./RuntimeDetails";
 import { ComposerSelect } from "./ComposerSelect";
 import { StackSuggestions } from "./StackSuggestions";
 import { QualitySuggestions } from "./QualitySuggestions";
+import { embedFixRequest } from "@/lib/preview-embedding";
 import { WorkspaceMenuButton } from "./Shell";
 import type { AgentDef } from "@/lib/agents";
 import type { PlanId, ModelTier } from "@/lib/plans";
@@ -165,7 +166,7 @@ export function Workspace(p: WorkspaceProps) {
   });
   const continuationRef = useRef<{ round: number; filesDone: number } | null>(null);
   const [logs, setLogs] = useState<LogLine[]>([{ t: now(), text: "Workspace ready.", kind: "info" }]);
-  const [runtimePreview, setRuntimePreview] = useState<{ url: string; source: string; kind?: "build" | "shell" } | null>(null);
+  const [runtimePreview, setRuntimePreview] = useState<{ url: string; source: string; kind?: "build" | "shell"; blocked?: string | null } | null>(null);
   const runtimeSource = isApp ? JSON.stringify(files) : html;
   const runtimeUrl = runtimePreview?.source === runtimeSource ? runtimePreview.url : null;
   useEffect(() => {
@@ -512,7 +513,7 @@ export function Workspace(p: WorkspaceProps) {
           if (response.ok && ready.ready && typeof ready.url === "string") {
             const url = new URL(ready.url);
             if (url.protocol === "https:" && url.hostname.endsWith(".e2b.app")) {
-              setRuntimePreview({ url: url.href, source: runtimeSource }); setView("preview"); setExpandedPanel(false); return;
+              setRuntimePreview({ url: url.href, source: runtimeSource, blocked: typeof ready.blocked === "string" ? ready.blocked : null }); setView("preview"); setExpandedPanel(false); return;
             }
           }
         } catch { /* Start a fresh preview below. */ }
@@ -643,6 +644,10 @@ export function Workspace(p: WorkspaceProps) {
             {view === "preview" ? (
               runtimeUrl ? <div className="h-full flex flex-col">
                 <div className="shrink-0 flex items-center gap-3 pb-2 text-xs text-ash"><span className="truncate">{runtimeUrl}</span><a href={runtimeUrl} target="_blank" rel="noopener noreferrer" className="btn btn-ghost btn-sm">Open preview <ExternalLink size={12} /></a><button onClick={() => term("stop")} disabled={termBusy} className="btn btn-ghost btn-sm">Stop</button></div>
+                {runtimePreview?.blocked && <div role="status" className="shrink-0 mb-2 flex flex-wrap items-center gap-3 rounded-xl border border-signal/40 bg-signal/10 px-4 py-3 text-xs text-fog">
+                  <span className="min-w-0 flex-1">This app refuses to be embedded here ({runtimePreview.blocked}), so the frame below stays blank while “Open preview” works. The builder can allow the platform preview without weakening the other security headers.</span>
+                  <button type="button" className="btn btn-primary btn-sm" disabled={!!busy} onClick={() => { void run(embedFixRequest(runtimePreview.blocked!), "builder"); }}>Allow embedding</button>
+                </div>}
                 <iframe title="Built project preview" src={runtimeUrl} className="w-full flex-1 min-h-0 rounded-lg border border-graphite bg-white" sandbox="allow-scripts allow-forms allow-popups allow-modals allow-same-origin" />
               </div> : isReactApp && !files.some(f => f.path === "/package.json") ? (
                 <div className="h-full rounded-lg overflow-hidden border border-graphite bg-white">
@@ -782,7 +787,7 @@ export function Workspace(p: WorkspaceProps) {
             )}
 
             {(shellOpened || bottom === "terminal") && <div hidden={bottom !== "terminal"} className={bottom === "terminal" ? "flex-1 min-h-0 flex flex-col" : "hidden"}>
-              {shellOpened && <ShellTerminal onLog={(text) => log(text)} onIssue={setRuntimeIssue} projectId={p.project.id} active={bottom === "terminal"} command={shellCommand} onConsumed={(id) => setShellCommand((current) => current?.id === id ? null : current)} onPreview={(url) => { setRuntimePreview({ url, source: runtimeSource }); setView("preview"); setExpandedPanel(false); }} />}
+              {shellOpened && <ShellTerminal onLog={(text) => log(text)} onIssue={setRuntimeIssue} projectId={p.project.id} active={bottom === "terminal"} command={shellCommand} onConsumed={(id) => setShellCommand((current) => current?.id === id ? null : current)} onPreview={(url, blocked) => { setRuntimePreview({ url, source: runtimeSource, blocked: blocked ?? null }); setView("preview"); setExpandedPanel(false); }} />}
               <details open={termBusy || termLines.length > 2} className="shrink-0 border-t border-graphite text-xs">
                 <summary className="cursor-pointer px-3 py-2 text-ash">Platform actions · publish, connected GitHub push, deploy</summary>
                 <div className="max-h-32 overflow-y-auto px-3 font-mono whitespace-pre-wrap">{termLines.map((line, i) => <div key={i}>{line}</div>)}<div ref={terminalEnd} /></div>

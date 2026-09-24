@@ -5,7 +5,8 @@ import { randomBytes } from "node:crypto";
 import type { Sandbox } from "e2b";
 
 // This image has 2 GiB RAM and PostgreSQL. The default E2B base image has only 512 MiB.
-export const PREVIEW_TEMPLATE = process.env.E2B_RUNTIME_TEMPLATE || "inys70thgko5tow4cn24";
+import { platformOrigin } from "./preview-embedding";
+export const PREVIEW_TEMPLATE =process.env.E2B_RUNTIME_TEMPLATE || "inys70thgko5tow4cn24";
 export const PREVIEW_SYSTEM_ENV = { NODE_OPTIONS: "--max-old-space-size=1536", NEXT_TELEMETRY_DISABLED: "1", NPM_CONFIG_PROGRESS: "false", NPM_CONFIG_LOGLEVEL: "warn" };
 
 /** Only project-owned settings and sandbox-local credentials; never platform environment variables. */
@@ -36,5 +37,5 @@ export async function preparePreviewEnvironment(sandbox: Sandbox, files: { path:
     const config = `import { loadConfigFromFile, mergeConfig } from 'vite';\nexport default async (env) => { const original = await loadConfigFromFile(env, ${JSON.stringify(profile.vite.configFile) ?? "undefined"}, ${JSON.stringify(profile.vite.root) ?? "undefined"}); return mergeConfig(original?.config ?? {}, {server:{allowedHosts:[${JSON.stringify(host)}]},preview:{allowedHosts:[${JSON.stringify(host)}]}}); };`;
     await sandbox.files.write(`/home/user/project/${profile.root === "." ? "" : profile.root + "/"}.idaevia-vite-preview.config.mjs`, config);
   }
-  return { ...envs, ...PREVIEW_SYSTEM_ENV, ...runtimeMemoryEnvironment(memoryMB), IDAEVIA_PREVIEW_HOST: host, IDAEVIA_PREVIEW_URL: `https://${host}`, __VITE_ADDITIONAL_SERVER_ALLOWED_HOSTS: host };
+  return { ...envs, ...PREVIEW_SYSTEM_ENV, ...runtimeMemoryEnvironment(memoryMB), IDAEVIA_PREVIEW_HOST: host, IDAEVIA_PREVIEW_URL: `https://${host}`, IDAEVIA_PLATFORM_ORIGIN: platformOrigin(), __VITE_ADDITIONAL_SERVER_ALLOWED_HOSTS: host };
 }

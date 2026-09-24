@@ -21,12 +21,18 @@ export function applyHtmlEdits(text: string, original: string): string {
 /** Every match is checked against the same original; nothing is partially applied. */
 export function applyExactEdits(edits: unknown, original: string): string {
   if (!Array.isArray(edits) || !edits.length || edits.length > 100) throw new Error("Model did not return a bounded set of source edits.");
-  const replacements = edits.map((edit: unknown) => {
+  const replacements = edits.flatMap((edit: unknown) => {
     if (!edit || typeof edit !== "object" || !("search" in edit) || !("replace" in edit) || typeof edit.search !== "string" || typeof edit.replace !== "string" || !edit.search.length) throw new Error("Model did not return valid HTML edit fields.");
     if (edit.search.length > 2000 && edit.search.length > original.length * .6) throw new Error("Model did not return targeted edits: split the change into small exact matches instead of replacing most of a file.");
-    const start = original.indexOf(edit.search);
-    if (start < 0 || original.indexOf(edit.search, start + 1) !== -1) throw new Error("Model did not return uniquely matching HTML edits.");
-    return { start, end: start + edit.search.length, replacement: edit.replace };
+    const search: string = edit.search, replacement: string = edit.replace;
+    const snippet = search.length > 60 ? `${search.slice(0, 57)}…` : search;
+    const starts: number[] = [];
+    for (let at = original.indexOf(search); at !== -1; at = original.indexOf(search, at + search.length)) starts.push(at);
+    if (!starts.length) throw new Error(`Model did not return matching edits: ${JSON.stringify(snippet)} does not occur in the original file; copy the exact original text.`);
+    // "all": true replaces every occurrence in the file (a rename); otherwise the match must be unique.
+    const all = "all" in edit && edit.all === true;
+    if (starts.length > 1 && !all) throw new Error(`Model did not return uniquely matching edits: ${JSON.stringify(snippet)} occurs ${starts.length} times in the file; include more surrounding context, or set "all": true to replace every occurrence.`);
+    return (all ? starts : [starts[0]]).map(start => ({ start, end: start + search.length, replacement }));
   }).sort((a, b) => a.start - b.start);
   for (let i = 1; i < replacements.length; i++) if (replacements[i].start < replacements[i - 1].end) throw new Error("Model did not return non-overlapping HTML edits.");
   let html = original;

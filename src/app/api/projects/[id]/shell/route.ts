@@ -7,6 +7,7 @@ import { z } from "zod";
 import { getCurrentUser } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { rateLimit } from "@/lib/security";
+import { frameBlockReason } from "@/lib/preview-embedding";
 import { shellSourceMatches, connectShell, ensureShell, refreshShellTimeout, ShellError, stopShell, syncSavedShell } from "@/lib/shell-session";
 
 export const maxDuration = 300;
@@ -59,7 +60,7 @@ export async function POST(req: Request, ctx: RouteContext<"/api/projects/[id]/s
       const url = `https://${sandbox.getHost(state.previewPort ?? 3000)}`;
       try {
         const response = await fetch(url, { signal: AbortSignal.timeout(3000), redirect: "manual", cache: "no-store" });
-        if (previewResponseReady(response.status)) return Response.json({ ready: true, url });
+        if (previewResponseReady(response.status)) return Response.json({ ready: true, url, blocked: frameBlockReason(response.headers) });
       } catch { /* Not running yet. */ }
       return Response.json({ ready: false });
     }
@@ -107,7 +108,7 @@ export async function POST(req: Request, ctx: RouteContext<"/api/projects/[id]/s
           lastStatus = response.status;
           if (previewResponseReady(response.status)) {
             await db.setting.updateMany({ where: { key: `shell:${id}`, value: JSON.stringify(state) }, data: { value: JSON.stringify({ ...state, previewPort: port }) } });
-            return Response.json({ url, port });
+            return Response.json({ url, port, blocked: frameBlockReason(response.headers) });
           }
         } catch { /* Try the next candidate port. */ }
       }
