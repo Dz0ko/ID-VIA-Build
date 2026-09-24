@@ -5,7 +5,7 @@ import { PROVIDERS } from '../src/lib/ai/provider';
 import { db } from '../src/lib/db';
 import { DEFAULT_SETTINGS } from '../src/lib/settings';
 
-// No network or database calls: these tests verify routing and streaming failure behavior.
+// Run through scripts/test-financial-security.mjs --provider-fallback: provider outages are recorded in the (isolated) database.
 test('provider fallback respects cooldown, explicit retry, cancellation and streamed output', async () => {
   const original = { available: PROVIDERS.openai.available, generate: PROVIDERS.openai.generate, anthropic: PROVIDERS.anthropic.available, settings: db.setting.findUnique };
   let fallbackCalls = 0;

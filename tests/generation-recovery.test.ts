@@ -210,6 +210,7 @@ test('selected component uses targeted edits and preserves the working project',
   await provider(async inputs => {
     await runAgent({userId:owner.id,projectId:project.id,plan:'MAX',request,preferProvider:'openai'});
     assert.match(inputs[0].system, /OUTPUT FORMAT OVERRIDE/);
+    assert.equal(inputs[0].effort, 'medium'); // edits of an existing site never run at xhigh
     const saved=await db.project.findUniqueOrThrow({where:{id:project.id}});
     assert.match(saved.html,/Solar eclipse/); assert.match(saved.html,/Original wheel/); assert.ok(saved.html.includes('window.spin=()=>42;'));
   },'<<<HTML_EDITS>>>[{"search":"</main>","replace":"<section>Solar eclipse</section></main>"}]<<<END HTML_EDITS>>>');

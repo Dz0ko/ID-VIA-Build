@@ -199,7 +199,11 @@ async function runAgentLocked(opts: RunOptions, assertActive: () => Promise<void
   // A whole-document restyle streams the entire site back; thinking time comes out of the same budget.
   // Quality first within the server limit: Claude restyles at high effort (measured 238 s end to end on an 11k-token
   // site, so the largest sites drop to medium, ~195 s); GPT-6 Astra reasons ~100 s before its first token at high.
-  const capEffort = overhaul ? (docTokens > (resolved.provider.id === "openai" ? 4000 : 10_000) ? "medium" : "high") : heavy || visualDesignTask || debuggingTask ? "xhigh" : taskClass === "section" ? "high" : "medium";
+  // Targeted edits read the whole document too: xhigh thinking on a 45 KB site exceeded the budget for a
+  // navbar change, so an edit of an existing site gets high (Claude) or medium (GPT-6 Astra) at most.
+  const capEffort = overhaul ? (docTokens > (resolved.provider.id === "openai" ? 4000 : 10_000) ? "medium" : "high")
+    : targetedEdit ? (resolved.provider.id === "openai" ? "medium" : "high")
+    : heavy || visualDesignTask || debuggingTask ? "xhigh" : taskClass === "section" ? "high" : "medium";
   const effort = resolved.config.effort && EFFORT_RANK[resolved.config.effort] > EFFORT_RANK[capEffort] ? capEffort : resolved.config.effort;
 
   let run: { id: string } | undefined;
