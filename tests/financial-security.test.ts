@@ -292,7 +292,7 @@ test("concurrent AI runs keep prompts, output, versions and credits isolated and
   const pb = await db.project.create({ data: { userId: b.id, name: 'Beta', slug: uid() } });
   let release!: () => void; const gate = new Promise<void>((resolve) => { release = resolve; });
   let ready!: () => void; const started = new Promise<void>((resolve) => { ready = resolve; }); let count = 0;
-  PROVIDERS.openai.available = () => true;
+  PROVIDERS.openai.available = () => true; PROVIDERS.openai.generateWithTools = undefined;
   PROVIDERS.openai.generate = async (model, input) => {
     const prompt = input.messages[0].content;
     assert.equal(prompt.includes('COMPONENT REFERENCE: Glass switch'), prompt.includes('ALPHA_ONLY'));
@@ -378,10 +378,10 @@ test('project questions persist answers and history without creating versions or
   const project = await db.project.create({ data: { userId: owner.id, name: 'Chat fixture', slug: uid() } });
   const other = await db.project.create({ data: { userId: owner.id, name: 'Other', slug: uid(), messages: { create: { role: 'user', content: 'OTHER_PROJECT_SECRET' } } } });
   assert.ok(other.id);
-  const generate = PROVIDERS.openai.generate, available = PROVIDERS.openai.available;
+  const generate = PROVIDERS.openai.generate, available = PROVIDERS.openai.available, tools = PROVIDERS.openai.generateWithTools;
   const responses = ['Open Integrations and connect GitHub. Then run git push in Terminal.', 'Step 2: open this project’s Terminal.', '<!doctype html><html><body>Built website</body></html>', '<<<ANSWER>>>That is the navigation menu.<<<END_ANSWER>>>'];
   let calls = 0;
-  PROVIDERS.openai.available = () => true;
+  PROVIDERS.openai.available = () => true; PROVIDERS.openai.generateWithTools = undefined;
   PROVIDERS.openai.generate = async (model, input) => {
     assert.ok(input.messages.every(m => !m.content.includes('OTHER_PROJECT_SECRET')));
     if (calls === 0) assert.match(input.system, /helpful technical assistant/);
@@ -402,7 +402,7 @@ test('project questions persist answers and history without creating versions or
     assert.equal(saved.versions.length, 1); assert.match(saved.html, /Built website/);
     assert.equal(await db.agentRun.count({ where: { projectId: project.id, status: 'FAILED' } }), 0);
     assert.equal(await db.message.count({ where: { projectId: project.id, content: { contains: 'That is the navigation menu.' } } }), 1);
-  } finally { PROVIDERS.openai.generate = generate; PROVIDERS.openai.available = available; }
+  } finally { PROVIDERS.openai.generate = generate; PROVIDERS.openai.available = available; PROVIDERS.openai.generateWithTools = tools; }
 });
 
 test('build releases are separate from changes, concurrent builds deduplicate and deploy keeps the version', async () => {

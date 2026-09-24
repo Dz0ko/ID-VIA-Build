@@ -32,10 +32,57 @@ export interface GenerateResult {
   stopReason?: string | null;
 }
 
+/** A tool the model may call during an agentic edit; `parameters` is a JSON schema object. */
+export type ToolSpec = { name: string; description: string; parameters: Record<string, unknown> };
+export type ToolCall = { id: string; name: string; input: unknown };
+/** Provider-neutral transcript of an agentic run; `raw` keeps a provider's own assistant blocks (thinking included) for replay. */
+export type ToolTurn =
+  | { role: "user"; content: string }
+  | { role: "assistant"; content: string; toolCalls: ToolCall[]; raw?: { provider: string; content: unknown } }
+  | { role: "tool"; results: { id: string; name: string; output: string; isError?: boolean }[] };
+export interface ToolInput {
+  system: string;
+  turns: ToolTurn[];
+  tools: ToolSpec[];
+  maxOutput?: number;
+  effort?: ModelConfig["effort"];
+  signal?: AbortSignal;
+}
+export interface ToolResult extends GenerateResult {
+  toolCalls: ToolCall[];
+  raw?: { provider: string; content: unknown };
+}
+
 export interface AIProvider {
   id: "anthropic" | "openai" | "mock";
   available(): boolean;
   generate(model: string, input: GenerateInput): Promise<GenerateResult>;
+  /** One turn of an agentic run: the model answers with text and/or tool calls. Absent on providers without tool use. */
+  generateWithTools?(model: string, input: ToolInput): Promise<ToolResult>;
+}
+
+/** Anthropic replay of a neutral transcript; a turn produced by Anthropic itself is replayed from its own blocks. */
+export function anthropicToolMessages(turns: ToolTurn[]): Anthropic.MessageParam[] {
+  return turns.map((turn): Anthropic.MessageParam => {
+    if (turn.role === "user") return { role: "user", content: turn.content };
+    if (turn.role === "tool") return { role: "user", content: turn.results.map((r) => ({ type: "tool_result" as const, tool_use_id: r.id, content: r.output, ...(r.isError ? { is_error: true } : {}) })) };
+    if (turn.raw?.provider === "anthropic") return { role: "assistant", content: turn.raw.content as Anthropic.ContentBlockParam[] };
+    const blocks: Anthropic.ContentBlockParam[] = [];
+    if (turn.content.trim()) blocks.push({ type: "text", text: turn.content });
+    for (const call of turn.toolCalls) blocks.push({ type: "tool_use", id: call.id, name: call.name, input: call.input ?? {} });
+    return { role: "assistant", content: blocks.length ? blocks : [{ type: "text", text: "(continuing)" }] };
+  });
+}
+
+/** OpenAI replay of a neutral transcript: assistant tool calls carry JSON arguments, results are tool messages. */
+export function openaiToolMessages(system: string, turns: ToolTurn[]): OpenAI.ChatCompletionMessageParam[] {
+  const messages: OpenAI.ChatCompletionMessageParam[] = [{ role: "system", content: system }];
+  for (const turn of turns) {
+    if (turn.role === "user") messages.push({ role: "user", content: turn.content });
+    else if (turn.role === "tool") for (const r of turn.results) messages.push({ role: "tool", tool_call_id: r.id, content: r.output });
+    else messages.push({ role: "assistant", content: turn.content || null, ...(turn.toolCalls.length ? { tool_calls: turn.toolCalls.map((c) => ({ id: c.id, type: "function" as const, function: { name: c.name, arguments: JSON.stringify(c.input ?? {}) } })) } : {}) });
+  }
+  return messages;
 }
 
 /* ---------------- Anthropic ---------------- */
@@ -116,6 +163,32 @@ export const anthropicProvider: AIProvider = {
       stopReason: final.stop_reason,
     };
   },
+  async generateWithTools(model, input) {
+    const client = anthropic();
+    const adaptive = /fable|opus-5|sonnet-5|opus-4-[678]|sonnet-4-6/.test(model);
+    const stream = client.messages.stream({
+      model,
+      max_tokens: outputTokenLimit(model, input.maxOutput ?? 16000, input.effort, adaptive),
+      system: [{ type: "text" as const, text: input.system, cache_control: { type: "ephemeral" as const } }],
+      messages: anthropicToolMessages(input.turns),
+      tools: input.tools.map((t) => ({ name: t.name, description: t.description, input_schema: t.parameters as Anthropic.Tool.InputSchema })),
+      ...(adaptive ? { thinking: { type: "adaptive" as const }, output_config: { effort: input.effort ?? "medium" } } : {}),
+    }, { signal: input.signal });
+    const final = await stream.finalMessage();
+    if (final.stop_reason === "refusal") throw new Error("The model declined this request. Rephrase it or try a different tier. Your credits have been refunded.");
+    return {
+      text: final.content.map((b) => (b.type === "text" ? b.text : "")).join(""),
+      toolCalls: final.content.filter((b): b is Anthropic.ToolUseBlock => b.type === "tool_use").map((b) => ({ id: b.id, name: b.name, input: b.input })),
+      raw: { provider: "anthropic", content: final.content },
+      model: final.model,
+      provider: "anthropic",
+      inputTokens: final.usage.input_tokens + (final.usage.cache_read_input_tokens ?? 0) + (final.usage.cache_creation_input_tokens ?? 0),
+      cacheCreationTokens: final.usage.cache_creation_input_tokens ?? 0,
+      outputTokens: final.usage.output_tokens,
+      cacheReadTokens: final.usage.cache_read_input_tokens ?? 0,
+      stopReason: final.stop_reason,
+    };
+  },
 };
 
 /* ---------------- OpenAI ---------------- */
@@ -179,6 +252,26 @@ export const openaiProvider: AIProvider = {
       }
     }
     return { text, model, provider: "openai", inputTokens, outputTokens, stopReason };
+  },
+  async generateWithTools(model, input) {
+    const client = openai();
+    const reasoning = /^(gpt-5|gpt-6|o\d)/.test(model);
+    const completion = await client.chat.completions.create({
+      model,
+      messages: openaiToolMessages(input.system, input.turns),
+      tools: input.tools.map((t) => ({ type: "function" as const, function: { name: t.name, description: t.description, parameters: t.parameters } })),
+      max_completion_tokens: outputTokenLimit(model, input.maxOutput ?? 16000, input.effort, reasoning),
+      ...(reasoning && input.effort ? { reasoning_effort: input.effort } : {}),
+    }, { signal: input.signal });
+    const choice = completion.choices[0];
+    const message = choice?.message;
+    const toolCalls = (message?.tool_calls ?? []).flatMap((call) => {
+      if (call.type !== "function") return [];
+      let parsed: unknown;
+      try { parsed = JSON.parse(call.function.arguments || "{}"); } catch { parsed = { __invalid_json: call.function.arguments }; }
+      return [{ id: call.id, name: call.function.name, input: parsed }];
+    });
+    return { text: message?.content ?? "", toolCalls, model: completion.model || model, provider: "openai", inputTokens: completion.usage?.prompt_tokens ?? 0, outputTokens: completion.usage?.completion_tokens ?? 0, stopReason: choice?.finish_reason ?? null };
   },
 };
 

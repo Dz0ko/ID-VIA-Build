@@ -1,6 +1,6 @@
 import type { ModelTier } from "../plans";
 import { getSettings, DEFAULT_SETTINGS, OPENAI_TIER_MODELS, type ModelConfig } from "../settings";
-import { PROVIDERS, type AIProvider, type GenerateInput, type GenerateResult } from "./provider";
+import { PROVIDERS, type AIProvider, type GenerateInput, type GenerateResult, type ToolInput, type ToolResult } from "./provider";
 import { classifyProviderError, markProviderHealthy, reportProviderOutage } from "../provider-health";
 export { classifyTask, preferredProviderForTask, requiresFrontierDesign, tierForTask, type ModelProvider, type TaskClass } from "./task-routing";
 
@@ -68,6 +68,48 @@ export async function generateWithFallback(resolved: ResolvedModel, input: Gener
     if (resolved.provider.id === "openai" && PROVIDERS.anthropic.available() && Date.now() >= anthropicPausedUntil) {
       console.warn(`[ai] OpenAI unavailable, falling back to Anthropic for ${resolved.tier}`);
       const result = await call(PROVIDERS.anthropic, DEFAULT_SETTINGS.tiers[resolved.tier].model, input);
+      return { ...result, fellBack: true };
+    }
+    throw e;
+  }
+}
+
+/** Whether a resolved model can run an agentic edit (tool use); the template engine cannot. */
+export function supportsTools(resolved: ResolvedModel): boolean {
+  return resolved.provider.id !== "mock" && typeof resolved.provider.generateWithTools === "function";
+}
+
+/**
+ * One tool turn with the same account/capacity fallback as generateWithFallback. A turn that moves to the
+ * other provider replays the neutral transcript; that provider's own blocks are only reused by itself.
+ */
+export async function generateToolsWithFallback(resolved: ResolvedModel, input: ToolInput): Promise<ToolResult & { fellBack?: boolean }> {
+  const call = async (provider: AIProvider, model: string) => {
+    if (!provider.generateWithTools) throw new Error(`${provider.id} cannot run tool turns.`);
+    const id = provider.id;
+    try {
+      const result = await provider.generateWithTools(model, input);
+      if (id !== "mock") await markProviderHealthy(id);
+      return result;
+    } catch (e) {
+      const outage = id !== "mock" && !input.signal?.aborted ? classifyProviderError(e) : null;
+      if (id !== "mock" && outage) await reportProviderOutage(id, outage, e);
+      throw e;
+    }
+  };
+  const paused = resolved.provider.id === "anthropic" && Date.now() < anthropicPausedUntil && PROVIDERS.openai.available();
+  try {
+    if (paused) throw Object.assign(new Error("Anthropic is paused after an account error"), { status: 503 });
+    return await call(resolved.provider, resolved.config.model);
+  } catch (e) {
+    if (input.signal?.aborted || !isAccountOrCapacityError(e)) throw e;
+    if (resolved.provider.id === "anthropic" && PROVIDERS.openai.available()) {
+      anthropicPausedUntil = Date.now() + PAUSE_MS;
+      const result = await call(PROVIDERS.openai, process.env.OPENAI_MODEL || OPENAI_TIER_MODELS[resolved.tier]);
+      return { ...result, fellBack: true };
+    }
+    if (resolved.provider.id === "openai" && PROVIDERS.anthropic.available() && Date.now() >= anthropicPausedUntil) {
+      const result = await call(PROVIDERS.anthropic, DEFAULT_SETTINGS.tiers[resolved.tier].model);
       return { ...result, fellBack: true };
     }
     throw e;

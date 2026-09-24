@@ -9,15 +9,16 @@ after(() => db.$disconnect());
 
 const ORIGINAL = "<!doctype html><html><head><title>Site</title></head><body><h1>Original</h1></body></html>";
 function mockProvider(delayMs: number) {
-  const generate = PROVIDERS.openai.generate, available = PROVIDERS.openai.available;
+  const generate = PROVIDERS.openai.generate, available = PROVIDERS.openai.available, tools = PROVIDERS.openai.generateWithTools;
   const inputs: GenerateInput[] = [];
   PROVIDERS.openai.available = () => true;
+  PROVIDERS.openai.generateWithTools = undefined; // the single-shot edit path is under test here
   PROVIDERS.openai.generate = async (_model, input) => {
     inputs.push(input);
     await new Promise(r => setTimeout(r, delayMs));
     return { text: '<<<HTML_EDITS>>>[{"search":"Original","replace":"Updated"}]<<<END HTML_EDITS>>>', stopReason: "stop", model: "gpt-5.6-terra", provider: "openai", inputTokens: 200, outputTokens: 40 };
   };
-  return { inputs, restore() { PROVIDERS.openai.generate = generate; PROVIDERS.openai.available = available; } };
+  return { inputs, restore() { PROVIDERS.openai.generate = generate; PROVIDERS.openai.available = available; PROVIDERS.openai.generateWithTools = tools; } };
 }
 
 test("many users generating at the same time all finish, are charged once and leave no leases behind", async () => {

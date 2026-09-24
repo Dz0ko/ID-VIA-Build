@@ -294,6 +294,10 @@ export function Workspace(p: WorkspaceProps) {
             usedCredits = ev.credits; setCredits((c) => c - ev.credits);
             log(`Routed → ${ev.tier} tier · ${ev.provider}/${ev.model} · task=${ev.taskClass} · ${ev.credits} credits${ev.fallback ? " · template engine" : ""}`);
             setActivity((items) => [...items.map((item) => ({ ...item, status: "done" as const })), { id: `activity-${Date.now()}`, label: "Plan work", detail: `${ev.tier} model · ${ev.taskClass} task`, status: "running" }]);
+          } else if (ev.type === "tool") {
+            const label = ({ search: "Search project", read_file: "Read source", edit_file: "Edit file", write_file: "Write file", delete_file: "Delete file", check_project: "Check project", list_files: "List files" } as Record<string, string>)[ev.name] ?? "Agent step";
+            log(ev.detail);
+            setActivity((items) => [...items.map((item) => ({ ...item, status: "done" as const })), { id: `activity-${Date.now()}-${items.length}`, label, detail: String(ev.detail), status: "running" as const }].slice(-40));
           } else if (ev.type === "reading") {
             acc = ""; setStream("");
             const detail = `Reading ${ev.files.join(", ")}`; log(detail);
