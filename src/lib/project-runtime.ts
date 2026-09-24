@@ -1,3 +1,5 @@
+import { recordPlatformError } from "./platform-errors";
+import { diagnosticExcerpt } from "./platform-error-details";
 import { previewResponseReady } from "./preview-readiness";
 import { runtimeResources } from "./runtime-resources";
 import { reserveRuntimeCapacity } from "./runtime-capacity";
@@ -97,6 +99,7 @@ export async function runProjectBuild(project: Project & { files: ProjectFile[] 
   } catch (error) {
     report.status = "error";
     output(error instanceof Error ? error.message : "Build failed");
+    await recordPlatformError(error, { source: "build", userId: project.userId, projectId: project.id, details: diagnosticExcerpt(report.log), secrets });
     throw error;
   } finally {
     report.finishedAt = new Date().toISOString();

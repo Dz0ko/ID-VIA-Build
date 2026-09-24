@@ -1,5 +1,6 @@
 "use client";
 
+import { PlatformErrorReporter } from "./PlatformErrorReporter";
 import { CreditUpsell } from "./CreditUpsell";
 import { AnnouncementBanner } from "./AnnouncementBanner";
 import { SupportWidget } from "@/components/support/SupportWidget";
@@ -46,7 +47,7 @@ const GROUPS: { title: string; items: Item[] }[] = [
 
 export function Shell(props: { user: SessionUser; children: React.ReactNode }) {
   const pathname = usePathname();
-  return <div className="app-theme"><ShellLayout key={pathname} {...props} /><SupportWidget /><CreditUpsell credits={props.user.credits} plan={props.user.plan} /></div>;
+  return <div className="app-theme"><ShellLayout key={pathname} {...props} /><PlatformErrorReporter /><SupportWidget /><CreditUpsell credits={props.user.credits} plan={props.user.plan} /></div>;
 }
 
 function ShellLayout({ user, children }: { user: SessionUser; children: React.ReactNode }) {

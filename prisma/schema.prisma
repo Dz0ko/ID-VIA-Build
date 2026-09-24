@@ -537,3 +537,38 @@ model EmailCampaign {
   queuedAt   DateTime?
   deliveries EmailDelivery[]
 }
+
+/// Operational failures only; never request bodies, credentials or customer source code.
+model PlatformIncident {
+  id            String   @id @default(cuid())
+  fingerprint   String   @unique
+  source        String
+  code          String
+  title         String
+  area          String // PLATFORM | PROVIDER | PROJECT | UNKNOWN
+  severity      String // CRITICAL | HIGH | MEDIUM
+  status        String   @default("NEW") // NEW | INVESTIGATING | RESOLVED
+  occurrences   Int      @default(1)
+  revision      Int      @default(1)
+  userId        String?
+  projectId     String?
+  runId         String?
+  route         String?
+  release       String?
+  message       String
+  stack         String?
+  explanation   String
+  steps         String // JSON string[]
+  firstSeenAt   DateTime @default(now())
+  lastSeenAt    DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  resolvedAt    DateTime?
+  updatedById   String?
+  note          String   @default("")
+
+  @@index([lastSeenAt])
+  @@index([status, lastSeenAt])
+  @@index([area, lastSeenAt])
+  @@index([userId, lastSeenAt])
+  @@index([projectId, lastSeenAt])
+}

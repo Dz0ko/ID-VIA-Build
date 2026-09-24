@@ -1,3 +1,4 @@
+import { recordPlatformError } from "@/lib/platform-errors";
 import { readRequestText, RequestBodyError } from "@/lib/request-body";
 import { dispatchEmails } from "@/lib/email-dispatch";
 import { Prisma } from "@prisma/client";
@@ -70,7 +71,7 @@ export async function POST(req: Request) {
     return Response.json({ ok: true, ...result });
   } catch (e) {
     if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002" && await db.webhookEvent.findUnique({ where: { id: id! } })) return Response.json({ ok: true, duplicate: true });
-    console.error("[whop] Event could not be committed", { eventId: id, type: event.type, error: e instanceof Error ? e.message : "Unknown error" });
+    await recordPlatformError(e, { source: "billing.webhook", route: "/api/webhooks/whop", details: `Webhook event: ${id.slice(0, 100)} · ${event.type.slice(0, 80)}` });
     return Response.json({ error: "Payment processing temporarily unavailable. Retry required." }, { status: 503 });
   }
 }

@@ -1,3 +1,5 @@
+import { recordPlatformError } from "@/lib/platform-errors";
+import { diagnosticExcerpt } from "@/lib/platform-error-details";
 import { recordProjectRelease } from "@/lib/project-releases";
 import { z } from "zod";
 import { db } from "@/lib/db";
@@ -156,6 +158,7 @@ export async function POST(req: Request, ctx: RouteContext<"/api/projects/[id]/t
                 await db.deployment.update({ where: { id: dep.id }, data: { status: "READY", url: r.url, log: lines.join("\n"), finishedAt: new Date() } });
                 send(`${r.created ? "Created " : ""}${r.url} · commit ${r.commitUrl}`, "ok");
               } catch (e) {
+                await recordPlatformError(e, { source: "git", userId: user.id, projectId: id, secrets: Object.values(env) });
                 const msg = e instanceof Error ? e.message : "push failed";
                 await db.deployment.update({ where: { id: dep.id }, data: { status: "ERROR", log: [...lines, msg].join("\n"), finishedAt: new Date() } });
                 send(`✗ ${msg}`, "err");
@@ -184,6 +187,7 @@ export async function POST(req: Request, ctx: RouteContext<"/api/projects/[id]/t
                   if (r.state === "READY") await db.project.update({ where: { id }, data: { status: "PUBLISHED", publishedAt: new Date() } });
                   send(r.state === "READY" ? r.url : `Deployment is ${r.state}. Check its status on Vercel: ${r.inspectorUrl ?? r.url}`, r.state === "READY" ? "ok" : "line");
                 } catch (e) {
+                  await recordPlatformError(e, { source: "deploy", userId: user.id, projectId: id, details: diagnosticExcerpt(lines.join("\n")), secrets: [vc.secret.token, ...Object.values(env)] });
                   const msg = e instanceof Error ? e.message : "deploy failed";
                   await db.deployment.update({ where: { id: dep.id }, data: { status: "ERROR", log: [...lines, msg].join("\n"), finishedAt: new Date() } });
                   send(`✗ ${msg}`, "err");
@@ -195,6 +199,7 @@ export async function POST(req: Request, ctx: RouteContext<"/api/projects/[id]/t
           send(`Unknown command: ${name}. Type \`help\`.`, "err");
         }
       } catch (e) {
+        if (!req.signal.aborted) await recordPlatformError(e, { source: execution ? "build" : "terminal", userId: user.id, projectId: id, secrets: Object.values(env) });
         send(`✗ ${execution ? (e instanceof Error && /runtime is not configured|already running|no \/App|no website|previous runtime/.test(e.message) ? e.message : "Build or preview failed. Check the command output above; the platform owner can check runtime configuration and quota.") : e instanceof Error ? e.message : "command failed"}`, "err");
       } finally {
         send("", "done");

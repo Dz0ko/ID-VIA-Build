@@ -1,3 +1,4 @@
+import { recordPlatformError } from "./platform-errors";
 import { ProjectBusyError } from "./project-lock";
 import { NextResponse } from "next/server";
 import { AuthError, getCurrentUser, type SessionUser } from "./auth";
@@ -21,17 +22,17 @@ export async function withUser<T>(
   try {
     return await fn(user);
   } catch (e) {
-    return handleError(e);
+    return handleError(e, user.id);
   }
 }
 
-export function handleError(e: unknown) {
+export async function handleError(e: unknown, userId?: string) {
   if (e instanceof ProjectBusyError) return error(e.message, e.status, { code: "PROJECT_BUSY" });
   if (e instanceof AuthError) return error(e.message, 401);
   if (e instanceof InsufficientCredits)
     return error(e.message, 402, { needed: e.needed, have: e.have, code: "INSUFFICIENT_CREDITS" });
-  console.error(e);
-  return error("Something went wrong. Please try again.", 500);
+  const incidentId = await recordPlatformError(e, { source: "api", userId });
+  return error("Something went wrong. Please try again.", 500, incidentId ? { incidentId } : undefined);
 }
 
 export function slugify(s: string) {

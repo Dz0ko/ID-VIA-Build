@@ -1,3 +1,4 @@
+import { recordPlatformError } from "@/lib/platform-errors";
 import { isConversationRequest } from "@/lib/ai/conversation";
 import { ProjectBusyError } from "@/lib/project-lock";
 import { friendlyAiError } from "@/lib/ai/router";
@@ -78,6 +79,7 @@ export async function POST(req: Request, ctx: RouteContext<"/api/projects/[id]/r
           signal: req.signal,
         });
       } catch (e) {
+        if (!req.signal.aborted) await recordPlatformError(e, { source: "generation", userId: user.id, projectId: id, route: "/api/projects/[id]/run" });
         if (e instanceof InsufficientCredits) {
           send({ type: "error", code: "INSUFFICIENT_CREDITS", needed: e.needed, have: e.have, message: `Not enough credits (need ${e.needed}, have ${e.have}). Top up or upgrade your plan.` });
         } else if (!sentError) {

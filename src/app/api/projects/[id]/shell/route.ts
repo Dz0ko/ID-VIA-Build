@@ -1,3 +1,6 @@
+import { recordPlatformError } from "@/lib/platform-errors";
+import { runtimeFailureHint } from "@/lib/runtime-diagnostics";
+import { readProjectEnv } from "@/lib/project-files";
 import { previewResponseReady } from "@/lib/preview-readiness";
 import { readRequestJson } from "@/lib/request-body";
 import { z } from "zod";
@@ -112,7 +115,10 @@ export async function POST(req: Request, ctx: RouteContext<"/api/projects/[id]/s
       throw new ShellError(`No working preview found between ports ${action.port} and ${lastPort}. Start the server with --host 0.0.0.0 and try again.`);
     }
     return Response.json({ ok: true });
-  } catch (e) { return failure(e); }
+  } catch (e) {
+    if (!req.signal.aborted) await recordPlatformError(e, { source: "shell", userId: access.user.id, projectId: id, secrets: Object.values(readProjectEnv(access.project)) });
+    return failure(e);
+  }
 }
 
 export async function GET(req: Request, ctx: RouteContext<"/api/projects/[id]/shell">) {
@@ -132,15 +138,33 @@ export async function GET(req: Request, ctx: RouteContext<"/api/projects/[id]/sh
         const disconnect = () => { void handle?.disconnect(); };
         req.signal.addEventListener("abort", disconnect, { once: true });
         const heartbeat = setInterval(() => send("heartbeat", {}), 15_000);
+        let diagnosticBuffer = "";
+        const reportedHints = new Set<string>();
+        const pendingReports: Promise<unknown>[] = [];
         try {
-          handle = await sandbox.pty.connect(state.pid, { timeoutMs: 0, onData: (data) => send("output", Buffer.from(data).toString("base64")) });
+          handle = await sandbox.pty.connect(state.pid, { timeoutMs: 0, onData: (data) => {
+            send("output", Buffer.from(data).toString("base64"));
+            diagnosticBuffer = (diagnosticBuffer + Buffer.from(data).toString("utf8")).slice(-4000);
+            const hint = runtimeFailureHint(diagnosticBuffer);
+            if (hint && !reportedHints.has(hint)) {
+              reportedHints.add(hint);
+              // Persist a fixed diagnostic, never arbitrary terminal output or typed commands.
+              pendingReports.push(recordPlatformError(new Error(hint), { source: "shell", userId: access.user.id, projectId: id }));
+            }
+          } });
           if (req.signal.aborted) return;
           send("ready", {});
           // End before the serverless limit; EventSource reconnects without restarting bash.
           await Promise.race([handle.wait(), new Promise<void>((resolve) => { timer = setTimeout(resolve, 270_000); req.signal.addEventListener("abort", () => resolve(), { once: true }); })]);
           if (handle.exitCode !== undefined) send("closed", { exitCode: handle.exitCode });
-        } catch { if (!req.signal.aborted) send("closed", { message: "Terminal connection ended. Reconnect if the shell has exited." }); }
+        } catch (error) {
+          if (!req.signal.aborted) {
+            await recordPlatformError(error, { source: "shell", userId: access.user.id, projectId: id });
+            send("closed", { message: "Terminal connection ended. Reconnect if the shell has exited." });
+          }
+        }
         finally {
+          await Promise.allSettled(pendingReports);
           clearInterval(heartbeat); clearTimeout(timer);
           req.signal.removeEventListener("abort", disconnect);
           await handle?.disconnect().catch(() => {});
@@ -149,5 +173,8 @@ export async function GET(req: Request, ctx: RouteContext<"/api/projects/[id]/sh
       },
     });
     return new Response(stream, { headers: { "Content-Type": "text/event-stream", "Cache-Control": "no-cache, no-transform", Connection: "keep-alive" } });
-  } catch (e) { return failure(e); }
+  } catch (e) {
+    if (!req.signal.aborted) await recordPlatformError(e, { source: "shell", userId: access.user.id, projectId: id, secrets: Object.values(readProjectEnv(access.project)) });
+    return failure(e);
+  }
 }

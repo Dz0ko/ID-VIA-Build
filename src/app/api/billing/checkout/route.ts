@@ -1,3 +1,4 @@
+import { recordPlatformError } from "@/lib/platform-errors";
 import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
 import { isPlanId } from "@/lib/plans";
@@ -25,7 +26,7 @@ export async function GET(req: Request) {
       const { url: target } = await createPlanCheckout({ plan, userId: user.id, email: user.email, appUrl });
       return NextResponse.redirect(target);
     } catch (e) {
-      console.error("[whop checkout]", e instanceof Error ? e.message : e);
+      await recordPlatformError(e, { source: "billing.checkout", userId: user.id });
       return NextResponse.redirect(new URL(`/app/settings?error=checkout_failed&plan=${plan}`, req.url));
     }
   }

@@ -1,4 +1,5 @@
 import "server-only";
+import { recordPlatformError } from "./platform-errors";
 import { randomUUID } from "node:crypto";
 import type { Prisma } from "@prisma/client";
 import { db } from "./db";
@@ -73,11 +74,13 @@ export async function processEmailQueue(options: { limit?: number; seconds?: num
           accepted = true;
           await db.emailDelivery.update({ where: { id: row.id }, data: { status: "SENT", sentAt: new Date(), providerId: data.id, uncertain: false, lockedUntil: null, lockToken: null, lastError: null } }); processed++;
         } else {
+          await recordPlatformError(new Error(`Email provider returned HTTP ${response.status}.`), { source: "email.delivery", userId: row.userId });
           const uncertain = response.status >= 500 || response.ok || row.uncertain;
           const retryable = response.status === 429 || response.status >= 500 || response.ok;
           await db.emailDelivery.update({ where: { id: row.id }, data: { status: retryable && row.attempts < 4 ? "PENDING" : uncertain ? "REVIEW" : "FAILED", uncertain, nextAttemptAt: new Date(Date.now() + Math.min(3600000, 60000 * 2 ** row.attempts)), lockedUntil: null, lockToken: null, lastError: `Email provider returned HTTP ${response.status}. Check sender verification, credentials and provider limits.` } });
         }
-      } catch {
+      } catch (error) {
+        await recordPlatformError(error, { source: "email.delivery", userId: row.userId, secrets: [config.apiKey] });
         // A successful provider response followed by a DB failure must retain its idempotency window.
         await db.emailDelivery.updateMany({ where: { id: row.id, lockToken: token }, data: { status: row.attempts < 4 ? "PENDING" : "REVIEW", uncertain: true, lockedUntil: null, lockToken: null, nextAttemptAt: new Date(Date.now() + 60000), lastError: accepted ? "Provider accepted; database acknowledgement needs recovery." : "Email provider connection interrupted; retry queued." } });
       }

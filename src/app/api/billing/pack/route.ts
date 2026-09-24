@@ -1,3 +1,4 @@
+import { recordPlatformError } from "@/lib/platform-errors";
 import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
 import { CREDIT_PACKS } from "@/lib/plans";
@@ -20,7 +21,7 @@ export async function GET(req: Request) {
     const { url: target } = await createPackCheckout({ credits, userId: user.id, email: user.email, appUrl });
     return NextResponse.redirect(target);
   } catch (e) {
-    console.error("[whop pack checkout]", e instanceof Error ? e.message : e);
+    await recordPlatformError(e, { source: "billing.checkout", userId: user.id });
     return NextResponse.redirect(new URL("/app/settings?error=checkout_failed&plan=PACK", req.url));
   }
 }

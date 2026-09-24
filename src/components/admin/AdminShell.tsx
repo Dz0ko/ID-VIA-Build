@@ -1,12 +1,15 @@
 "use client";
 
 import Link from "next/link";
+import { PlatformErrorAlert } from "./PlatformErrorAlert";
+import { PlatformErrorReporter } from "@/components/app/PlatformErrorReporter";
 import { usePathname, useRouter } from "next/navigation";
 import { BrandIcon, type BrandIconName } from "@/components/BrandIcon";
 import type { SessionUser } from "@/lib/auth";
 
 const NAV = [
   { href: "/admin", label: "Overview", icon: "overview" as BrandIconName, exact: true, hint: "KPIs, trends, MRR" },
+  { href: "/admin/errors", label: "Platform errors", icon: "alert" as BrandIconName, hint: "Live failures, affected projects and investigation steps" },
   { href: "/admin/users", label: "Users", icon: "users" as BrandIconName, hint: "Accounts, plans, credits" },
   { href: "/admin/projects", label: "Projects", icon: "overview" as BrandIconName, hint: "Created projects and their owners" },
   { href: "/admin/payments", label: "Payments", icon: "payments" as BrandIconName, hint: "Subscriptions, packs, webhooks" },
@@ -33,7 +36,7 @@ export function AdminShell({ user, children }: { user: SessionUser; children: Re
     <div className="admin-theme h-dvh flex">
       <aside className="w-48 xl:w-56 shrink-0 border-r border-graphite bg-ink flex flex-col p-4">
         <Link href="/admin" className="px-3 py-5 text-lg font-semibold tracking-tight">IDÆVIA <span className="text-xs text-ash font-normal">Admin</span></Link>
-        <nav aria-label="Admin sections" className="space-y-1 mt-4">
+        <nav aria-label="Admin sections" className="space-y-1 mt-4 flex-1 min-h-0 overflow-y-auto">
           {NAV.map((n, i) => <Link key={n.href} href={n.href} className="admin-nav-link" aria-current={i === idx ? "page" : undefined}><BrandIcon name={n.icon} size={18} />{n.label}</Link>)}
         </nav>
         <div className="mt-auto border-t border-graphite pt-4 space-y-2">
@@ -48,6 +51,7 @@ export function AdminShell({ user, children }: { user: SessionUser; children: Re
           <h1 className="text-2xl font-semibold tracking-tight">{current.label}</h1>
           <p className="text-sm text-fog mt-1">{current.hint}</p>
         </header>
+        <PlatformErrorAlert /><PlatformErrorReporter />
         <main className="admin-content flex-1 overflow-y-auto p-8">{children}</main>
       </div>
     </div>

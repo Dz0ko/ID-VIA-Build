@@ -1,4 +1,5 @@
 import "server-only";
+import { recordPlatformError } from "./platform-errors";
 import { createHash } from "node:crypto";
 import { db } from "./db";
 import type { RuntimeReport } from "./runtime-report";
@@ -9,7 +10,19 @@ export function sourceFingerprint(project: Source) {
 export async function readRuntimeReport(project: Source): Promise<RuntimeReport | null> {
   const row = await db.setting.findUnique({ where: { key: `runtime-report:${project.id}` } });
   if (!row) return null;
-  try { const report = JSON.parse(row.value); if (report.status === "running" && Date.now() - new Date(report.startedAt).getTime() > 360000) { report.status = "error"; report.log += "\nThe build ended without a completion signal. Retry Build to verify the saved source."; } return { ...report, current: report.fingerprint === sourceFingerprint(project) }; } catch { return null; }
+  try {
+    const report = JSON.parse(row.value);
+    if (report.status === "running" && Date.now() - new Date(report.startedAt).getTime() > 360000) {
+      report.status = "error";
+      report.log += "\nThe build ended without a completion signal. Retry Build to verify the saved source.";
+      const changed = await db.setting.updateMany({ where: { key: row.key, value: row.value }, data: { value: JSON.stringify(report) } });
+      if (changed.count) {
+        const owner = await db.project.findUnique({ where: { id: project.id }, select: { userId: true } });
+        await recordPlatformError(new Error("Build timed out without a completion signal. Check hosting execution limits and the runtime."), { source: "build", projectId: project.id, userId: owner?.userId });
+      }
+    }
+    return { ...report, current: report.fingerprint === sourceFingerprint(project) };
+  } catch { return null; }
 }
 export async function saveRuntimeReport(projectId: string, report: RuntimeReport) {
   const key = `runtime-report:${projectId}`, value = JSON.stringify(report);

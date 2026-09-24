@@ -13,6 +13,8 @@ export async function GET(req: Request) {
     return new Response("Unauthorized", { status: 401 });
   }
   const now = new Date();
+  // Operational details expire after 90 days without a recurrence.
+  await db.platformIncident.deleteMany({ where: { lastSeenAt: { lt: new Date(now.getTime() - 90 * 86400000) } } });
   const cutoff = new Date(now);
   cutoff.setMonth(cutoff.getMonth() - 1);
 

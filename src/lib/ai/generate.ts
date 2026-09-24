@@ -1,3 +1,4 @@
+import { recordPlatformError } from "../platform-errors";
 import { readRuntimeReport } from "../runtime-report-store";
 import { auditProject, auditSummary } from "../audit";
 import { isConversationRequest, CONVERSATION_SYSTEM, ANSWER_FALLBACK, extractAnswer } from "./conversation";
@@ -270,7 +271,7 @@ async function runAgentLocked(opts: RunOptions, assertActive: () => Promise<void
     return { mode: "report" as const, report: responseText, credits: creditsCharged };
   } catch (err) {
     const message = friendlyAiError(err);
-    console.error("[agent run failed]", err instanceof Error ? err.message : err);
+    await recordPlatformError(err, { source: "generation", userId: opts.userId, projectId: opts.projectId, runId: run?.id, details: `Provider: ${resolved.provider.id} · Model: ${resolved.config.model} · Agent: ${agent.id}` });
     // A failed or unusable generation delivers no result: return the entire current debit.
     await releaseCredits({ userId: opts.userId, ledgerId, hold: est.hold, keep: 0, purchasedHeld: purchasedSpent, note: `${noteBase} · failed, fully refunded` });
     if (run) await db.agentRun.update({ where: { id: run.id }, data: { status: "FAILED", finishedAt: new Date(), output: message, creditsUsed: 0 } });

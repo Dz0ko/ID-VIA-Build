@@ -1,3 +1,4 @@
+import { recordPlatformError } from "./platform-errors";
 import { estimateUsd } from "./ai/cost";
 import { supportTier } from "./support-tier";
 import { canManageSupport } from "./support-access";
@@ -66,7 +67,7 @@ export async function sendSupport(id: string, user: SessionUser, input: { messag
         await db.agentRun.create({ data: { userId: user.id, agentId: "support", status: "DONE", task: "Live support conversation", output: "Support response", model: reply.model, inputTokens: reply.inputTokens, outputTokens: reply.outputTokens, costUsd: estimateUsd(reply.model, reply), creditsUsed: 0, finishedAt: new Date() } });
         if (reply.text.trim()) { handoff = reply.text.includes("[HANDOFF]"); answer = reply.text.replaceAll("[HANDOFF]", "").trim().slice(0, 10000); }
       }
-    } catch { /* Durable handoff is preferable to a fake answer or lost conversation. */ }
+    } catch (error) { await recordPlatformError(error, { source: "support.bot", userId: user.id }); /* Durable human handoff remains available. */ }
     await db.$transaction(async tx => {
       await tx.$queryRaw`SELECT id FROM "SupportThread" WHERE id = ${id} FOR UPDATE`;
       const changed = await tx.supportThread.updateMany({ where: { id, botToken: result, status: "BOT" }, data: { botToken: null, botUntil: null, ...(handoff ? { status: "WAITING" } : {}) } });

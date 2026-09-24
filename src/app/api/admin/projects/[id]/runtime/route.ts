@@ -1,3 +1,4 @@
+import { recordPlatformError } from "@/lib/platform-errors";
 import { getCurrentUser } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { rateLimit } from "@/lib/security";
@@ -39,7 +40,10 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
       try {
         const ready = await startAdminPreview(result.user.id, result.project, text => send({ type: "progress", message: text }), AbortSignal.any([req.signal, AbortSignal.timeout(270_000)]));
         send({ type: "ready", ...ready });
-      } catch (error) { send({ type: "error", message: message(error) }); }
+      } catch (error) {
+        if (!req.signal.aborted) await recordPlatformError(error, { source: "admin-preview", userId: result.project.userId, projectId: result.project.id });
+        send({ type: "error", message: message(error) });
+      }
       finally { controller.close(); }
     },
   });

@@ -1,3 +1,4 @@
+import { recordPlatformError } from "@/lib/platform-errors";
 import { z } from "zod";
 import { db } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
@@ -73,6 +74,7 @@ export async function POST(req: Request) {
         await db.agentRun.update({ where: { id: runId }, data: { status: "DONE", creditsUsed: charged, finishedAt: new Date() } });
         send({ type: "done", id: saved.id, content: text, credits: charged });
       } catch (e) {
+        if (!req.signal.aborted) await recordPlatformError(e, { source: "generation.assistant", userId: user.id, runId: runId || undefined });
         if (e instanceof InsufficientCredits) send({ type: "error", code: "INSUFFICIENT_CREDITS", needed: e.needed, have: e.have, message: `Not enough credits (need ${e.needed}, have ${e.have}).` });
         else {
           if (reservation) await releaseCredits({ userId: user.id, ledgerId: reservation.ledgerId, hold: credits, keep: 0, purchasedHeld: reservation.purchasedSpent, note: "IDÆVIA Agent conversation failed, credits returned" });
