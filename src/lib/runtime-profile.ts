@@ -22,7 +22,9 @@ export function runtimeProfile(files: RuntimeFile[], stack = ""): RuntimeProfile
       if (custom.setup !== undefined && (typeof custom.setup !== "string" || custom.setup.length > 6000 || custom.setup.includes("\0"))) throw Error();
       if (custom.port !== undefined && custom.port !== null && (!Number.isInteger(custom.port) || custom.port < 1024 || custom.port > 65535)) throw Error();
       const setup = custom.setup?.trim() ? `(\n${custom.setup}\n) && ` : "";
-      return result("custom", typeof custom.label === "string" ? custom.label.slice(0, 80) : "Custom runtime", setup + `(\n${custom.build}\n)`, setup + `(\n${custom.start}\n)`, [], custom.port === null ? null : custom.port ?? 3000);
+      // The start command usually runs build output (node dist/server.js); a preview therefore builds first,
+      // exactly like the package.json profile does, so "Open preview" never fails on a missing dist.
+      return result("custom", typeof custom.label === "string" ? custom.label.slice(0, 80) : "Custom runtime", setup + `(\n${custom.build}\n)`, setup + `(\n${custom.build}\n) && (\n${custom.start}\n)`, [], custom.port === null ? null : custom.port ?? 3000);
     } catch {
       const issue = "Invalid .idaevia/runtime.json: provide build and start commands, optional setup, and port 1024–65535 (or null for terminal apps).";
       return result("invalid", "Runtime configuration", fail(issue), fail(issue), [], null, issue);

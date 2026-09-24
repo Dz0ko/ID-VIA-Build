@@ -103,6 +103,8 @@ test("runtime profiles preserve package managers, Python isolation and custom co
   assert.match(runtimeProfile([{ path: "main.py", content: "print(1)" }], "").preview, /venv .*activate/);
   const custom = runtimeProfile([{ path: ".idaevia/runtime.json", content: JSON.stringify({ build: "cd backend && make", start: "cd backend && ./server" }) }], "");
   assert.ok(custom.preview.includes("cd backend && ./server"));
+  assert.ok(custom.preview.indexOf("cd backend && make") < custom.preview.indexOf("cd backend && ./server")); // a preview builds before it starts
+  assert.ok(custom.build.includes("cd backend && make") && !custom.build.includes("./server"));
   assert.match(runtimeProfile([{ path: ".idaevia/runtime.json", content: "{}" }], "").preview, /Invalid/);
   assert.match(runtimeProfile([{ path: "Package.swift", content: "" }], "").preview, /Required runtime tool is unavailable/);
 });
@@ -113,4 +115,9 @@ test("runtime failures produce specific help without treating normal logs as err
   assert.equal(runtimeFailureHint("Ready in 500ms. GET / 200"), null);
   assert.equal(runtimeFailureHint(runtimeProfile([{ path: "go.mod", content: "module preview" }], "Go").preview), null);
   assert.match(runtimeFailureHint("\r\nRequired runtime tool is unavailable: swift. Open a new session.")!, /toolchain/);
+});
+
+test("a start command that runs before any build is explained as missing build output, not a broken dependency", () => {
+  assert.match(runtimeFailureHint("Error: Cannot find module '/home/user/project/dist/server.js'\n    at Module._resolveFilename")!, /build output that does not exist yet/);
+  assert.match(runtimeFailureHint("Error: Cannot find module 'express'")!, /could not compile or load a dependency/);
 });
