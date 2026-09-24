@@ -29,29 +29,27 @@ function listen(port) {
 }
 listen(requestedPort);`;
 
-export interface BuildRuntime {
-  command(command: string, timeoutMs: number): Promise<void>;
-  writeServer(source: string): Promise<void>;
-  startServer(): Promise<void>;
+/** Static multi-file projects retain their styles, scripts, pages, fonts and images. */
+export function staticBuildScript(files: { path: string; content: string }[]) {
+  const publicFiles = files.map(f => f.path.replace(/^\/+/, "")).filter(p => !p.split("/").some(s => s.startsWith(".") || s === "node_modules" || s === "dist") && /\.(?:html?|css|js|mjs|svg|png|jpe?g|gif|webp|avif|ico|woff2?|ttf|otf|mp4|webm|mp3|wav|pdf|txt|webmanifest)$/i.test(p));
+  return `const fs=require('node:fs/promises'),path=require('node:path');\n(async()=>{const root=process.cwd();await fs.mkdir('dist',{recursive:true});for(const name of ${JSON.stringify(publicFiles)}){const source=await fs.realpath(name);if(!source.startsWith(root+path.sep))throw Error('Unsafe static asset');const target=path.resolve('dist',name);if(!target.startsWith(path.resolve('dist')+path.sep))throw Error('Unsafe static path');await fs.mkdir(path.dirname(target),{recursive:true});await fs.copyFile(source,target)}})().catch(e=>{console.error(e.message);process.exit(1)});`;
 }
 
-/** The adapter only executes inside the provisioned sandbox, never the app host. */
-export async function executeProjectBuild(runtime: BuildRuntime, isApp: boolean, emit: (line: string) => void, signal: AbortSignal) {
+export interface LanguageBuildRuntime {
+  command(command: string, timeoutMs: number): Promise<void>;
+  start(command: string): Promise<void>;
+}
+/** A release is recorded by the caller only after this compilation/check succeeds. */
+export async function executeLanguageBuild(runtime: LanguageBuildRuntime, profile: import("./runtime-profile").RuntimeProfile, emit: (line: string) => void, signal: AbortSignal) {
   signal.throwIfAborted();
-  if (isApp) {
-    emit("$ npm install --no-audit --no-fund");
-    await runtime.command("npm install --no-audit --no-fund", 120_000);
-    signal.throwIfAborted();
-    emit("$ npm run build");
-    await runtime.command("npm run build", 120_000);
-  } else {
-    emit("Static HTML project: preparing dist/index.html (no npm compilation needed).");
-    await runtime.command("mkdir -p dist && cp index.html dist/index.html", 10_000);
-  }
+  if (profile.issue) throw new Error(profile.issue);
+  emit(`Building ${profile.label}…`);
+  await runtime.command(profile.build, 210_000);
   signal.throwIfAborted();
-  await runtime.writeServer(SERVER);
-  emit("Starting the built site on port 3000…");
-  await runtime.startServer();
-  await runtime.command("node -e 'let n=0;const check=()=>fetch(\"http://127.0.0.1:3000\").then(r=>{if(!r.ok)throw Error();process.exit(0)}).catch(()=>++n<30?setTimeout(check,500):process.exit(1));check()'", 20_000);
+  if (profile.previewPort === null) { emit("Build/check succeeded. This target runs in Terminal and has no automatic browser preview."); return; }
+  emit(`Build/check succeeded. Starting ${profile.label} preview on port ${profile.previewPort}…`);
+  await runtime.start(profile.preview);
+  // A real HTTP check, not a success inferred from a URL printed to stdout.
+  await runtime.command(`node -e 'let n=0;const check=()=>fetch("http://127.0.0.1:${profile.previewPort}",{redirect:"manual",signal:AbortSignal.timeout(3000)}).then(r=>{if(!((r.status>=200&&r.status<400)||r.status===401||r.status===404))throw Error();process.exit(0)}).catch(()=>++n<60?setTimeout(check,1000):process.exit(1));check()'`, 75_000);
   signal.throwIfAborted();
 }

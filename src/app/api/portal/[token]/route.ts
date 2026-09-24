@@ -1,3 +1,5 @@
+import { availableProjectPreview } from "@/lib/runtime-report-store";
+import { legacyReactSource } from "@/lib/project-source";
 import { rateLimit, clientIp } from "@/lib/security";
 import { checkPortalLink } from "@/lib/portal";
 import { z } from "zod";
@@ -7,7 +9,7 @@ import { error, json } from "@/lib/api";
 async function loadLink(token: string, password: string | null) {
   const denied = await checkPortalLink(token, password);
   if (denied) return { err: error(denied.message, denied.status, denied.status === 401 ? { code: "PASSWORD" } : undefined) };
-  const link = await db.shareLink.findUniqueOrThrow({ where: { token }, include: { project: { include: { team: true, comments: { orderBy: { createdAt: "asc" } } } } } });
+  const link = await db.shareLink.findUniqueOrThrow({ where: { token }, include: { project: { include: { files: true, team: true, comments: { orderBy: { createdAt: "asc" } } } } } });
   return { link };
 }
 
@@ -19,7 +21,7 @@ export async function GET(req: Request, ctx: RouteContext<"/api/portal/[token]">
   const p = link!.project;
   const wl = p.team ? JSON.parse(p.team.whiteLabel || "{}") : {};
   return json({
-    project: { name: p.name, kind: p.kind, status: p.status, clientStatus: p.clientStatus, updatedAt: p.updatedAt, hasContent: p.kind === "app" ? true : Boolean(p.html) },
+    project: { name: p.name, kind: p.kind, status: p.status, clientStatus: p.clientStatus, updatedAt: p.updatedAt, hasContent: p.kind === "app" ? p.files.length > 0 : Boolean(p.html), browserSandbox: p.kind === "app" && legacyReactSource(p.files), previewUrl: p.kind === "app" ? await availableProjectPreview(p) : null },
     comments: p.comments,
     permissions: { canComment: link!.canComment, canApprove: link!.canApprove },
     brand: { name: wl.brandName || (wl.hideIdaevia ? p.team?.name : "IDÆVIA Build"), logoUrl: wl.logoUrl || null, accent: wl.accent || "#5b5cff", hideIdaevia: Boolean(wl.hideIdaevia), welcome: wl.portalWelcome || null, teamName: p.team?.name ?? null },

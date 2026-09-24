@@ -1,7 +1,9 @@
+import { previewResponseReady } from "./preview-readiness";
 import "server-only";
 import { createHash, randomUUID } from "node:crypto";
 import type { Project, ProjectFile } from "@prisma/client";
 import { Sandbox } from "e2b";
+import { buildProjectFiles } from "./project-files";
 import { db } from "./db";
 import { reserveRuntimeCapacity } from "./runtime-capacity";
 import { runtimeResources } from "./runtime-resources";
@@ -33,7 +35,7 @@ export async function adminPreviewStatus(adminId: string, source: Source) {
     const sandbox = await Sandbox.connect(state.sandboxId);
     const url = `https://${sandbox.getHost(state.port)}`;
     const response = await fetch(url, { redirect: "manual", cache: "no-store", signal: AbortSignal.timeout(4000) });
-    if (response.status < 400) return { ready: true as const, url, expiresAt: state.expiresAt };
+    if (previewResponseReady(response.status)) return { ready: true as const, url, expiresAt: state.expiresAt };
   } catch { /* An expired VM can be recreated from the saved snapshot. */ }
   return { ready: false as const };
 }
@@ -58,7 +60,9 @@ export async function startAdminPreview(adminId: string, source: Source, emit: (
   const project = adminPreviewSource(source);
   let stack = "React + TypeScript";
   try { stack = JSON.parse(project.memory || "{}").stack || stack; } catch { /* Detect from files. */ }
-  const profile = runtimeProfile(project.files, stack);
+  const sourceFiles = buildProjectFiles(project);
+  const profile = runtimeProfile(sourceFiles, stack);
+  if (profile.issue) throw new AdminPreviewError(profile.issue);
   if (!profile.previewPort) throw new AdminPreviewError("This project has no browser server. Inspect its source files; command-line and native apps do not have a web preview.");
   if (!project.files.length) throw new AdminPreviewError("This project has no source files to preview.");
   if (!process.env.E2B_API_KEY) throw new AdminPreviewError("The preview service is not configured. Set E2B_API_KEY in the server environment.");
@@ -83,7 +87,7 @@ export async function startAdminPreview(adminId: string, source: Source, emit: (
     signal.throwIfAborted();
     await uploadShellSource(sandbox, project);
     emit("Preparing project dependencies and temporary preview data…");
-    const envs = await preparePreviewEnvironment(sandbox, project.files, {}, resources.memoryMB);
+    const envs = await preparePreviewEnvironment(sandbox, sourceFiles, {}, resources.memoryMB);
     const command = await sandbox.commands.run(`(\n${profile.preview}\n) > /tmp/idaevia-admin-preview.log 2>&1; echo $? > /tmp/idaevia-admin-preview.exit`, { cwd: SHELL_ROOT, envs, background: true, timeoutMs: 0 });
     await command.disconnect();
     const url = `https://${sandbox.getHost(profile.previewPort)}`;
@@ -94,7 +98,7 @@ export async function startAdminPreview(adminId: string, source: Source, emit: (
       signal.throwIfAborted();
       try {
         const response = await fetch(url, { redirect: "manual", cache: "no-store", signal: AbortSignal.any([signal, AbortSignal.timeout(5000)]) });
-        if (response.status < 400) {
+        if (previewResponseReady(response.status)) {
           await sandbox.setTimeout(SHELL_TTL);
           const state: State = { sandboxId: sandbox.sandboxId, port: profile.previewPort, fingerprint: fingerprint(project), expiresAt: Date.now() + SHELL_TTL };
           await db.setting.upsert({ where: { key }, create: { key, value: JSON.stringify(state) }, update: { value: JSON.stringify(state) } });

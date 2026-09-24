@@ -1,3 +1,4 @@
+import { legacyReactSource } from "@/lib/project-source";
 import { db } from "@/lib/db";
 import { checkPortalLink } from "@/lib/portal";
 
@@ -7,5 +8,6 @@ export async function GET(req: Request, ctx: RouteContext<"/api/portal/[token]/f
   const denied = await checkPortalLink(token, req.headers.get("x-portal-password"));
   if (denied) return Response.json({ error: denied.message }, { status: denied.status });
   const link = await db.shareLink.findUniqueOrThrow({ where: { token }, include: { project: { include: { files: { select: { path: true, content: true } } } } } });
-  return Response.json({ files: link.project.files }, { headers: { "Cache-Control": "no-store" } });
+  if (!legacyReactSource(link.project.files)) return Response.json({ error: "This project uses a server runtime. Open the shared preview instead." }, { status: 403, headers: { "Cache-Control": "no-store" } });
+  return Response.json({ files: link.project.files.filter(f => !/(?:^|\/)\.env(?:\.|$)/.test(f.path)) }, { headers: { "Cache-Control": "no-store" } });
 }

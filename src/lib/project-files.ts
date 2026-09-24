@@ -1,7 +1,7 @@
 import type { Project, ProjectFile } from "@prisma/client";
 import { decryptJson, encryptJson } from "./crypto";
 import { db } from "./db";
-import { isReactSandboxStack } from "./project-stack";
+import { legacyReactSource } from "./project-source";
 import { protectProjectNavigation } from "./project-navigation";
 
 export type FileMap = { path: string; content: string }[];
@@ -23,7 +23,7 @@ export function buildProjectFiles(project: Project & { files: ProjectFile[] }, e
   const out: FileMap = [];
   if (project.kind === "app") {
     const stack = (() => { try { return (JSON.parse(project.memory || "{}").stack as string | undefined) ?? "react-ts"; } catch { return "react-ts"; } })();
-    if (!isReactSandboxStack(stack) || project.files.some((f) => f.path === "/package.json")) {
+    if (!legacyReactSource(project.files, stack)) {
       for (const f of project.files) out.push({ path: f.path.replace(/^\/+/, ""), content: f.content });
       const envEntries = Object.entries(env).filter(([k]) => /^\w/.test(k));
       if (envEntries.length && !out.some((f) => f.path === ".env.example")) out.push({ path: ".env.example", content: envEntries.map(([k]) => `${k}=`).join("\n") + "\n" });
@@ -39,9 +39,9 @@ export function buildProjectFiles(project: Project & { files: ProjectFile[] }, e
     }, null, 2) + "\n" });
     out.push({ path: "index.html", content: `<!DOCTYPE html>\n<html lang="en">\n<head>\n<meta charset="UTF-8" />\n<meta name="viewport" content="width=device-width, initial-scale=1.0" />\n<title>${escapeHtml(project.name)}</title>\n<script src="https://cdn.tailwindcss.com"></script>\n</head>\n<body>\n<div id="root"></div>\n<script type="module" src="/src/index.tsx"></script>\n</body>\n</html>\n` });
     out.push({ path: "vite.config.ts", content: `import { defineConfig } from "vite";\nimport react from "@vitejs/plugin-react";\nexport default defineConfig({ plugins: [react()] });\n` });
-    out.push({ path: "tsconfig.json", content: JSON.stringify({ compilerOptions: { target: "ES2020", lib: ["DOM", "DOM.Iterable", "ES2020"], module: "ESNext", moduleResolution: "bundler", jsx: "react-jsx", strict: true, skipLibCheck: true, noEmit: true, allowImportingTsExtensions: true }, include: ["src"] }, null, 2) + "\n" });
+    out.push({ path: "tsconfig.json", content: JSON.stringify({ compilerOptions: { target: "ES2020", lib: ["DOM", "DOM.Iterable", "ES2020"], module: "ESNext", moduleResolution: "bundler", jsx: "react-jsx", allowJs: true, strict: true, skipLibCheck: true, noEmit: true, allowImportingTsExtensions: true }, include: ["src"] }, null, 2) + "\n" });
     out.push({ path: "src/index.tsx", content: `import React from "react";\nimport { createRoot } from "react-dom/client";\nimport App from "./App";\ncreateRoot(document.getElementById("root")!).render(<React.StrictMode><App /></React.StrictMode>);\n` });
-    for (const f of project.files) out.push({ path: `src${f.path}`, content: f.content });
+    for (const f of project.files) out.push({ path: `src/${f.path.replace(/^\/+/, "")}`, content: f.content });
     const vite = Object.entries(env).filter(([k]) => k.startsWith("VITE_"));
     if (vite.length) out.push({ path: ".env.production", content: vite.map(([k, v]) => `${k}=${v}`).join("\n") + "\n" });
     out.push({ path: ".gitignore", content: "node_modules\ndist\n.env\n.env.local\n" });

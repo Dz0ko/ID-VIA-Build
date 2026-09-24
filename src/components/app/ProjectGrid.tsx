@@ -35,7 +35,7 @@ export function ProjectGrid({ projects }: { projects: ProjectRow[] }) {
         <div key={p.id} className="card project-card flex flex-col group">
           <Link href={`/app/projects/${p.id}`} className="project-cover" aria-label={`Open ${p.name}`}>
             <div className="project-thumbnail">
-              <iframe title={p.name} src={`/api/projects/${p.id}/preview`} className="project-thumbnail-frame" tabIndex={-1} loading="lazy" />
+              <iframe title={p.name} src={`/api/projects/${p.id}/preview`} className="project-thumbnail-frame" tabIndex={-1} loading="lazy" sandbox="allow-scripts allow-forms allow-same-origin" referrerPolicy="no-referrer" />
             </div>
           </Link>
           <div className="flex items-start justify-between gap-3 px-5 pt-4 pb-3">

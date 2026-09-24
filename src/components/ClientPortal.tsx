@@ -7,7 +7,7 @@ import { CheckCircle2, MessageSquare, AlertCircle, Lock } from "@/components/ico
 const AppSandbox = dynamic(() => import("./app/AppSandbox").then((m) => m.AppSandbox), { ssr: false });
 
 type Data = {
-  project: { name: string; kind: string; status: string; clientStatus: string; updatedAt: string; hasContent: boolean };
+  project: { name: string; kind: string; status: string; clientStatus: string; updatedAt: string; hasContent: boolean; browserSandbox?: boolean; previewUrl?: string | null };
   comments: { id: string; authorName: string; body: string; kind: string; resolved: boolean; createdAt: string }[];
   permissions: { canComment: boolean; canApprove: boolean };
   brand: { name: string; logoUrl: string | null; accent: string; hideIdaevia: boolean; welcome: string | null; teamName: string | null };
@@ -29,7 +29,7 @@ export function ClientPortal({ token }: { token: string }) {
     if (res.status === 401 && d.code === "PASSWORD") { setNeedPw(true); return; }
     if (!res.ok) { setError(d.error); return; }
     setNeedPw(false); setData(d);
-    if (d.project?.kind === "app") {
+    if (d.project?.browserSandbox) {
       const f = await fetch(`/api/portal/${token}/files`, { headers: password ? { "x-portal-password": password } : {} }).then((r) => r.json());
       setFiles(f.files ?? []);
     }
@@ -82,7 +82,7 @@ export function ClientPortal({ token }: { token: string }) {
       <div className="flex-1 grid lg:grid-cols-[1fr_360px] min-h-0">
         <div className="p-4 bg-[#050506] min-h-[60vh]">
           <div className="h-full min-h-[60vh] rounded-lg overflow-hidden border border-graphite bg-white">
-            {project.kind === "app" ? (files.length ? <div className="h-full min-h-[60vh]"><AppSandbox files={files} /></div> : <div className="h-full min-h-[60vh] grid place-items-center text-sm text-ash bg-void">Loading app…</div>) : <iframe title="preview" src={previewSrc} className="w-full h-full min-h-[60vh]" sandbox="allow-scripts allow-forms allow-popups allow-modals" />}
+            {project.kind === "app" && project.previewUrl ? <iframe title="Shared app preview" src={project.previewUrl} className="w-full h-full min-h-[60vh]" sandbox="allow-scripts allow-forms allow-popups allow-modals allow-same-origin" referrerPolicy="no-referrer" /> : project.kind === "app" && !project.browserSandbox ? <div className="h-full min-h-[60vh] grid place-items-center p-6 text-center text-sm text-ash bg-void"><div><p>The owner needs to build or deploy this project to share its running preview. Native and terminal projects do not have a browser interface.</p><button className="btn btn-outline btn-sm mt-4" onClick={() => load()}>Refresh preview</button></div></div> : project.kind === "app" ? (files.length ? <div className="h-full min-h-[60vh]"><AppSandbox files={files} /></div> : <div className="h-full min-h-[60vh] grid place-items-center text-sm text-ash bg-void">Loading app…</div>) : <iframe title="preview" src={previewSrc} className="w-full h-full min-h-[60vh]" sandbox="allow-scripts allow-forms allow-popups allow-modals" />}
           </div>
         </div>
         <aside className="border-l border-graphite flex flex-col">

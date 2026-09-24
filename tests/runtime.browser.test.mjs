@@ -7,10 +7,10 @@ import { Sandbox } from 'e2b';
 import { db } from '../src/lib/db.ts';
 if (!process.env.TEST_DATABASE_SCHEMA?.startsWith('security_test_')) throw new Error('Isolated schema required');
 
-test('Go Preview starts a silent HTTP server and opens it automatically in the workspace', { timeout: 180000 }, async () => {
+test('Workspace previews and builds Go, restores previews and shows real C compiler failures', { timeout: 360000 }, async () => {
   const base='http://localhost:3848';
   const server=spawn(process.execPath,['node_modules/next/dist/bin/next','start','-p','3848'],{env:{...process.env,APP_URL:base},stdio:'ignore'});
-  let ws, projectId; let id=0;const pending=new Map();
+  let ws, projectId, brokenId; let id=0;const pending=new Map();
   const rpc=(method,params={})=>new Promise((resolve,reject)=>{const key=++id;const timer=setTimeout(()=>reject(Error(`${method} timeout`)),30000);pending.set(key,m=>{clearTimeout(timer);m.error?reject(Error(m.error.message)):resolve(m.result)});ws.send(JSON.stringify({id:key,method,params}))});
   const evaluate=async expression=>(await rpc('Runtime.evaluate',{expression,returnByValue:true,awaitPromise:true})).result.value;
   try {
@@ -35,9 +35,26 @@ test('Go Preview starts a silent HTTP server and opens it automatically in the w
     assert.match(await(await fetch(url)).text(),/Go preview is running/);
     const row=await db.setting.findUniqueOrThrow({where:{key:`shell:${project.id}`}});const sandbox=await Sandbox.connect(JSON.parse(row.value).sandboxId);assert.equal((await sandbox.getInfo()).memoryMB,4096);
     await new Promise(r=>setTimeout(r,2000));
-    const shot=await rpc('Page.captureScreenshot',{format:'png',captureBeyondViewport:false});await writeFile('.next/go-preview-browser.png',Buffer.from(shot.data,'base64'));
+    const shot=await rpc('Page.captureScreenshot',{format:'png',captureBeyondViewport:false});await writeFile('.vercel/go-preview-browser.png',Buffer.from(shot.data,'base64'));
+    await evaluate(`[...document.querySelectorAll('button')].find(b=>b.textContent.trim()==='Build & preview').click()`);
+    let built='';for(let i=0;i<180;i++){built=await evaluate(`document.querySelector('iframe[title="Built project preview"]')?.src||''`);if(built&&built!==url)break;await new Promise(r=>setTimeout(r,750))}
+    assert.ok(built&&built!==url,'Build did not open its verified preview');
+    await rpc('Page.reload');await new Promise(r=>setTimeout(r,4000));
+    assert.equal(await evaluate(`document.querySelector('iframe[title="Built project preview"]')?.src`),built);
+    const broken=await db.project.create({data:{userId:owner.id,name:'Broken C fixture',slug:'broken-c-ui-fixture',kind:'app',files:{create:[{path:'/main.c',content:'this is invalid C source'}]}}});brokenId=broken.id;
+    await rpc('Page.navigate',{url:`${base}/app/projects/${broken.id}`});
+    for(let i=0;i<80;i++){if(await evaluate(`!![...document.querySelectorAll('button')].find(b=>b.textContent.trim()==='Build / check')`))break;await new Promise(r=>setTimeout(r,200))}
+    await new Promise(r=>setTimeout(r,1500));await evaluate(`[...document.querySelectorAll('button')].find(b=>b.textContent.trim()==='Build / check').click()`);
+    for(let i=0;i<100;i++){if(await evaluate(`document.body.innerText.includes('Last build · C · error')`))break;await new Promise(r=>setTimeout(r,750))}
+    assert.ok(await evaluate(`document.body.innerText.includes('Last build · C · error')`));
+    await evaluate(`[...document.querySelectorAll('button')].find(b=>b.textContent.trim().startsWith('Problems')).click()`);
+    await new Promise(r=>setTimeout(r,1200));
+    assert.ok(await evaluate(`document.body.innerText.includes('Last C build failed')`));
+    assert.ok(await evaluate(`!![...document.querySelectorAll('button')].find(b=>b.textContent.includes('Fix runtime error with Debugger'))`));
+    const errorsShot=await rpc('Page.captureScreenshot',{format:'png',captureBeyondViewport:false});await writeFile('.vercel/runtime-problems-browser.png',Buffer.from(errorsShot.data,'base64'));
+    assert.equal(await db.creditLedger.count({where:{userId:owner.id}}),0);
   } finally {
-    if(projectId){const row=await db.setting.findUnique({where:{key:`shell:${projectId}`}});if(row)await Sandbox.kill(JSON.parse(row.value).sandboxId).catch(()=>{})}
+    for(const project of [projectId,brokenId].filter(Boolean)){for(const prefix of ["shell","runtime"]){const row=await db.setting.findUnique({where:{key:`${prefix}:${project}`}});if(row)await Sandbox.kill(JSON.parse(row.value).sandboxId).catch(()=>{})}}
     if(ws?.readyState===WebSocket.OPEN){await rpc('Network.deleteCookies',{name:'idaevia_session',url:base});await rpc('Page.navigate',{url:'about:blank'});ws.close()}
     server.kill();await db.$disconnect();
   }

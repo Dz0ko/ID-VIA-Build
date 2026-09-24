@@ -1,3 +1,5 @@
+import { deploymentProfile } from "./deployment-profile";
+import { redactRuntimeLog } from "./runtime-report";
 import { fileBytes } from "./file-content";
 import type { FileMap } from "./project-files";
 
@@ -10,25 +12,43 @@ function q(teamId?: string) {
 export interface VercelDeployResult { id: string; url: string; state: string; inspectorUrl?: string }
 
 /**
- * Deploy a file tree to Vercel (static site or Vite app) and wait for the build,
+ * Deploy a detected, Vercel-compatible project and wait for the build,
  * streaming state changes and build log lines through `log`.
  */
-export async function deployToVercel(opts: { token: string; teamId?: string; name: string; files: FileMap; framework: "vite" | null; env: Record<string, string>; log: (line: string) => void }): Promise<VercelDeployResult> {
-  const { token, teamId, log } = opts;
+export async function deployToVercel(opts: { token: string; teamId?: string; name: string; files: FileMap; env: Record<string, string>; log: (line: string) => void }): Promise<VercelDeployResult> {
+  const { token, teamId } = opts;
+  const profile = deploymentProfile(opts.files);
+  if (!profile.supported) throw new Error(profile.reason);
+  const log = (line: string) => opts.log(redactRuntimeLog(line, Object.values(opts.env)));
+  const files = opts.files.filter(f => !/(?:^|\/)\.env(?:\.|$)/.test(f.path) && !/\.(?:pem|key)$/.test(f.path));
   const headers = { Authorization: `Bearer ${token}`, "Content-Type": "application/json" };
   const name = opts.name.toLowerCase().replace(/[^a-z0-9-]/g, "-").replace(/^-+|-+$/g, "").slice(0, 52) || "idaevia-site";
 
-  log(`→ Creating deployment "${name}" on Vercel (${opts.files.length} files)…`);
+  // Save encrypted project variables BEFORE creating the deployment that consumes them.
+  const existing = await fetch(`${API}/v9/projects/${encodeURIComponent(name)}${q(teamId)}`, { headers, signal: AbortSignal.timeout(20000) });
+  if (!existing.ok && existing.status !== 404) throw new Error(`Could not access the Vercel project (${existing.status}).`);
+  if (existing.status === 404) {
+    const created = await fetch(`${API}/v11/projects${q(teamId)}`, { method: "POST", headers, body: JSON.stringify({ name, framework: profile.framework }), signal: AbortSignal.timeout(20000) });
+    if (!created.ok) throw new Error(`Could not create the Vercel project (${created.status}).`);
+  }
+  const envEntries = Object.entries(opts.env);
+  if (envEntries.length) {
+    const r = await fetch(`${API}/v10/projects/${encodeURIComponent(name)}/env${q(teamId)}${teamId ? "&" : "?"}upsert=true`, {
+      method: "POST", headers, body: JSON.stringify(envEntries.map(([key, value]) => ({ key, value, type: "encrypted", target: ["production", "preview", "development"] }))), signal: AbortSignal.timeout(20000),
+    });
+    if (!r.ok) throw new Error(`Could not save deployment environment variables (${r.status}). Deployment was not started.`);
+    log(`${envEntries.length} encrypted environment variable(s) configured.`);
+  }
+  log(`→ Creating deployment "${name}" on Vercel (${files.length} files · ${profile.label})…`);
   const res = await fetch(`${API}/v13/deployments${q(teamId)}`, {
     method: "POST",
     headers,
     body: JSON.stringify({
       name,
       target: "production",
-      files: opts.files.map((f) => ({ file: f.path, data: fileBytes(f.content).toString("base64"), encoding: "base64" })),
-      projectSettings: opts.framework === "vite"
-        ? { framework: "vite", buildCommand: "npm run build", outputDirectory: "dist", installCommand: "npm install" }
-        : { framework: null, buildCommand: null, outputDirectory: null, installCommand: null },
+      project: name,
+      files: files.map((f) => ({ file: f.path, data: fileBytes(f.content).toString("base64"), encoding: "base64" })),
+      projectSettings: { framework: profile.framework, ...(profile.rootDirectory ? { rootDirectory: profile.rootDirectory } : {}), buildCommand: null, outputDirectory: null, installCommand: null },
       meta: { builtWith: "idaevia.app" },
     }),
     signal: AbortSignal.timeout(60000),
@@ -38,15 +58,6 @@ export async function deployToVercel(opts: { token: string; teamId?: string; nam
   log(`  Deployment ${data.id} queued → https://${data.url}`);
   if (data.inspectorUrl) log(`  Inspect: ${data.inspectorUrl}`);
 
-  // Environment variables live on the project; set them so the next builds have them too.
-  const envEntries = Object.entries(opts.env);
-  if (envEntries.length) {
-    const r = await fetch(`${API}/v10/projects/${encodeURIComponent(name)}/env${q(teamId)}${teamId ? "&" : "?"}upsert=true`, {
-      method: "POST", headers, body: JSON.stringify(envEntries.map(([key, value]) => ({ key, value, type: "encrypted", target: ["production", "preview", "development"] }))), signal: AbortSignal.timeout(20000),
-    });
-    log(r.ok ? `  ${envEntries.length} environment variable(s) saved on the Vercel project` : `  ! Could not save environment variables (${r.status}); the deploy continues`);
-  }
-
   let state = data.readyState ?? "QUEUED";
   let lastLog = 0;
   const started = Date.now();
@@ -55,7 +66,7 @@ export async function deployToVercel(opts: { token: string; teamId?: string; nam
     const s = await fetch(`${API}/v13/deployments/${data.id}${q(teamId)}`, { headers, signal: AbortSignal.timeout(20000) });
     const sd = (await s.json().catch(() => ({}))) as { readyState?: string; errorMessage?: string };
     if (sd.readyState && sd.readyState !== state) { state = sd.readyState; log(`  state: ${state}`); }
-    if (opts.framework === "vite") {
+    {
       const ev = await fetch(`${API}/v3/deployments/${data.id}/events${q(teamId)}${teamId ? "&" : "?"}builds=1&limit=100`, { headers, signal: AbortSignal.timeout(20000) });
       const events = (await ev.json().catch(() => [])) as { created?: number; type?: string; payload?: { text?: string } }[];
       if (Array.isArray(events)) {
@@ -70,6 +81,7 @@ export async function deployToVercel(opts: { token: string; teamId?: string; nam
     if (state === "ERROR" && sd.errorMessage) log(`  ✗ ${sd.errorMessage}`);
   }
   if (state === "READY") log(`✓ Live at https://${data.url}`);
+  else if (state === "CANCELED") throw new Error("The Vercel deployment was canceled.");
   else if (state === "ERROR") throw new Error("The Vercel build failed. See the log above or the inspector link.");
   else log("  ! Still building after 4 minutes; check the Vercel dashboard.");
   return { id: data.id, url: `https://${data.url}`, state, inspectorUrl: data.inspectorUrl };

@@ -1,6 +1,7 @@
-import { runtimeResources, runtimeMemoryEnvironment } from "./runtime-resources";
+import { previewResponseReady } from "./preview-readiness";
+import { runtimeResources } from "./runtime-resources";
 import { reserveRuntimeCapacity } from "./runtime-capacity";
-import { PREVIEW_SYSTEM_ENV } from "./preview-environment";
+import { preparePreviewEnvironment } from "./preview-environment";
 import { fileBytes } from "./file-content";
 import { recordProjectRelease } from "./project-releases";
 import "server-only";
@@ -10,7 +11,10 @@ import type { Project, ProjectFile } from "@prisma/client";
 import { db } from "./db";
 import { buildProjectFiles, readProjectEnv } from "./project-files";
 import { runtimePath } from "./runtime-command";
-import { executeProjectBuild } from "./runtime-build";
+import { executeLanguageBuild, SERVER, staticBuildScript } from "./runtime-build";
+import { runtimeProfile } from "./runtime-profile";
+import { redactRuntimeLog, type RuntimeReport } from "./runtime-report";
+import { sourceFingerprint, saveRuntimeReport } from "./runtime-report-store";
 
 const LIFETIME = 15 * 60_000;
 const ROOT = "/home/user/project";
@@ -29,15 +33,25 @@ export async function runProjectBuild(project: Project & { files: ProjectFile[] 
   let releaseCapacity: (() => Promise<unknown>) | undefined;
   let sandbox: Sandbox | undefined;
   let ready = false;
+  let secrets: string[] = [];
+  const report: RuntimeReport = { status: "running", label: "Project", log: "", startedAt: new Date().toISOString(), fingerprint: sourceFingerprint(project) };
+  const output = (line: string) => { const safe = redactRuntimeLog(line, secrets); report.log = (report.log + safe + "\n").slice(-48000); emit(safe); };
   const cancel = () => { void sandbox?.kill().catch(() => {}); };
   signal.addEventListener("abort", cancel, { once: true });
   try {
     signal.throwIfAborted();
-    // Validate all paths before provisioning a paid runtime.
-    const files = buildProjectFiles(project, readProjectEnv(project)).filter((f) => f.path !== ".env.production");
+    const settings = readProjectEnv(project);
+    secrets = Object.values(settings);
+    const files = buildProjectFiles(project).filter((f) => f.path !== ".env.production");
+    for (const file of files.filter(f => /(?:^|\/)\.env(?:\.|$)/.test(f.path))) {
+      for (const line of file.content.split("\n")) { const value = line.match(/^[A-Za-z_][A-Za-z0-9_]*=(.*)$/)?.[1]?.replace(/^["']|["']$/g, ""); if (value) secrets.push(value); }
+    }
     files.forEach((f) => runtimePath(f.path));
-    if (project.kind === "app" && !files.some((f) => f.path === "src/App.tsx")) throw new Error("Automatic preview currently supports static websites and frontend React projects. Export this project and follow its setup instructions to run its selected stack.");
     if (project.kind !== "app" && !project.html.trim()) throw new Error("There is no website to build yet.");
+    const profile = runtimeProfile(files);
+    report.label = profile.label;
+    if (profile.issue) throw new Error(profile.issue);
+    await saveRuntimeReport(project.id, report);
     await stopProjectRuntime(project.id);
     emit("Creating an isolated build environment…");
     releaseCapacity = await reserveRuntimeCapacity(project.userId, key);
@@ -47,24 +61,46 @@ export async function runProjectBuild(project: Project & { files: ProjectFile[] 
     signal.throwIfAborted();
     emit(`Uploading ${files.length} project files…`);
     await sandbox.files.write(files.map((f) => ({ path: runtimePath(f.path), data: new Uint8Array(fileBytes(f.content)).buffer })));
-    // Only explicitly public browser config is passed. Platform secrets never enter the VM.
-    const publicEnv = Object.fromEntries(Object.entries(readProjectEnv(project)).filter(([k]) => /^VITE_[A-Z0-9_]+$/.test(k)));
+    // Only this project's settings enter its VM. The platform environment never does.
+    const envs = await preparePreviewEnvironment(sandbox, files, settings, resources.memoryMB);
+    secrets.push(...Object.values(envs).filter(v => v.length > 20));
+    if (profile.id === "static") {
+      await sandbox.files.write(`${ROOT}/.idaevia-static-build.cjs`, staticBuildScript(files));
+      await sandbox.files.write(`${ROOT}/.preview.cjs`, SERVER);
+    }
     const activeSandbox = sandbox;
-    await executeProjectBuild({
-      command: async (command, timeoutMs) => { await activeSandbox.commands.run(command, { cwd: ROOT, envs: { ...publicEnv, ...PREVIEW_SYSTEM_ENV, ...runtimeMemoryEnvironment(resources.memoryMB) }, timeoutMs, onStdout: emit, onStderr: emit }); },
-      writeServer: async (source) => { await activeSandbox.files.write(`${ROOT}/.preview.cjs`, source); },
-      startServer: async () => { await activeSandbox.commands.run("node .preview.cjs", { cwd: ROOT, background: true, timeoutMs: 0 }); },
-    }, project.kind === "app", emit, signal);
+    await executeLanguageBuild({
+      command: async (command, timeoutMs) => {
+        try { await activeSandbox.commands.run(command, { cwd: ROOT, envs, timeoutMs, onStdout: output, onStderr: output }); }
+        catch (error) { if (await activeSandbox.files.exists("/tmp/idaevia-build-preview.log")) output(await activeSandbox.files.read("/tmp/idaevia-build-preview.log").then(s => s.slice(-12000))); throw error; }
+      },
+      start: async (command) => {
+        const handle = await activeSandbox.commands.run(`(\n${command}\n) > /tmp/idaevia-build-preview.log 2>&1`, { cwd: ROOT, envs, background: true, timeoutMs: 0, onStdout: output, onStderr: output });
+        await handle.disconnect();
+      },
+    }, profile, output, signal);
     signal.throwIfAborted();
-    const url = `https://${sandbox.getHost(3000)}`;
+    const url = profile.previewPort ? `https://${sandbox.getHost(profile.previewPort)}` : null;
     const expiresAt = Date.now() + LIFETIME;
-    await db.setting.upsert({ where: { key }, create: { key, value: JSON.stringify({ sandboxId: sandbox.sandboxId, url, expiresAt }) }, update: { value: JSON.stringify({ sandboxId: sandbox.sandboxId, url, expiresAt }) } });
+    if (url) {
+      const response = await fetch(url, { redirect: "manual", cache: "no-store", signal: AbortSignal.any([signal, AbortSignal.timeout(10000)]) });
+      if (!previewResponseReady(response.status)) throw new Error(`The external preview returned HTTP ${response.status}. Check allowed hosts and application configuration. ${redactRuntimeLog((await response.text()).slice(0, 1500), secrets)}`);
+      await sandbox.setTimeout(LIFETIME);
+      await db.setting.upsert({ where: { key }, create: { key, value: JSON.stringify({ sandboxId: sandbox.sandboxId, url, expiresAt, fingerprint: report.fingerprint }) }, update: { value: JSON.stringify({ sandboxId: sandbox.sandboxId, url, expiresAt, fingerprint: report.fingerprint }) } });
+    }
     const release = await recordProjectRelease(project);
-    emit(`Build version v${release.number} ready.`);
-    ready = true;
-    emit("Build exited successfully. Temporary preview is ready; anyone with its link can view it. It expires within 15 minutes.");
+    output(`Build version v${release.number} ready.`);
+    ready = Boolean(url);
+    report.status = "success";
+    output(url ? "Build succeeded. Temporary preview expires within 15 minutes." : "Build succeeded. Run this project in Terminal to see its output.");
     return { url, expiresAt };
+  } catch (error) {
+    report.status = "error";
+    output(error instanceof Error ? error.message : "Build failed");
+    throw error;
   } finally {
+    report.finishedAt = new Date().toISOString();
+    await saveRuntimeReport(project.id, report).catch(() => {});
     signal.removeEventListener("abort", cancel);
     if (!ready) await sandbox?.kill().catch(() => {});
     await releaseCapacity?.();

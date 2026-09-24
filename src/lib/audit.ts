@@ -1,3 +1,5 @@
+import { runtimeProfile } from "./runtime-profile";
+
 /** Deterministic production audit of a single-file site (no AI needed). */
 
 export interface AuditResult {
@@ -92,7 +94,13 @@ export function auditHtml(html: string): AuditResult {
 export function auditProject(project: { kind: string; html: string; files: { path: string; content: string }[] }): AuditResult {
   if (project.kind !== "app") return { ...auditHtml(project.html), scope: "html" };
   const issues: AuditResult["issues"] = [];
+  const profile = runtimeProfile(project.files);
+  if (profile.issue) issues.push({ area: "Runtime", severity: "high", message: profile.issue });
   for (const file of project.files) {
+    if (/^(?:<<<<<<< |>>>>>>> )/m.test(file.content)) issues.push({ area: "Code", severity: "high", message: `${file.path}: unresolved merge conflict markers.` });
+    if (/(?:^|\/)(?:package|composer|vercel|runtime)\.json$/.test(file.path)) {
+      try { JSON.parse(file.content); } catch { issues.push({ area: "Code", severity: "high", message: `${file.path}: invalid JSON configuration.` }); }
+    }
     if (!/\.(tsx|jsx|html|vue|svelte)$/.test(file.path)) continue;
     if (/<img\b(?![^>]*\balt\s*=)[^>]*>/i.test(file.content)) issues.push({ area: "Accessibility", severity: "medium", message: `${file.path}: image without an alt attribute. Check whether it needs descriptive text or alt="".` });
     if (/<html\b(?![^>]*\blang\s*=)[^>]*>/i.test(file.content)) issues.push({ area: "Accessibility", severity: "medium", message: `${file.path}: root html element has no lang attribute.` });

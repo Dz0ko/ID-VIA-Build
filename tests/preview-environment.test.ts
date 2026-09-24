@@ -5,7 +5,7 @@ import { preparePreviewEnvironment } from "../src/lib/preview-environment";
 const files = [{ path: "/prisma/schema.prisma", content: 'provider = "postgresql"' }, { path: "/.env.example", content: "JWT_SECRET=example" }];
 function fake() {
   const commands: string[] = [];
-  return { commands, sandbox: { commands: { run: async (command: string) => { commands.push(command); } } } as unknown as Sandbox };
+  return { commands, sandbox: { getHost: (port: number) => `${port}-fixture.e2b.app`, commands: { run: async (command: string) => { commands.push(command); } } } as unknown as Sandbox };
 }
 test("missing database provisions sandbox-local Postgres and fresh preview secrets", async () => {
   const f = fake();
@@ -15,6 +15,8 @@ test("missing database provisions sandbox-local Postgres and fresh preview secre
   assert.equal(first.IDAEVIA_LOCAL_DATABASE, "1");
   assert.notEqual(first.DATABASE_URL, second.DATABASE_URL);
   assert.notEqual(first.JWT_SECRET, second.JWT_SECRET);
+  assert.equal(first.__VITE_ADDITIONAL_SERVER_ALLOWED_HOSTS, "3000-fixture.e2b.app");
+  assert.equal(first.IDAEVIA_PREVIEW_HOST, "3000-fixture.e2b.app");
   assert.equal(first.NODE_OPTIONS, "--max-old-space-size=1536");
   assert.match(f.commands[0], /listen_addresses=127.0.0.1/);
 });

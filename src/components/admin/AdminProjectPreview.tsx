@@ -10,7 +10,7 @@ function previewValue(value: { url?: string; expiresAt?: number }): Preview | nu
       ? { url: url.href, expiresAt: value.expiresAt } : null;
   } catch { return null; }
 }
-export function AdminProjectPreview({ projectId, name }: { projectId: string; name: string }) {
+export function AdminProjectPreview({ projectId, name, unavailable }: { projectId: string; name: string; unavailable?: string }) {
   const endpoint = `/api/admin/projects/${projectId}/runtime`;
   const [preview, setPreview] = useState<Preview | null>(null);
   const [busy, setBusy] = useState(false);
@@ -67,11 +67,11 @@ export function AdminProjectPreview({ projectId, name }: { projectId: string; na
       <div><h3 className="text-sm font-medium">Project preview</h3><p className="text-xs text-ash mt-1">Temporary copy of saved code. External integrations are not connected.</p></div>
       <div className="flex items-center gap-2">
         {preview ? <><a className="btn btn-outline btn-sm" href={preview.url} target="_blank" rel="noopener noreferrer">Open preview ↗</a><button className="btn btn-ghost btn-sm" disabled={busy} onClick={() => void request("stop")}>Stop preview</button></>
-          : <button className="btn btn-primary btn-sm" disabled={busy} onClick={() => void request("start")}>{busy ? "Starting preview…" : "Start preview"}</button>}
+          : <button className="btn btn-primary btn-sm" disabled={busy || Boolean(unavailable)} onClick={() => void request("start")}>{busy ? "Starting preview…" : "Start preview"}</button>}
       </div>
     </div>
     {error && <p role="alert" className="text-sm text-error">{error}</p>}
     {preview ? <iframe title={`${name} admin preview`} src={preview.url} sandbox="allow-scripts allow-forms allow-same-origin allow-modals" referrerPolicy="no-referrer" className="w-full h-[680px] bg-white border border-graphite rounded-lg" />
-      : <div className="border border-graphite rounded-lg p-8 text-center text-sm text-fog" role="status">{progress}</div>}
+      : <div className="border border-graphite rounded-lg p-8 text-center text-sm text-fog" role="status">{unavailable ?? progress}</div>}
   </section>;
 }

@@ -1,4 +1,7 @@
+import { safeProjectPath } from "./project-source";
+export { safeProjectPath } from "./project-source";
 /** Import helpers: URL structure outline, GitHub static site, ZIP. */
+import { runtimeProfile } from "./runtime-profile";
 import JSZip from "jszip";
 import { BINARY_PREFIX, fileBytes } from "./file-content";
 import { Readable } from "node:stream";
@@ -196,12 +199,7 @@ export async function fetchGithubIndex(repoUrl: string): Promise<{ html: string;
  * Normalise a project file path: absolute, no traversal, no backslashes, safe characters only.
  * Returns null when the path cannot be made safe (zip-slip, hidden system paths…).
  */
-export function safeProjectPath(p: string): string | null {
-  const parts = p.replace(/\\/g, "/").split("/").filter((s) => s && s !== ".");
-  if (parts.some((s) => s === ".." || !/^[\w\-.+@()[\]]+$/.test(s))) return null;
-  const out = "/" + parts.join("/");
-  return out.length > 1 && out.length <= 200 ? out : null;
-}
+
 
 
 export async function boundedResponse(response: Response, limit: number): Promise<ArrayBuffer> {
@@ -231,13 +229,12 @@ export async function fetchGithubArchive(repoUrl: string) {
 
 const IGNORED = /(^|\/)(node_modules|\.git|\.next|__MACOSX|vendor|target|\.venv)(\/|$)|(^|\/)(\.DS_Store|\.env(?:\..*)?|[^/]*\.(?:pem|key))$/i;
 const BINARY = /\.(png|jpe?g|gif|webp|ico|avif|woff2?|ttf|otf|pdf|mp4|webm|mp3|wav)$/i;
-const TEXT = /\.(html?|css|scss|sass|less|[cm]?[jt]sx?|json|map|md|txt|svg|xml|ya?ml|toml|ini|conf|sql|prisma|py|java|kt|kts|go|rs|php|rb|cs|fs|swift|dart|vue|svelte|sh|bat|ps1|gradle|properties|lock|mod|sum|c|cpp|h|hpp|ex|exs|erl|hrl|clj|scala|r|lua|pl|hs|elm|graphql|gql|proto|csproj|sln)$/i;
 export async function readZip(buf: ArrayBuffer): Promise<{ html: string | null; files: { path: string; content: string }[]; stack: string; warnings: string[] }> {
   if (buf.byteLength > 25 * 1024 * 1024) throw new Error("ZIP is too large (max 25 MB).");
   const zip = await JSZip.loadAsync(buf).catch(() => { throw new Error("This is not a readable ZIP archive."); });
   const entries = Object.values(zip.files).filter(f => !f.dir);
   if (entries.length > 5000) throw new Error("Too many archive entries. Remove dependencies and build caches first.");
-  const candidates = entries.filter(f => !IGNORED.test(f.name) || /(^|\/)\.env\.example$/.test(f.name));
+  const candidates = entries.filter(f => !IGNORED.test(f.name) || /(^|\/)\.env\.(?:example|sample)$/.test(f.name));
   const root = candidates[0]?.name.split("/")[0];
   const stripRoot = root && !["src", "app", "public", "pages", "lib"].includes(root) && candidates.every(f => f.name.startsWith(root + "/")) ? root + "/" : "";
   const files: { path: string; content: string }[] = []; const warnings: string[] = []; let total = 0;
@@ -247,7 +244,7 @@ export async function readZip(buf: ArrayBuffer): Promise<{ html: string | null; 
     const name = entry.name.slice(stripRoot.length);
     const path = safeProjectPath(name);
     if (!path) throw new Error(`Unsupported file path: ${name.slice(0, 100)}`);
-    if (!BINARY.test(name) && !TEXT.test(name) && !/(^|\/)(Dockerfile|Makefile|Gemfile|Procfile|LICENSE|\.[\w.-]+)$/.test(name)) { warnings.push(`Skipped unsupported file: ${name}`); continue; }
+
     if (files.length >= 200) throw new Error("Project exceeds 200 source/assets files. Remove unused files first.");
     const data = await new Promise<Buffer>((resolve, reject) => {
       const stream = entry.nodeStream() as Readable; const chunks: Buffer[] = []; let size = 0;
@@ -256,12 +253,15 @@ export async function readZip(buf: ArrayBuffer): Promise<{ html: string | null; 
     });
     total += data.length;
     if (files.some(f => f.path === path)) throw new Error("ZIP contains duplicate file paths.");
-    files.push({ path, content: BINARY.test(name) ? BINARY_PREFIX + data.toString("base64") : new TextDecoder("utf-8", { fatal: true }).decode(data) });
+    let content: string;
+    if (BINARY.test(name)) content = BINARY_PREFIX + data.toString("base64");
+    else { try { if (data.includes(0)) throw Error(); content = new TextDecoder("utf-8", { fatal: true }).decode(data); } catch { warnings.push(`Skipped binary file: ${name}`); continue; } }
+    files.push({ path, content });
   }
   if (!files.length) throw new Error("No supported project files were found.");
-  const pkg = files.find(f => f.path === "/package.json");
-  const native = Boolean(pkg || files.some(f => /\.(tsx?|jsx|vue|svelte|py|java|go|rs|php|cs|swift|kt|dart)$/.test(f.path)));
-  const stack = pkg ? (/"next"\s*:/.test(pkg.content) ? "Next.js + TypeScript" : /"react"\s*:/.test(pkg.content) ? "React + TypeScript" : "Imported JavaScript project") : native ? "Imported source project" : "HTML + CSS + JavaScript";
+  const detected = runtimeProfile(files);
+  const native = detected.id !== "static";
+  const stack = detected.label;
   const index = files.find(f => f.path === "/index.html") ?? files.find(f => /\/index\.html$/.test(f.path));
   // Keep framework entry points as source; they need their own build/runtime.
   const html = index && !native ? inlineStaticHtml(index.content, index.path, files) : null;

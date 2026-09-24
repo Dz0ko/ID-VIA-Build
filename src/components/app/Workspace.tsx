@@ -12,8 +12,12 @@ import { selectedComponents, componentImplementationPrompt, SELECTABLE_COMPONENT
 import { ProjectDownloadDialog } from "./ProjectDownload";
 import { readImportHandoff, clearImportHandoff } from "@/lib/import-handoff";
 import { shellIntent } from "@/lib/shell-intent";
-import { runtimeProfile } from "@/lib/runtime-profile";
+import { editorLanguage, legacyReactSource, safeProjectPath } from "@/lib/project-source";
+import { deploymentProfile } from "@/lib/deployment-profile";
+import type { RuntimeReport } from "@/lib/runtime-report";
+import { runtimeProfile, projectTaskCommand } from "@/lib/runtime-profile";
 import { runtimeCommand } from "@/lib/runtime-command";
+import { RuntimeDetails } from "./RuntimeDetails";
 import { ComposerSelect } from "./ComposerSelect";
 import { StackSuggestions } from "./StackSuggestions";
 import { WorkspaceMenuButton } from "./Shell";
@@ -102,8 +106,12 @@ export function Workspace(p: WorkspaceProps) {
   const [html, setHtml] = useState(p.project.html);
   const [savedHtml, setSavedHtml] = useState(p.project.html);
   const [files, setFiles] = useState<ProjFile[]>(p.project.files);
-  const isReactApp = isApp && /react/i.test(projectStack) && !files.some(f => f.path.replace(/^\/+/, "") === "package.json");
-  const runtime = useMemo(() => runtimeProfile(files, projectStack), [files, projectStack]);
+  const isReactApp = isApp && legacyReactSource(files, projectStack);
+  const runtime = useMemo(() => runtimeProfile(isApp ? files : [{ path: "index.html", content: html }, ...files], projectStack), [files, projectStack, isApp, html]);
+  const deployment = useMemo(() => deploymentProfile(isApp ? files : [{ path: "index.html", content: html }, ...files]), [files, isApp, html]);
+  const [buildReport, setBuildReport] = useState<RuntimeReport | null>(null);
+  const [runtimeIssue, setRuntimeIssue] = useState<string | null>(null);
+  const refreshRuntime = useCallback(async () => { const res = await fetch(`/api/projects/${p.project.id}/runtime`, { cache: "no-store" }); if (res.ok) setBuildReport((await res.json()).report); }, [p.project.id]);
   const [savedFiles, setSavedFiles] = useState<ProjFile[]>(p.project.files);
   const [activeFile, setActiveFile] = useState<string>(p.project.files[0]?.path ?? "/App.tsx");
   const [releases, setReleases] = useState(p.releases ?? []);
@@ -140,9 +148,23 @@ export function Workspace(p: WorkspaceProps) {
     try { const pending = JSON.parse(p.project.memory || "{}").pendingBuildRequest; return typeof pending === "string" ? pending : null; } catch { return null; }
   });
   const [logs, setLogs] = useState<LogLine[]>([{ t: now(), text: "Workspace ready.", kind: "info" }]);
-  const [runtimePreview, setRuntimePreview] = useState<{ url: string; source: string } | null>(null);
+  const [runtimePreview, setRuntimePreview] = useState<{ url: string; source: string; kind?: "build" | "shell" } | null>(null);
   const runtimeSource = isApp ? JSON.stringify(files) : html;
   const runtimeUrl = runtimePreview?.source === runtimeSource ? runtimePreview.url : null;
+  useEffect(() => {
+    const controller = new AbortController();
+    void fetch(`/api/projects/${p.project.id}/runtime`, { cache: "no-store", signal: controller.signal }).then(async response => {
+      if (!response.ok) return;
+      const data = await response.json();
+      if (controller.signal.aborted) return;
+      setBuildReport(data.report);
+      if (data.preview?.url) {
+        const url = new URL(data.preview.url);
+        if (url.protocol === "https:" && url.hostname.endsWith(".e2b.app")) setRuntimePreview(previous => previous ?? { url: url.href, source: isApp ? JSON.stringify(savedFiles) : savedHtml, kind: "build" });
+      }
+    }).catch(() => {});
+    return () => controller.abort();
+  }, [p.project.id, isApp, savedFiles, savedHtml]);
   const terminalAction = useRef<((cmd: string) => Promise<void>) | null>(null);
   const terminalRunning = useRef(false);
   const terminalAbort = useRef<AbortController | null>(null);
@@ -150,6 +172,8 @@ export function Workspace(p: WorkspaceProps) {
   const [shellOpened, setShellOpened] = useState(false);
   const [termBusy, setTermBusy] = useState(false);
   const [audit, setAudit] = useState<AuditResult | null>(p.project.health ? JSON.parse(p.project.health) : null);
+  const runtimeProblem = Boolean(runtimeIssue || buildReport?.status === "error");
+  const problemCount = (audit?.issues.length ?? 0) + (runtimeProblem ? 1 : 0);
   const [publishing, setPublishing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [termLines, setTermLines] = useState<string[]>([]);
@@ -175,7 +199,7 @@ export function Workspace(p: WorkspaceProps) {
   const isAuto = agentId === "auto";
   const isAllowed = useCallback((id: string) => (id === "auto" ? true : id.startsWith("custom:") ? p.customAgentsAllowed : p.allowedAgentIds.includes(id)), [p.allowedAgentIds, p.customAgentsAllowed]);
   const previewSrc = useMemo(() => protectProjectNavigation(html || `<!DOCTYPE html><html><body style="margin:0;height:100vh;display:grid;place-items:center;font-family:system-ui;background:#0a0a0b;color:#8a8a93">Describe what to build in the chat below.</body></html>`), [html]);
-  const log = useCallback((text: string, kind: LogLine["kind"] = "info") => setLogs((l) => [...l, { t: now(), text, kind }]), []);
+  const log = useCallback((text: string, kind: LogLine["kind"] = "info") => setLogs((l) => [...l, { t: now(), text, kind }].slice(-600)), []);
 
   useEffect(() => { const el = chatEnd.current?.parentElement; if (el && followChat.current) el.scrollTop = el.scrollHeight; }, [messages, stream, busy, bottom]);
   useEffect(() => { const el = terminalEnd.current?.parentElement; if (el) el.scrollTop = el.scrollHeight; }, [termLines, bottom]);
@@ -416,8 +440,9 @@ export function Workspace(p: WorkspaceProps) {
     const push = (...l: string[]) => setTermLines((x) => [...x, ...l]);
     if (!cmd || terminalRunning.current || busyRef.current) return;
     const execution = platformAction ? null : runtimeCommand(cmd);
-    if (execution === "npm run build" && (!isApp || isReactApp)) { await term("platform: npm run build"); return; }
-    const shell = platformAction ? null : shellIntent(cmd);
+    if (execution === "npm run build") { await term("platform: npm run build"); return; }
+    const shell = platformAction ? null : projectTaskCommand(cmd, files, runtime) ?? shellIntent(cmd);
+    if (execution === "stop" && runtimePreview?.kind === "build") { await term("platform: stop"); setRuntimePreview(null); return; }
     if (shell || execution) {
       if (dirty) { try { await persistCode(false); } catch (e) { setError(e instanceof Error ? e.message : "Could not save source"); return; } }
       if (execution === "preview") {
@@ -439,6 +464,7 @@ export function Workspace(p: WorkspaceProps) {
     setBottom("terminal");
     setExpandedPanel(true);
     if (cmd === "clear") { setTermLines([]); return; }
+    if (cmd === "npm run build") { setRuntimeIssue(null); setRuntimePreview(null); setBuildReport(null); setBottom("logs"); }
     if (cmd === "history" || cmd === "git log") { push(...out, ...versions.map((v) => `Change #${v.number}  ${new Date(v.createdAt).toLocaleString()}  ${v.message}`)); return; }
     if (cmd === "versions") { const latest = await refreshReleases(); push(...out, ...latest.map(r => `v${r.number} · ${r.deployedAt ? "Deployed" : "Built"} · ${r.createdAt}`)); return; }
     if (cmd.startsWith("restore change ")) { const n = Number(cmd.replace("restore change ", "")); restore(n); push(...out, `Restoring change #${n}…`); return; }
@@ -465,11 +491,11 @@ export function Workspace(p: WorkspaceProps) {
           const parts = buf.split("\n\n"); buf = parts.pop() ?? "";
           for (const part of parts) {
             const m = part.match(/^data: (.*)$/m); if (!m) continue;
-            try { const ev = JSON.parse(m[1]) as { kind: string; line: string }; if (ev.kind === "done") continue; if (ev.kind === "preview") { const url = new URL(ev.line); if (url.protocol === "https:" && url.hostname.endsWith(".e2b.app")) { setRuntimePreview({ url: url.href, source: runtimeSource }); setView("preview"); setExpandedPanel(false); } } push(ev.line); if (ev.kind === "ok") log(ev.line, "ok"); if (ev.kind === "err") log(ev.line, "err"); if (/^✓ Live at |^https:\/\//.test(ev.line) && cmd.startsWith("publish")) setStatus("PUBLISHED"); } catch { /* ignore */ }
+            try { const ev = JSON.parse(m[1]) as { kind: string; line: string }; if (ev.kind === "done") continue; if (ev.kind === "preview") { const url = new URL(ev.line); if (url.protocol === "https:" && url.hostname.endsWith(".e2b.app")) { setRuntimePreview({ url: url.href, source: runtimeSource, kind: "build" }); setView("preview"); setExpandedPanel(false); } } push(ev.line); log(ev.line, ev.kind === "err" ? "err" : ev.kind === "ok" ? "ok" : "info"); if (/^✓ Live at |^https:\/\//.test(ev.line) && cmd.startsWith("publish")) setStatus("PUBLISHED"); } catch { /* ignore */ }
           }
         }
       } catch (e) { push(`✗ ${e instanceof Error ? e.message : "terminal error"}`); }
-      finally { await refreshReleases().catch(() => {}); setTermBusy(false); terminalRunning.current = false; terminalAbort.current = null; }
+      finally { await refreshRuntime().catch(() => {}); await refreshReleases().catch(() => {}); setTermBusy(false); terminalRunning.current = false; terminalAbort.current = null; }
       return;
     }
 
@@ -499,7 +525,7 @@ export function Workspace(p: WorkspaceProps) {
           <button onClick={() => { if (isApp && !isReactApp && !runtimeUrl) { void term("preview"); } else { setView("preview"); setExpandedPanel(false); } }} className={`btn btn-sm ${!expandedPanel && view === "preview" ? "btn-primary" : "btn-ghost"}`}><Eye size={13} />Preview</button>
           <button onClick={() => { setView("code"); setExpandedPanel(false); setShowFiles(true); }} className={`btn btn-sm ${!expandedPanel && view === "code" ? "btn-primary" : "btn-ghost"}`}><Code2 size={13} />Code</button>
         </div>
-        <button disabled={!!busy || termBusy} onClick={() => term("npm run build")} className="btn btn-outline btn-sm"><Play size={13} />{termBusy ? "Running…" : isApp && !isReactApp ? "Build" : "Build & preview"}</button>
+        <button disabled={!!busy || termBusy} onClick={() => term("npm run build")} className="btn btn-outline btn-sm"><Play size={13} />{termBusy ? "Running…" : runtime.previewPort === null ? "Build / check" : "Build & preview"}</button>
         {!isApp && <div className="hidden lg:flex items-center gap-0.5 border border-graphite rounded-full p-0.5">
           {([["desktop", Monitor], ["tablet", Tablet], ["mobile", Smartphone]] as const).map(([d, I]) => (
             <button key={d} onClick={() => setDevice(d)} className={`btn btn-sm ${device === d ? "bg-graphite" : "btn-ghost"}`} title={d}><I size={13} /></button>
@@ -507,12 +533,12 @@ export function Workspace(p: WorkspaceProps) {
         </div>}
         <button onClick={() => setShowFiles(!showFiles)} aria-expanded={showFiles} className="btn btn-ghost btn-sm" title="Toggle project files"><Folder size={14} />Files</button>
         <button onClick={() => setShowTeam(!showTeam)} aria-expanded={showTeam} className="btn btn-ghost btn-sm" title="Toggle AI team"><Users size={14} />Agents</button>
-        {audit && <button onClick={() => setBottom("problems")} className="pill text-xs gap-1.5" title="Project health"><Activity size={11} className={audit.overall >= 90 ? "text-success" : audit.overall >= 70 ? "text-warning" : "text-error"} />{audit.scope === "source" ? `${audit.issues.length} findings` : audit.overall}</button>}
+        {(audit || runtimeProblem) && <button onClick={() => { setBottom("problems"); setExpandedPanel(true); }} className="pill text-xs gap-1.5" title="Project checks"><Activity size={11} className={problemCount ? "text-warning" : "text-success"} />{runtimeProblem || audit?.scope === "source" ? `${problemCount} findings` : audit?.overall}</button>}
         <button onClick={() => { setBottom("share"); setExpandedPanel(true); loadShare(); }} className="btn btn-outline btn-sm" title="Client portal & share"><Share2 size={13} /></button>
         {<button onClick={() => { setBottom("problems"); setExpandedPanel(true); runAudit(); }} className="btn btn-outline btn-sm" title="Production audit"><AlertTriangle size={13} />Audit</button>}
         <button onClick={exportZip} className="btn btn-outline btn-sm" title="Export code"><Download size={13} /></button>
         {status === "PUBLISHED" && <a href={`/s/${p.project.slug}`} target="_blank" rel="noopener" className="btn btn-outline btn-sm"><ExternalLink size={13} /></a>}
-        <button onClick={() => { setExpandedPanel(true); if (isApp) { setBottom("terminal"); term("deploy vercel"); } else publish(); }} disabled={publishing || termBusy || (isApp ? files.length === 0 : !html)} title={isApp ? "Deploy using your connected Vercel account" : "Publish this website"} className="btn btn-signal btn-sm"><Rocket size={13} />{publishing ? "Deploying…" : status === "PUBLISHED" ? "Redeploy" : "Deploy"}</button>
+        <button onClick={() => { setExpandedPanel(true); if (isApp) { if (!deployment.supported) { setError(deployment.reason ?? "Configure a compatible hosting runtime."); setBottom("logs"); log(deployment.reason ?? "Configure hosting."); } else { setBottom("terminal"); term("deploy vercel"); } } else publish(); }} disabled={publishing || termBusy || (isApp ? files.length === 0 : !html)} title={isApp ? (deployment.supported ? `Deploy ${deployment.label} to Vercel` : "View deployment requirements") : "Publish this website"} className="btn btn-signal btn-sm"><Rocket size={13} />{publishing ? "Deploying…" : status === "PUBLISHED" ? "Redeploy" : "Deploy"}</button>
       </div>
 
       {error && <div role="alert" className="shrink-0 px-4 py-2 border-b border-error/30 bg-void text-error text-xs flex items-center justify-between gap-3">{error}<button aria-label="Dismiss error" onClick={() => setError(null)}><X size={14} /></button></div>}
@@ -526,10 +552,10 @@ export function Workspace(p: WorkspaceProps) {
             <>
               <div className="px-2 py-1 pl-4 text-ash flex items-center gap-1.5"><Folder size={12} />src/</div>
               {fileTree.map((f) => (
-                <button key={f.path} onClick={() => { setActiveFile(f.path); setView("code"); }} className={`w-full text-left px-2 py-1 pl-6 flex items-center gap-1.5 rounded ${view === "code" && activeFile === f.path ? "bg-graphite text-paper" : "text-fog hover:bg-ink"}`} title={f.path}><FileCode2 size={12} className="text-signal-soft shrink-0" /><span className="truncate">{f.path.slice(1)}</span></button>
+                <button key={f.path} onClick={() => { setActiveFile(f.path); setView("code"); }} className={`w-full text-left px-2 py-1 pl-6 flex items-center gap-1.5 rounded ${view === "code" && activeFile === f.path ? "bg-graphite text-paper" : "text-fog hover:bg-ink"}`} title={f.path}><FileCode2 size={12} className="text-signal-soft shrink-0" /><span className="truncate">{f.path.replace(/^\/+/, "")}</span></button>
               ))}
               {fileTree.length === 0 && <div className="px-2 pl-6 text-ash">No files yet: describe the app below.</div>}
-              <button onClick={() => { const path = prompt("New file path (e.g. /components/Card.tsx)"); if (path && !path.split("/").includes("..") && /^\/[\w\-./]+$/.test(path) && !files.some((f) => f.path === path)) { setFiles((f) => [...f, { path, content: "" }]); setActiveFile(path); setView("code"); } }} className="w-full text-left px-2 py-1 pl-6 text-ash hover:text-paper">+ new file</button>
+              <button onClick={() => { const input = prompt("New file path (e.g. /app/[id]/page.tsx or /src/main.py)"); const path = input ? safeProjectPath(input) : null; if (path && !files.some((f) => f.path === path)) { setFiles((f) => [...f, { path, content: "" }]); setActiveFile(path); setView("code"); } }} className="w-full text-left px-2 py-1 pl-6 text-ash hover:text-paper">+ new file</button>
             </>
           ) : (
             <>
@@ -563,7 +589,7 @@ export function Workspace(p: WorkspaceProps) {
                   {files.length ? <AppSandbox files={files} /> : <div className="h-full grid place-items-center text-sm text-ash bg-void">Describe the app you want in the chat below: e.g. “Build an admin dashboard for a SaaS with sidebar, KPI cards, a revenue chart and a customers table.”</div>}
                 </div>
               ) : isApp ? (
-                <div className="h-full grid place-items-center rounded-lg border border-graphite bg-void p-6 text-center text-sm text-ash"><div><div className="text-paper font-medium mb-2">{projectStack} project</div><p>Start the project in its isolated runtime. Web servers open here when ready; command-line output appears in Terminal. Configure required environment variables in Integrations.</p><button onClick={() => { void term("preview"); }} className="btn btn-outline btn-sm mt-4"><Play size={13} />Start preview</button></div></div>
+                <div className="h-full grid place-items-center rounded-lg border border-graphite bg-void p-6 text-center text-sm text-ash"><div><div className="text-paper font-medium mb-2">{runtime.label} project</div><p>{runtime.issue ?? (runtime.previewPort === null ? "This target runs in Terminal. A browser preview requires an HTTP server; configure its command and port in .idaevia/runtime.json." : "Start the project in its isolated runtime.")}</p><p> Web servers open here when ready; command-line output appears in Terminal. Configure required environment variables in Integrations.</p><button onClick={() => { void term("preview"); }} className="btn btn-outline btn-sm mt-4"><Play size={13} />{runtime.previewPort === null ? "Run in Terminal" : "Start preview"}</button></div></div>
               ) : (
                 <div className="h-full mx-auto bg-white rounded-lg overflow-hidden border border-graphite transition-all" style={{ width, maxWidth: "100%" }}>
                   {/* No allow-same-origin: generated HTML runs in an opaque origin and cannot touch the app or its cookies. */}
@@ -585,7 +611,7 @@ export function Workspace(p: WorkspaceProps) {
                   <MonacoEditor
                     height="100%"
                     path={isApp ? activeFile : "index.html"}
-                    language={isApp ? (activeFile.endsWith(".css") ? "css" : activeFile.endsWith(".json") ? "json" : "typescript") : "html"}
+                    language={editorLanguage(isApp ? activeFile : "index.html")}
                     theme="vs-dark"
                     value={isApp ? files.find((f) => f.path === activeFile)?.content ?? "" : html}
                     onChange={(v) => (isApp ? setFiles((fs) => fs.map((f) => (f.path === activeFile ? { ...f, content: v ?? "" } : f))) : setHtml(v ?? ""))}
@@ -600,7 +626,7 @@ export function Workspace(p: WorkspaceProps) {
           {expandedPanel && <div className="shrink-0 min-h-0 border-t border-graphite flex flex-col" style={{ height: "100%" }}>
             <div className="h-10 shrink-0 flex items-center gap-1 px-2 border-b border-graphite text-xs overflow-x-auto">
               {([["chat", "AI Chat", MessageSquare], ["changes", "Changes", History], ["terminal", "Terminal", TerminalSquare], ["logs", "Logs", Activity], ["problems", "Problems", AlertTriangle], ["share", "Share / Client portal", Share2]] as const).map(([id, label, I]) => (
-                <button key={id} onClick={() => { setBottom(id); if (id === "problems") runAudit(); if (id === "terminal") setShellOpened(true); if (id === "share") loadShare(); }} className={`btn btn-sm ${bottom === id ? "bg-graphite text-paper" : "btn-ghost"}`}><I size={12} />{label}{id === "problems" && audit?.issues.length ? <span className="ml-1 text-[10px] text-warning">{audit.issues.length}</span> : null}</button>
+                <button key={id} onClick={() => { setBottom(id); if (id === "problems") { runAudit(); void refreshRuntime(); } if (id === "terminal") setShellOpened(true); if (id === "logs") void refreshRuntime(); if (id === "share") loadShare(); }} className={`btn btn-sm ${bottom === id ? "bg-graphite text-paper" : "btn-ghost"}`}><I size={12} />{label}{id === "problems" && problemCount ? <span className="ml-1 text-[10px] text-warning">{problemCount}</span> : null}</button>
               ))}
               <button onClick={() => setExpandedPanel(!expandedPanel)} aria-label={expandedPanel ? "Show preview and chat" : "Focus chat panel"} title={expandedPanel ? "Show preview and chat" : "Focus chat panel"} aria-expanded={expandedPanel} className="btn btn-ghost btn-sm ml-auto">{expandedPanel ? "↓" : "↑"}</button>
               {termBusy && <button onClick={() => terminalAbort.current?.abort()} className="btn btn-ghost btn-sm">Cancel command</button>}
@@ -686,20 +712,21 @@ export function Workspace(p: WorkspaceProps) {
               </div>
             )}
 
-            {shellOpened && <div hidden={bottom !== "terminal"} className={bottom === "terminal" ? "flex-1 min-h-0 flex flex-col" : "hidden"}>
-              <ShellTerminal projectId={p.project.id} active={bottom === "terminal"} command={shellCommand} onConsumed={(id) => setShellCommand((current) => current?.id === id ? null : current)} onPreview={(url) => { setRuntimePreview({ url, source: runtimeSource }); setView("preview"); setExpandedPanel(false); }} />
-              <details className="shrink-0 border-t border-graphite text-xs">
+            {(shellOpened || bottom === "terminal") && <div hidden={bottom !== "terminal"} className={bottom === "terminal" ? "flex-1 min-h-0 flex flex-col" : "hidden"}>
+              {shellOpened && <ShellTerminal onLog={(text) => log(text)} onIssue={setRuntimeIssue} projectId={p.project.id} active={bottom === "terminal"} command={shellCommand} onConsumed={(id) => setShellCommand((current) => current?.id === id ? null : current)} onPreview={(url) => { setRuntimePreview({ url, source: runtimeSource }); setView("preview"); setExpandedPanel(false); }} />}
+              <details open={termBusy || termLines.length > 2} className="shrink-0 border-t border-graphite text-xs">
                 <summary className="cursor-pointer px-3 py-2 text-ash">Platform actions · publish, connected GitHub push, deploy</summary>
                 <div className="max-h-32 overflow-y-auto px-3 font-mono whitespace-pre-wrap">{termLines.map((line, i) => <div key={i}>{line}</div>)}<div ref={terminalEnd} /></div>
                 <form onSubmit={(e) => { e.preventDefault(); const c = termInput; setTermInput(""); term(`platform: ${c}`); }} className="flex gap-2 px-3 py-2"><input aria-label="Platform action" value={termInput} disabled={termBusy} onChange={(e) => setTermInput(e.target.value)} className="input flex-1" placeholder="publish · deploy vercel · integrations" /><button className="btn btn-outline btn-sm" disabled={termBusy}>Run</button></form>
               </details>
             </div>}
 
-            {bottom === "logs" && <div className="flex-1 overflow-y-auto p-3 font-mono text-xs space-y-0.5">{logs.map((l, i) => <div key={i} className={l.kind === "err" ? "text-error" : l.kind === "ok" ? "text-success" : "text-fog"}><span className="text-ash">{l.t}</span> {l.text}</div>)}</div>}
+            {bottom === "logs" && <div className="flex-1 overflow-y-auto p-3 font-mono text-xs space-y-0.5"><RuntimeDetails profile={runtime} deployment={deployment} />{isApp && !deployment.supported && <div className="flex gap-2 py-3"><button className="btn btn-outline btn-sm" onClick={exportZip}>Download project</button><button className="btn btn-outline btn-sm" disabled={termBusy} onClick={() => term("platform: git push")}>Push to connected GitHub</button></div>}{buildReport && <details open className="mb-4 border-b border-graphite pb-3"><summary>Last build · {buildReport.label} · {buildReport.status}{!buildReport.current && " · earlier saved source"}</summary><pre className="whitespace-pre-wrap mt-2 text-fog">{buildReport.log}</pre></details>}{logs.map((l, i) => <div key={i} className={l.kind === "err" ? "text-error" : l.kind === "ok" ? "text-success" : "text-fog"}><span className="text-ash">{l.t}</span> {l.text}</div>)}</div>}
 
             {bottom === "problems" && (
               <div className="flex-1 overflow-y-auto p-3 text-xs">
-                {!audit ? <div className="text-ash">Run an audit to see Performance, SEO, Accessibility, Security, Code and Mobile scores. <button onClick={runAudit} className="text-signal-soft underline">Run now</button></div> : (
+                {(runtimeIssue || buildReport?.status === "error") && <div className="border border-error/30 rounded-lg p-3 mb-4 space-y-2"><p className="text-error">{runtimeIssue ?? `Last ${buildReport?.label} build failed${!buildReport?.current ? " (earlier source — rebuild to recheck)" : ""}.`}</p><button className="btn btn-outline btn-sm" disabled={!!busy} onClick={() => run(`Fix the actual compilation/startup failure in this ${runtime.label} project, preserve the requested stack and design.\n${runtimeIssue ?? ""}\n${buildReport?.current ? buildReport.log.slice(-16000) : "Inspect the saved source and run Build again after changes."}`, "debugger")}>Fix runtime error with Debugger</button><button className="btn btn-ghost btn-sm" disabled={termBusy} onClick={() => term("npm run build")}>Rebuild to verify</button><button className="btn btn-ghost btn-sm" onClick={() => setBottom("logs")}>View build log</button></div>}
+                {!audit ? <div className="text-ash">Run source checks and Build to inspect this project’s code and runtime. <button onClick={runAudit} className="text-signal-soft underline">Run now</button></div> : (
                   <>
                     {audit.scope !== "source" && <div className="grid grid-cols-7 gap-2 mb-3">{([["Overall", audit.overall], ["Performance", audit.performance], ["SEO", audit.seo], ["A11y", audit.accessibility], ["Security", audit.security], ["Code", audit.codeQuality], ["Mobile", audit.mobile]] as const).map(([l, v]) => <div key={l} className="card p-2"><div className="text-[10px] text-ash">{l}</div><div className={`text-lg font-semibold ${v >= 90 ? "text-success" : v >= 70 ? "text-warning" : "text-error"}`}>{v}</div></div>)}</div>}
                     {audit.scope === "source" && <p className="text-ash mb-3">Source checks only. Run Build and Preview to check compilation and runtime behavior. SEO and performance require the rendered pages.</p>}

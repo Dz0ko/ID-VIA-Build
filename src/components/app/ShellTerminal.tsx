@@ -7,9 +7,9 @@ import { FitAddon } from "@xterm/addon-fit";
 import "@xterm/xterm/css/xterm.css";
 
 type Command = { id: number; text: string; previewPort?: number | null };
-export function ShellTerminal({ projectId, active, command, onPreview, onConsumed }: {
+export function ShellTerminal({ projectId, active, command, onPreview, onConsumed, onLog, onIssue }: {
   projectId: string; active: boolean; command: Command | null;
-  onPreview: (url: string) => void; onConsumed: (id: number) => void;
+  onPreview: (url: string) => void; onConsumed: (id: number) => void; onLog?: (text: string) => void; onIssue?: (issue: string | null) => void;
 }) {
   const host = useRef<HTMLDivElement>(null);
   const terminal = useRef<Terminal | null>(null);
@@ -23,14 +23,15 @@ export function ShellTerminal({ projectId, active, command, onPreview, onConsume
   const consumed = useRef<number | null>(null);
   const autoConnected = useRef(false);
   const attempted = useRef<number | null>(null);
-  const callbacks = useRef({ onPreview, onConsumed });
+  const callbacks = useRef({ onPreview, onConsumed, onLog, onIssue });
   const [issue, setIssue] = useState<string | null>(null);
   const seenPorts = useRef(new Set<number>());
   const recentOutput = useRef("");
+  useEffect(() => { callbacks.current.onIssue?.(issue); }, [issue]);
   const [status, setStatus] = useState("Disconnected");
   const [port, setPort] = useState("3000");
   const endpoint = `/api/projects/${projectId}/shell`;
-  useEffect(() => { callbacks.current = { onPreview, onConsumed }; });
+  useEffect(() => { callbacks.current = { onPreview, onConsumed, onLog, onIssue }; });
 
   const request = useCallback(async (body: object) => {
     const response = await fetch(endpoint, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
@@ -76,6 +77,7 @@ export function ShellTerminal({ projectId, active, command, onPreview, onConsume
       source.addEventListener("output", (event) => {
         const bytes = Uint8Array.from(atob(JSON.parse(event.data)), (c) => c.charCodeAt(0));
         terminal.current?.write(bytes);
+        callbacks.current.onLog?.(new TextDecoder().decode(bytes).replace(/\u001b\[[0-?]*[ -/]*[@-~]/g, "").slice(-8000));
         recentOutput.current = (recentOutput.current + new TextDecoder().decode(bytes)).slice(-4000);
         const hint = runtimeFailureHint(recentOutput.current);
         if (hint) setIssue(hint);

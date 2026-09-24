@@ -1,6 +1,6 @@
 import { runtimeResources } from "./runtime-resources";
 import { reserveRuntimeCapacity, RuntimeCapacityError } from "./runtime-capacity";
-import { PREVIEW_TEMPLATE, preparePreviewEnvironment } from "./preview-environment";
+import { preparePreviewEnvironment } from "./preview-environment";
 import { fileBytes } from "./file-content";
 import "server-only";
 import { Sandbox, NotFoundError } from "e2b";
@@ -9,12 +9,12 @@ import type { Project, ProjectFile } from "@prisma/client";
 import { db } from "./db";
 import { buildProjectFiles, readProjectEnv } from "./project-files";
 import { runtimePath } from "./runtime-command";
-import { SERVER } from "./runtime-build";
+import { SERVER, staticBuildScript } from "./runtime-build";
 
 export const SHELL_TTL = 15 * 60_000;
 export const SHELL_ROOT = "/home/user/project";
 type Source = Project & { files: ProjectFile[] };
-export type ShellState = { sandboxId: string; pid: number; expiresAt: number; previewPort?: number; manifest?: Record<string, string> };
+export type ShellState = { sandboxId: string; pid: number; expiresAt: number; previewPort?: number; runtimeVersion?: number; manifest?: Record<string, string> };
 export class ShellError extends Error {}
 const keyFor = (id: string) => `shell:${id}`;
 
@@ -32,7 +32,8 @@ function sourceFiles(project: Source) {
   const files = buildProjectFiles(project).filter((f) => f.path !== ".env.production");
   if (project.kind !== "app") files.push(
     { path: ".preview.cjs", content: SERVER },
-    { path: "package.json", content: JSON.stringify({ name: "website-preview", private: true, scripts: { build: "mkdir -p dist && cp index.html dist/index.html", dev: "npm run build && node .preview.cjs", start: "npm run dev", preview: "node .preview.cjs" } }) },
+    { path: ".idaevia-static-build.cjs", content: staticBuildScript(files) },
+    { path: "package.json", content: JSON.stringify({ name: "website-preview", private: true, scripts: { build: "node .idaevia-static-build.cjs", dev: "npm run build && node .preview.cjs", start: "npm run dev", preview: "node .preview.cjs" } }) },
   );
   const unique = [...new Map(files.map((f) => [f.path, f])).values()];
   unique.forEach((f) => runtimePath(f.path));
@@ -93,8 +94,8 @@ export async function ensureShell(project: Source) {
       const processes = await active.sandbox.commands.list();
       if (processes.some((p) => p.pid === active.state.pid)) {
         const info = await active.sandbox.getInfo();
-        if (info.templateId === PREVIEW_TEMPLATE || info.memoryMB >= 2048) return active.state;
-        // Preserve shell-only edits when upgrading the old 512 MiB runtime.
+        if (info.memoryMB >= resources.memoryMB && active.state.runtimeVersion === 3) return active.state;
+        // Preserve shell-only edits when upgrading memory or preview-host configuration.
         await active.sandbox.commands.run("tar -czf /tmp/idaevia-upgrade.tar.gz --exclude=node_modules --exclude=.next --exclude=.git -C /home/user/project .", { timeoutMs: 30_000 });
         const size = await active.sandbox.commands.run("stat -c %s /tmp/idaevia-upgrade.tar.gz", { timeoutMs: 5000 });
         if (Number(size.stdout.trim()) > 20_000_000) throw new Error("Download your runtime files before upgrading this large terminal session.");
@@ -111,9 +112,9 @@ export async function ensureShell(project: Source) {
       await created.files.write("/tmp/idaevia-upgrade.tar.gz", new Uint8Array(archive).buffer);
       await created.commands.run(`tar -xzf /tmp/idaevia-upgrade.tar.gz -C ${SHELL_ROOT}`, { timeoutMs: 30_000 });
     }
-    const envs = await preparePreviewEnvironment(created, project.files, readProjectEnv(project), resources.memoryMB);
+    const envs = await preparePreviewEnvironment(created, buildProjectFiles(project), readProjectEnv(project), resources.memoryMB);
     const handle = await created.pty.create({ cwd: SHELL_ROOT, cols: 100, rows: 28, timeoutMs: 0, envs: { ...envs, TERM: "xterm-256color", PS1: "\\w $ " }, onData: () => {} });
-    const state = { sandboxId: created.sandboxId, pid: handle.pid, manifest: previous?.state.manifest ?? manifest, expiresAt: Date.now() + SHELL_TTL };
+    const state = { sandboxId: created.sandboxId, runtimeVersion: 3, pid: handle.pid, manifest: previous?.state.manifest ?? manifest, expiresAt: Date.now() + SHELL_TTL };
     await db.setting.upsert({ where: { key: keyFor(project.id) }, create: { key: keyFor(project.id), value: JSON.stringify(state) }, update: { value: JSON.stringify(state) } });
     await handle.disconnect();
     created = undefined;

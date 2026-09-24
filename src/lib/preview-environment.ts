@@ -1,3 +1,4 @@
+import { runtimeProfile } from "./runtime-profile";
 import { runtimeMemoryEnvironment } from "./runtime-resources";
 import "server-only";
 import { randomBytes } from "node:crypto";
@@ -10,7 +11,7 @@ export const PREVIEW_SYSTEM_ENV = { NODE_OPTIONS: "--max-old-space-size=1536", N
 /** Only project-owned settings and sandbox-local credentials; never platform environment variables. */
 export async function preparePreviewEnvironment(sandbox: Sandbox, files: { path: string; content: string }[], settings: Record<string, string>, memoryMB = 2048): Promise<Record<string, string>> {
   const envs = Object.fromEntries(Object.entries(settings).filter(([key]) => /^[A-Za-z_][A-Za-z0-9_]*$/.test(key) && !["NODE_OPTIONS", "LD_PRELOAD", "PATH", "HOME", "IDAEVIA_LOCAL_DATABASE"].includes(key)));
-  const schema = files.find(f => f.path.replace(/^\/+/, "") === "prisma/schema.prisma")?.content;
+  const schema = files.find(f => /(?:^|\/)prisma\/schema\.prisma$/.test(f.path))?.content;
   const databaseKey = schema?.match(/url\s*=\s*env\(["']([A-Z_][A-Z0-9_]*)["']\)/)?.[1] ?? "DATABASE_URL";
   if (schema && /provider\s*=\s*["']postgresql["']/.test(schema) && !envs[databaseKey]) {
     const password = randomBytes(24).toString("hex");
@@ -27,5 +28,13 @@ export async function preparePreviewEnvironment(sandbox: Sandbox, files: { path:
   for (const key of ["JWT_SECRET", "AUTH_SECRET", "NEXTAUTH_SECRET"]) {
     if (new RegExp(`^${key}=`, "m").test(example) && !envs[key]) envs[key] = randomBytes(32).toString("hex");
   }
-  return { ...envs, ...PREVIEW_SYSTEM_ENV, ...runtimeMemoryEnvironment(memoryMB) };
+  const profile = runtimeProfile(files);
+  const host = sandbox.getHost(profile.previewPort ?? 3000);
+  if (profile.vite) {
+    // Older Vite releases ignore the allowed-host environment variable. Merge
+    // an ephemeral config with the user's real config, preserving plugins/hooks.
+    const config = `import { loadConfigFromFile, mergeConfig } from 'vite';\nexport default async (env) => { const original = await loadConfigFromFile(env, ${JSON.stringify(profile.vite.configFile) ?? "undefined"}, ${JSON.stringify(profile.vite.root) ?? "undefined"}); return mergeConfig(original?.config ?? {}, {server:{allowedHosts:[${JSON.stringify(host)}]},preview:{allowedHosts:[${JSON.stringify(host)}]}}); };`;
+    await sandbox.files.write(`/home/user/project/${profile.root === "." ? "" : profile.root + "/"}.idaevia-vite-preview.config.mjs`, config);
+  }
+  return { ...envs, ...PREVIEW_SYSTEM_ENV, ...runtimeMemoryEnvironment(memoryMB), IDAEVIA_PREVIEW_HOST: host, IDAEVIA_PREVIEW_URL: `https://${host}`, __VITE_ADDITIONAL_SERVER_ALLOWED_HOSTS: host };
 }

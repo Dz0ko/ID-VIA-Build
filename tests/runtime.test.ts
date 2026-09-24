@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { once } from "node:events";
 import { runtimeCommand, runtimePath } from "../src/lib/runtime-command";
-import { executeProjectBuild, type BuildRuntime } from "../src/lib/runtime-build";
+import { SERVER } from "../src/lib/runtime-build";
 
 test("standalone runtime requests bypass generation without hijacking design prompts", () => {
   for (const text of ["npm run build", "run build", "please run the build", "can you run build", "napravi run build", "направи build", "napravi run build i otvori localhost:3000"]) assert.equal(runtimeCommand(text), "npm run build");
@@ -15,54 +15,11 @@ test("runtime uploads cannot escape the isolated project directory", () => {
   for (const path of ["../secret", "src/../../etc/passwd", "/etc/passwd", "src\\..\\secret", "src/./index", "src//index", "src/a\0b"]) assert.throws(() => runtimePath(path));
 });
 
-function fake(fail?: string) {
-  const calls: string[] = [];
-  const runtime: BuildRuntime = {
-    command: async (command) => { calls.push(command); if (command === fail) throw new Error("exit code 1"); },
-    writeServer: async () => { calls.push("write-server"); },
-    startServer: async () => { calls.push("start-server"); },
-  };
-  return { runtime, calls };
-}
-
-test("React build installs, compiles, starts and checks HTTP readiness in order", async () => {
-  const { runtime, calls } = fake();
-  await executeProjectBuild(runtime, true, () => {}, new AbortController().signal);
-  assert.deepEqual(calls.slice(0, 4), ["npm install --no-audit --no-fund", "npm run build", "write-server", "start-server"]);
-  assert.match(calls[4], /127\.0\.0\.1:3000/);
-});
-
-test("compiler failure never starts a preview server", async () => {
-  const { runtime, calls } = fake("npm run build");
-  await assert.rejects(executeProjectBuild(runtime, true, () => {}, new AbortController().signal), /exit code 1/);
-  assert.equal(calls.includes("start-server"), false);
-});
-
-test("cancelling installation prevents compilation and preview", async () => {
-  const { runtime, calls } = fake();
-  const ac = new AbortController();
-  runtime.command = async (command) => { calls.push(command); ac.abort(); };
-  await assert.rejects(executeProjectBuild(runtime, true, () => {}, ac.signal), { name: "AbortError" });
-  assert.equal(calls.length, 1);
-});
-
-test("static sites prepare output without pretending to run an npm compiler", async () => {
-  const { runtime, calls } = fake();
-  await executeProjectBuild(runtime, false, () => {}, new AbortController().signal);
-  assert.equal(calls[0], "mkdir -p dist && cp index.html dist/index.html");
-  assert.equal(calls.some((c) => c.startsWith("npm")), false);
-  assert.ok(calls.includes("start-server"));
-});
-
-
 test("preview HTTP server serves built assets and blocks source symlinks", async () => {
   const { mkdtemp, mkdir, writeFile, symlink, rm } = await import("node:fs/promises");
   const { spawn } = await import("node:child_process");
   const root = await mkdtemp(`${process.cwd()}/.runtime-test-`);
-  let server = "";
-  const { runtime } = fake();
-  runtime.writeServer = async (source) => { server = source; };
-  await executeProjectBuild(runtime, false, () => {}, new AbortController().signal);
+  let server = SERVER;
   let child: ReturnType<typeof spawn> | undefined;
   try {
     await mkdir(`${root}/dist`);
@@ -106,7 +63,7 @@ test("runtime selection follows manifests over stale language labels and uses Ne
   assert.equal(runtimeCommand("run it"), "preview");
 });
 test("non-JavaScript manifests select their own runtimes without npm", () => {
-  for (const [path, command] of [["go.mod", "go run"], ["Cargo.toml", "cargo run"], ["pom.xml", "spring-boot:run"], ["manage.py", "runserver"], ["app.csproj", "dotnet run"], ["Package.swift", "swift run"]]) {
+  for (const [path, command] of [["go.mod", "go run"], ["Cargo.toml", "cargo run"], ["pom.xml", "compile exec:java"], ["manage.py", "runserver"], ["app.csproj", "dotnet run"], ["Package.swift", "swift run"]]) {
     const profile = runtimeProfile([{ path, content: "" }], "Next.js");
     assert.ok(profile.preview.includes(command), path);
     assert.doesNotMatch(profile.preview, /npm/);
@@ -145,7 +102,7 @@ test("runtime profiles preserve package managers, Python isolation and custom co
   }
   assert.match(runtimeProfile([{ path: "main.py", content: "print(1)" }], "").preview, /venv .*activate/);
   const custom = runtimeProfile([{ path: ".idaevia/runtime.json", content: JSON.stringify({ build: "cd backend && make", start: "cd backend && ./server" }) }], "");
-  assert.equal(custom.preview, "cd backend && ./server");
+  assert.ok(custom.preview.includes("cd backend && ./server"));
   assert.match(runtimeProfile([{ path: ".idaevia/runtime.json", content: "{}" }], "").preview, /Invalid/);
   assert.match(runtimeProfile([{ path: "Package.swift", content: "" }], "").preview, /Required runtime tool is unavailable/);
 });

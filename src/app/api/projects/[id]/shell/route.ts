@@ -1,3 +1,4 @@
+import { previewResponseReady } from "@/lib/preview-readiness";
 import { readRequestJson } from "@/lib/request-body";
 import { z } from "zod";
 import { getCurrentUser } from "@/lib/auth";
@@ -55,7 +56,7 @@ export async function POST(req: Request, ctx: RouteContext<"/api/projects/[id]/s
       const url = `https://${sandbox.getHost(state.previewPort ?? 3000)}`;
       try {
         const response = await fetch(url, { signal: AbortSignal.timeout(3000), redirect: "manual", cache: "no-store" });
-        if (response.status < 400) return Response.json({ ready: true, url });
+        if (previewResponseReady(response.status)) return Response.json({ ready: true, url });
       } catch { /* Not running yet. */ }
       return Response.json({ ready: false });
     }
@@ -101,7 +102,7 @@ export async function POST(req: Request, ctx: RouteContext<"/api/projects/[id]/s
         try {
           const response = await fetch(url, { signal: AbortSignal.timeout(action.scan ? 2500 : 8000), redirect: "manual", cache: "no-store" });
           lastStatus = response.status;
-          if (response.status < 400) {
+          if (previewResponseReady(response.status)) {
             await db.setting.updateMany({ where: { key: `shell:${id}`, value: JSON.stringify(state) }, data: { value: JSON.stringify({ ...state, previewPort: port }) } });
             return Response.json({ url, port });
           }

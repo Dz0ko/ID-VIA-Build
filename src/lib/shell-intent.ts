@@ -12,9 +12,9 @@ export function shellIntent(input: string): string | null {
   if (/^go (?:build|test|run|mod|fmt|vet|version|env|list)(?:\s|$)/.test(text)) return text;
   const explicit = text.match(/^(?:terminal:|shell:|execute:|во терминал:|vo terminal:)\s*([\s\S]+)$/i);
   if (explicit) return explicit[1];
-  const run = text.match(/^(?:please\s+|te molam\s+|те молам\s+)?(?:run|execute|izvrsi|изврши|пушти|pusti)\s+((?:npm|npx|pnpm|yarn|bun|git|node|python3?|pip3?|pytest|cargo|go|make)\b[\s\S]*)$/i);
+  const run = text.match(/^(?:please\s+|te molam\s+|те молам\s+)?(?:run|execute|izvrsi|изврши|пушти|pusti)\s+((?:npm|npx|pnpm|yarn|bun|git|node|python3?|pip3?|pytest|cargo|go|make|mvn|gradle|dotnet|php|ruby|bundle|rails|mix|elixir|java|javac|swift|dart|flutter|zig|nim|cmake|deno)\b[\s\S]*)$/i);
   if (run) return run[1];
-  if (/^(?:npm|npx|pnpm|yarn|bun|git|node|python3?|pip3?|pytest|cargo|ls|pwd|cd|cat|mkdir|touch|head|tail|grep|rg|curl|wget|echo|printf|sed|awk|bash|sh|chmod|cp|mv|rm|ps|kill|clear|env)\b(?:\s|$)/.test(text)) return text;
+  if (/^(?:npm|npx|pnpm|yarn|bun|git|node|python3?|pip3?|pytest|cargo|mvn|gradle|dotnet|php|ruby|bundle|rails|mix|elixir|java|javac|swift|dart|flutter|zig|nim|cmake|deno|gcc|g\+\+|cc|c\+\+|perl|lua|ls|pwd|cd|cat|mkdir|touch|head|tail|grep|rg|curl|wget|echo|printf|sed|awk|bash|sh|chmod|cp|mv|rm|ps|kill|clear|env)(?:\s|$)/.test(text)) return text;
   if (/^export [A-Za-z_][A-Za-z0-9_]*=/.test(text)) return text;
   return null;
 }

@@ -8,10 +8,13 @@ import { getIntegration } from "@/lib/integrations";
 import { buildProjectFiles, readProjectEnv, writeProjectEnv } from "@/lib/project-files";
 import { pushToGitHub } from "@/lib/github";
 import { deployToVercel } from "@/lib/vercel";
-import { auditHtml } from "@/lib/audit";
+import { auditProject, auditSummary } from "@/lib/audit";
 import { protectProjectNavigation } from "@/lib/project-navigation";
 
 import { runProjectBuild, stopProjectRuntime } from "@/lib/project-runtime";
+import { runtimeProfile } from "@/lib/runtime-profile";
+import { deploymentProfile } from "@/lib/deployment-profile";
+import { redactRuntimeLog } from "@/lib/runtime-report";
 import { runtimeCommand } from "@/lib/runtime-command";
 
 export const maxDuration = 300;
@@ -26,11 +29,11 @@ const HELP = [
   "  npm run build | preview     build in an isolated runtime and open the built site",
   "  npm run dev | npm start     build and serve a temporary preview (not HMR)",
   "  stop                        stop the temporary preview",
-  "  audit                       production audit (performance, SEO, a11y, security)",
+  "  audit                       source / HTML checks for this project",
   "  publish | unpublish         idaevia.app hosting for websites (/s/<slug>)",
   "  git push [owner/repo] [--public]   push all files to GitHub (creates the repo if needed)",
   "  git status                  last pushed commit",
-  "  deploy vercel [name]        deploy to Vercel (static site or Vite app), streams the build",
+  "  deploy vercel [name]        deploy to Vercel (detected supported web framework), streams the build",
   "  env list | env set KEY=VALUE | env unset KEY   per-project environment for deploys",
   "  supabase link               inject the connected Supabase project into env",
   "  integrations                what is connected (GitHub, Vercel, Supabase, Higgsfield…)",
@@ -66,13 +69,15 @@ export async function POST(req: Request, ctx: RouteContext<"/api/projects/[id]/t
       try {
         if (execution === "stop") { await stopProjectRuntime(id); send("Preview stopped.", "ok"); }
         else if (execution) {
-          const result = await runProjectBuild(project, (line) => send(line), req.signal);
-          send(result.url, "preview");
+          const result = await runProjectBuild(project, (line) => send(line), AbortSignal.any([req.signal, AbortSignal.timeout(270_000)]));
+          if (result.url) send(result.url, "preview");
+          else send("Build succeeded. Run the project in Terminal.", "ok");
         }
         else if (name === "help") HELP.forEach((l) => send(l));
         else if (name === "status") {
           const deploys = await db.deployment.findMany({ where: { projectId: id }, orderBy: { createdAt: "desc" }, take: 5 });
           send(`Project   ${project.name} (${project.kind}) · ${project.status}`);
+          send(`Runtime   ${runtimeProfile(buildProjectFiles(project)).label}`);
           send(`Files     ${project.kind === "app" ? `${project.files.length} source files` : `${(project.html.length / 1024).toFixed(1)} KB HTML`}`);
           send(`Preview   ${project.status === "PUBLISHED" ? `${appUrl}/s/${project.slug}` : "not published"}`);
           send(`GitHub    ${project.gitRemote ?? "never pushed"}`);
@@ -88,15 +93,11 @@ export async function POST(req: Request, ctx: RouteContext<"/api/projects/[id]/t
           if (!f) send(`No such file: ${args[0] ?? ""}`, "err");
           else f.content.split("\n").slice(0, 400).forEach((l) => send(l));
         } else if (name === "audit") {
-          if (project.kind === "app") send("Audit is available for website projects.", "err");
-          else {
-            const a = auditHtml(project.html);
-            send(`Overall ${a.overall}/100 · performance ${a.performance} · SEO ${a.seo} · accessibility ${a.accessibility} · security ${a.security} · mobile ${a.mobile}`);
-            if (!a.issues.length) send("✓ No issues found", "ok");
-            for (const c of a.issues) send(`${c.severity === "high" ? "✗" : "!"} [${c.area}] ${c.message}`, c.severity === "high" ? "err" : "line");
-          }
+          const a = auditProject(project);
+          send(auditSummary(a));
+          for (const c of a.issues) send(`${c.severity === "high" ? "✗" : "!"} [${c.area}] ${c.message}`, c.severity === "high" ? "err" : "line");
         } else if (name === "publish") {
-          if (project.kind === "app") send("React apps are deployed with `deploy vercel` (or export the ZIP).", "err");
+          if (project.kind === "app") send("Use `deploy vercel` for compatible web frameworks; other runtimes can be exported or pushed to GitHub for their host.", "err");
           else if (!project.html.trim()) send("Nothing to publish yet.", "err");
           else {
             let html = protectProjectNavigation(project.html);
@@ -148,7 +149,7 @@ export async function POST(req: Request, ctx: RouteContext<"/api/projects/[id]/t
               const isPublic = args.includes("--public");
               const dep = await db.deployment.create({ data: { projectId: id, provider: "github", status: "PENDING" } });
               const lines: string[] = [];
-              const log = (l: string) => { lines.push(l); send(l); };
+              const log = (l: string) => { const safe = redactRuntimeLog(l, Object.values(env)); lines.push(safe); send(safe); };
               try {
                 const r = await pushToGitHub({ token: gh.secret.token, repo: repoArg ?? project.gitRemote?.split("@")[0], name: project.slug, description: project.description ?? undefined, isPrivate: !isPublic, message: `IDÆVIA Build: ${project.name} (${new Date().toISOString().slice(0, 16).replace("T", " ")})`, files: buildProjectFiles(project, env), log });
                 await db.project.update({ where: { id }, data: { gitRemote: `${r.owner}/${r.repo}@${r.sha.slice(0, 7)}` } });
@@ -172,13 +173,16 @@ export async function POST(req: Request, ctx: RouteContext<"/api/projects/[id]/t
               else {
                 const dep = await db.deployment.create({ data: { projectId: id, provider: "vercel", status: "PENDING" } });
                 const lines: string[] = [];
-                const log = (l: string) => { lines.push(l); send(l); };
+                const log = (l: string) => { const safe = redactRuntimeLog(l, Object.values(env)); lines.push(safe); send(safe); };
                 try {
                   const files = buildProjectFiles(project, env).filter((f) => f.path !== ".env.production");
-                  const r = await deployToVercel({ token: vc.secret.token, teamId: vc.secret.teamId || undefined, name: args[1] ?? project.slug, files, framework: project.kind === "app" ? "vite" : null, env, log });
+                  const targetProfile = deploymentProfile(files);
+                  if (!targetProfile.supported) throw new Error(targetProfile.reason);
+                  const r = await deployToVercel({ token: vc.secret.token, teamId: vc.secret.teamId || undefined, name: args[1] ?? project.slug, files, env, log });
                   if (r.state === "READY") await recordProjectRelease(project, { provider: "vercel", url: r.url });
-                  await db.deployment.update({ where: { id: dep.id }, data: { status: r.state === "READY" ? "READY" : "PENDING", url: r.url, log: lines.join("\n"), finishedAt: new Date() } });
-                  send(r.url, "ok");
+                  await db.deployment.update({ where: { id: dep.id }, data: { status: r.state === "READY" ? "READY" : "PENDING", url: r.url, log: lines.join("\n"), finishedAt: r.state === "READY" ? new Date() : null } });
+                  if (r.state === "READY") await db.project.update({ where: { id }, data: { status: "PUBLISHED", publishedAt: new Date() } });
+                  send(r.state === "READY" ? r.url : `Deployment is ${r.state}. Check its status on Vercel: ${r.inspectorUrl ?? r.url}`, r.state === "READY" ? "ok" : "line");
                 } catch (e) {
                   const msg = e instanceof Error ? e.message : "deploy failed";
                   await db.deployment.update({ where: { id: dep.id }, data: { status: "ERROR", log: [...lines, msg].join("\n"), finishedAt: new Date() } });
