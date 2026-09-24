@@ -155,8 +155,12 @@ async function runAgentLocked(opts: RunOptions, assertActive: () => Promise<void
 
   const taskClass: TaskClass = agent.mode === "report" ? "small" : classifyTask(opts.request, hasContent);
   const debuggingTask = agent.mode === "rewrite" && agent.id === "debugger";
-  const visualDesignTask = agent.mode === "rewrite" && requiresFrontierDesign(opts.request, agent.id);
-  const taskTier = (visualDesignTask || debuggingTask) ? "frontier" : tierForTask(taskClass, opts.plan);
+  // Whole pages, sections and restyles get the frontier model; a small visual edit of an existing site gets the
+  // advanced tier at high effort, which does a navbar or button change just as well at a fraction of the tokens.
+  const substantial = overhaul || ["page", "feature", "fullstack", "section"].includes(taskClass);
+  const visualDesignTask = agent.mode === "rewrite" && requiresFrontierDesign(opts.request, agent.id) && substantial;
+  const smallVisualEdit = agent.mode === "rewrite" && !substantial && requiresFrontierDesign(opts.request, agent.id);
+  const taskTier = (visualDesignTask || debuggingTask) ? "frontier" : smallVisualEdit ? "advanced" : tierForTask(taskClass, opts.plan);
   const merged = ORDER[Math.max(ORDER.indexOf(taskTier), ORDER.indexOf(agent.tier))];
   const tier = tierForTask(taskClass, opts.plan, (visualDesignTask || debuggingTask) ? "frontier" : opts.requestedTier ?? merged);
   const visionBump = opts.images?.length ? 1.5 : 1;
@@ -199,11 +203,9 @@ async function runAgentLocked(opts: RunOptions, assertActive: () => Promise<void
   // A whole-document restyle streams the entire site back; thinking time comes out of the same budget.
   // Quality first within the server limit: Claude restyles at high effort (measured 238 s end to end on an 11k-token
   // site, so the largest sites drop to medium, ~195 s); GPT-6 Astra reasons ~100 s before its first token at high.
-  // Quality first inside the 780 s budget (Vercel Pro): a new site, restyle, section or feature runs Claude at xhigh
-  // (measured: ~2.5 min of thinking plus ~4 min of writing) and GPT-6 Astra at high (~5 min for a restyle);
-  // a small edit of an existing site runs at high, which finishes in about 80 s with the same care.
-  const deep = resolved.provider.id === "openai" ? "high" : "xhigh";
-  const capEffort = overhaul || heavy || visualDesignTask || debuggingTask || taskClass === "section" ? deep : targetedEdit ? "high" : "medium";
+  // Quality per token: high effort. Measured on a new site, xhigh spent 54k output tokens (about 40k of them thinking)
+  // for a result that high delivers with ~25k; the 780 s budget still leaves room for the whole document.
+  const capEffort = overhaul || heavy || visualDesignTask || debuggingTask || taskClass === "section" || targetedEdit ? "high" : "medium";
   const effort = resolved.config.effort && EFFORT_RANK[resolved.config.effort] > EFFORT_RANK[capEffort] ? capEffort : resolved.config.effort;
 
   let run: { id: string } | undefined;
@@ -250,7 +252,9 @@ async function runAgentLocked(opts: RunOptions, assertActive: () => Promise<void
       system += `\n\n${HTML_EDITS_SYSTEM}`;
       userPrompt = userPrompt.replace("edit the current document accordingly and return the full updated HTML", "make only the requested change using the HTML_EDITS format");
     }
-    const history = await db.message.findMany({ where: { projectId: project.id, role: { in: ["user", "assistant"] } }, orderBy: [{ createdAt: "desc" }, { id: "desc" }], take: 12, select: { role: true, content: true } });
+    // The current source is the ground truth; recent conversation only supplies intent, so it is kept short.
+    // Twelve messages of up to 12k characters cost up to ~36k input tokens per run for no better result.
+    const history = await db.message.findMany({ where: { projectId: project.id, role: { in: ["user", "assistant"] } }, orderBy: [{ createdAt: "desc" }, { id: "desc" }], take: 8, select: { role: true, content: true } });
     const reference = componentReference(opts.request);
     if (reference && agent.mode === "rewrite") userPrompt += `\n\n${reference}`;
     userPrompt += `\n\n${assets.instructions}`;
@@ -266,7 +270,7 @@ async function runAgentLocked(opts: RunOptions, assertActive: () => Promise<void
 
     const input = {
       system,
-      messages: [...history.reverse().map(m => ({ role: m.role as "user" | "assistant", content: m.content.slice(0, 12000) })), { role: "user" as const, content: userPrompt }],
+      messages: [...history.reverse().map(m => ({ role: m.role as "user" | "assistant", content: m.content.length > 2500 ? `${m.content.slice(0, 2500)}\n[… earlier message shortened]` : m.content })), { role: "user" as const, content: userPrompt }],
       images: opts.images,
       maxOutput,
       effort,
