@@ -121,3 +121,21 @@ test("a start command that runs before any build is explained as missing build o
   assert.match(runtimeFailureHint("Error: Cannot find module '/home/user/project/dist/server.js'\n    at Module._resolveFilename")!, /build output that does not exist yet/);
   assert.match(runtimeFailureHint("Error: Cannot find module 'express'")!, /could not compile or load a dependency/);
 });
+
+test("a custom runtime installs its dependencies unless its own commands already do", () => {
+  const withPackage = runtimeProfile([
+    { path: ".idaevia/runtime.json", content: JSON.stringify({ build: "npm run build", start: "npm start", port: 3000 }) },
+    { path: "package.json", content: JSON.stringify({ scripts: { build: "prisma generate && next build", start: "next start" } }) },
+  ], "");
+  assert.ok(withPackage.build.includes("npm install --no-audit --no-fund && (\n  npm run build") || withPackage.build.includes("npm install --no-audit --no-fund && (\nnpm run build"), withPackage.build);
+  assert.ok(withPackage.preview.indexOf("npm install") < withPackage.preview.indexOf("npm run build") && withPackage.preview.indexOf("npm run build") < withPackage.preview.indexOf("npm start"));
+  const selfInstalling = runtimeProfile([
+    { path: ".idaevia/runtime.json", content: JSON.stringify({ build: "npm install && npm run build", start: "npm start" }) },
+    { path: "package.json", content: "{}" },
+  ], "");
+  assert.equal(selfInstalling.preview.split("npm install").length, 2); // once, from the project's own command
+  const pnpm = runtimeProfile([{ path: ".idaevia/runtime.json", content: JSON.stringify({ build: "pnpm build", start: "pnpm start" }) }, { path: "package.json", content: "{}" }, { path: "pnpm-lock.yaml", content: "" }], "");
+  assert.ok(pnpm.build.includes("corepack pnpm install && ("));
+  const bare = runtimeProfile([{ path: ".idaevia/runtime.json", content: JSON.stringify({ build: "make", start: "./server" }) }], "");
+  assert.doesNotMatch(bare.build, /npm|pip|composer/);
+});

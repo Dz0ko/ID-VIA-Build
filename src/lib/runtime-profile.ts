@@ -21,10 +21,19 @@ export function runtimeProfile(files: RuntimeFile[], stack = ""): RuntimeProfile
       for (const key of ["build", "start"]) if (typeof custom[key] !== "string" || !custom[key].trim() || custom[key].length > 6000 || custom[key].includes("\0")) throw Error();
       if (custom.setup !== undefined && (typeof custom.setup !== "string" || custom.setup.length > 6000 || custom.setup.includes("\0"))) throw Error();
       if (custom.port !== undefined && custom.port !== null && (!Number.isInteger(custom.port) || custom.port < 1024 || custom.port > 65535)) throw Error();
-      const setup = custom.setup?.trim() ? `(\n${custom.setup}\n) && ` : "";
+      // Dependencies are installed by the platform, as for every other profile, unless the commands do it themselves:
+      // a generated runtime.json often says "npm run build" and would otherwise fail with "prisma: not found".
+      const installsItself = /\b(?:npm|pnpm|yarn|bun)\s+(?:install|ci|i)\b|\bpip3?\s+install\b|\bcomposer\s+install\b|\bbundle\s+install\b/i.test(`${custom.setup ?? ""}\n${custom.build}\n${custom.start}`);
+      const runner = has("pnpm-lock.yaml") ? "corepack pnpm" : has("yarn.lock") ? "corepack yarn" : has("bun.lock") || has("bun.lockb") ? "bun" : "npm";
+      const install = installsItself ? "" : [
+        has("package.json") ? (runner === "npm" ? "npm install --no-audit --no-fund" : `${runner} install`) : "",
+        has("requirements.txt") ? "python3 -m venv .venv && . .venv/bin/activate && pip install -q -r requirements.txt" : "",
+        has("composer.json") ? "composer install --no-interaction" : "",
+      ].filter(Boolean).map(step => `${step} && `).join("");
+      const setup = install + (custom.setup?.trim() ? `(\n${custom.setup}\n) && ` : "");
       // The start command usually runs build output (node dist/server.js); a preview therefore builds first,
       // exactly like the package.json profile does, so "Open preview" never fails on a missing dist.
-      return result("custom", typeof custom.label === "string" ? custom.label.slice(0, 80) : "Custom runtime", setup + `(\n${custom.build}\n)`, setup + `(\n${custom.build}\n) && (\n${custom.start}\n)`, [], custom.port === null ? null : custom.port ?? 3000);
+      return result("custom", typeof custom.label === "string" ? custom.label.slice(0, 80) : "Custom runtime", setup + `(\n${custom.build}\n)`, setup + `(\n${custom.build}\n) && (\n${custom.start}\n)`, has("package.json") ? (runner === "npm" ? ["node", "npm"] : runner === "bun" ? ["bun"] : ["node", "corepack"]) : [], custom.port === null ? null : custom.port ?? 3000);
     } catch {
       const issue = "Invalid .idaevia/runtime.json: provide build and start commands, optional setup, and port 1024–65535 (or null for terminal apps).";
       return result("invalid", "Runtime configuration", fail(issue), fail(issue), [], null, issue);
