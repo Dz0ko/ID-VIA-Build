@@ -24,3 +24,11 @@ test("existing sessions count, replacements reuse a slot, and expired sessions r
   await db.setting.update({ where: { key: `shell:${projects[0].id}` }, data: { value: JSON.stringify({ expiresAt: Date.now() - 1 }) } });
   const retry = await reserveRuntimeCapacity(user.id, "shell:fourth"); await retry();
 });
+test("admin snapshots share the admin's limit and never consume the project owner's slots", async () => {
+  const admin = await db.user.create({ data: { email: "admin-capacity@fixture.invalid", role: "ADMIN" } });
+  const owner = await db.user.create({ data: { email: "owner-capacity@fixture.invalid" } });
+  for (let i=0;i<3;i++) await db.setting.create({ data: { key: `admin-preview:${admin.id}:project-${i}`, value: JSON.stringify({ expiresAt: Date.now()+60000 }) } });
+  await assert.rejects(reserveRuntimeCapacity(admin.id, `admin-preview:${admin.id}:fourth`), /3 active/);
+  const releaseOwner = await reserveRuntimeCapacity(owner.id, "shell:owner"); await releaseOwner();
+  const replace = await reserveRuntimeCapacity(admin.id, `admin-preview:${admin.id}:project-0`); await replace();
+});
