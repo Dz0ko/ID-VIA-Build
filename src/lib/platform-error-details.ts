@@ -27,7 +27,7 @@ export function diagnosePlatformError(source: string, text: string): ErrorDiagno
 
 export function expectedOperationalError(error: unknown): boolean {
   if (!(error instanceof Error)) return false;
-  return ["InsufficientCredits", "ProjectBusyError", "AuthError", "AbortError", "RuntimeCapacityError"].includes(error.constructor.name) || error.name === "AbortError" || /^(?:Admin access required|Support staff access required|A build is already running|Another connection is starting|You have 3 active|The runtime is no longer available|Stop the running command|The running command did not stop|Archive exceeds|There is no website to build)/i.test(error.message);
+  return ["InsufficientCredits", "ProjectBusyError", "AuthError", "AbortError", "RuntimeCapacityError"].includes(error.constructor.name) || error.name === "AbortError" || /^(?:Admin access required|Support staff access required|A build is already running|Another connection is starting|You have 3 active|The runtime is no longer available|Stop the running command|The running command did not stop|Archive exceeds|There is no website to build|The terminal session expired|No active terminal)/i.test(error.message);
 }
 
 /** No request bodies, prompts, cookies, project source or whole provider response objects are accepted. */
