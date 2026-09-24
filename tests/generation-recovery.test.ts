@@ -122,7 +122,7 @@ test('a new overall look rewrites the whole document instead of exact edits and 
     await runAgent({ userId: owner.id, projectId: project.id, plan: 'MAX', request: 'change the design to more moderen and proffesional', agentId: 'designer', preferProvider: 'openai', onEvent: event => events.push(event.type) });
     assert.match(inputs[0].system, /WHOLE-SITE RESTYLE/); assert.doesNotMatch(inputs[0].system, /OUTPUT FORMAT OVERRIDE/);
     assert.match(inputs[0].messages.at(-1)!.content, /return the full updated HTML/);
-    assert.equal(inputs[0].effort, 'high');
+    assert.equal(inputs[0].effort, 'medium'); // GPT-6 Astra ceiling; Claude runs restyles at high
     const saved = await db.project.findUniqueOrThrow({ where: { id: project.id } });
     assert.match(saved.html, /Restyled wheel/); assert.ok(saved.html.includes('window.spin=()=>42;'));
     const ledger = await db.creditLedger.findFirstOrThrow({ where: { projectId: project.id } });
