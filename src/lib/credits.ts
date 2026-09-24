@@ -22,16 +22,22 @@ export async function estimateCredits(opts: {
   /** Size of the current document/files in tokens (≈ chars / 4). Rewrites re-emit it all. */
   docTokens?: number;
   mode?: "rewrite" | "report";
+  /** Project quality mode: xhigh reasons several times longer before writing. */
+  quality?: "high" | "xhigh";
 }) {
   return (await estimateCreditsDetailed(opts)).credits;
 }
 
-/** How much hidden "thinking"/reasoning output a model typically adds (billed as output tokens). */
-function thinkingTokens(model: string, taskClass: string) {
+/**
+ * How much hidden "thinking"/reasoning output a model typically adds (billed as output tokens).
+ * Measured on a new site with Claude Fable 5.1: ~40k thinking tokens at xhigh, ~12k at high.
+ */
+function thinkingTokens(model: string, taskClass: string, quality: "high" | "xhigh" = "high") {
   const heavy = taskClass === "fullstack" || taskClass === "feature" || taskClass === "page";
-  if (/fable|mythos|astra/.test(model)) return heavy ? 12000 : 5000;
-  if (/opus|sol/.test(model)) return heavy ? 8000 : 3000;
-  if (/sonnet|terra/.test(model)) return heavy ? 3000 : 1000;
+  const deep = quality === "xhigh";
+  if (/fable|mythos|astra/.test(model)) return heavy ? (deep ? 40000 : 12000) : (deep ? 15000 : 5000);
+  if (/opus|sol/.test(model)) return heavy ? (deep ? 25000 : 8000) : (deep ? 9000 : 3000);
+  if (/sonnet|terra/.test(model)) return heavy ? (deep ? 9000 : 3000) : (deep ? 3000 : 1000);
   return 0;
 }
 
@@ -58,7 +64,7 @@ export async function estimateCreditsDetailed(opts: Parameters<typeof estimateCr
   const doc = Math.max(0, opts.docTokens ?? 0);
   const inputTokens = 6000 + doc; // system prompt + design skill + the document itself (system part is cache-priced after the first run)
   const visible = opts.mode === "report" ? 2500 : Math.max(doc, opts.taskClass === "fullstack" || opts.taskClass === "feature" ? 14000 : 10000);
-  const outputTokens = visible + thinkingTokens(opts.model, opts.taskClass);
+  const outputTokens = visible + thinkingTokens(opts.model, opts.taskClass, opts.quality);
   const usd = estimateUsd(opts.model, { inputTokens, outputTokens });
   const credits = Math.max(byClass, Math.ceil(usd * k));
   const buffer = /fable|mythos|astra/.test(opts.model) ? 1.6 : /opus|sol/.test(opts.model) ? 1.4 : 1.2;

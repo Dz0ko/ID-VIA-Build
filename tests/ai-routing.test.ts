@@ -63,6 +63,16 @@ test("the request output limit leaves room for thinking on reasoning models", as
   assert.equal(modelMaxOutput("claude-opus-5"), 128000);
 });
 
+test("quality mode replies and recommendations", async () => {
+  const { parseQualityReply, recommendedQuality, qualityChoices, qualityQuestion } = await import("../src/lib/ai/quality");
+  for (const [text, mode] of [["QUALITY CHOICE: xhigh", "xhigh"], ["best quality", "xhigh"], ["Best", "xhigh"], ["QUALITY CHOICE: high", "high"], ["balanced", "high"], ["switch to balanced quality", "high"], ["HTML + CSS + JavaScript", null], ["make the navbar high", null], ["high contrast buttons", null]] as const) assert.equal(parseQualityReply(text), mode, text);
+  assert.equal(recommendedQuality("feature", "website"), "xhigh"); assert.equal(recommendedQuality("page", "saas"), "xhigh"); assert.equal(recommendedQuality("page", "website"), "high");
+  const choices = qualityChoices({ high: 354, xhigh: 718 }, "high");
+  assert.equal(choices.find(c => c.recommended)!.id, "high");
+  const question = qualityQuestion("HTML + CSS + JavaScript", choices);
+  assert.match(question, /718 credits/); assert.match(question, /354 credits/); assert.match(question, /Balanced \(recommended\)/);
+});
+
 test("navbar requests select the visual design path even without a design adjective", () => {
   for (const request of ['add a navbar', 'improve the navigation', 'create a header', 'build a hero']) {
     assert.equal(requiresFrontierDesign(request, 'builder'), true);

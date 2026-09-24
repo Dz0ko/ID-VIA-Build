@@ -25,6 +25,7 @@ import type { InputImage } from "./provider";
 import { estimateUsd } from "./cost";
 import { isReactSandboxStack, isStaticStack, isStackOnlyReply, resolveRequestedStack, stackQuestion } from "../project-stack";
 import { isProductBrief, requestsProjectReplacement, requestsVisualOverhaul } from "./request-intent";
+import { DEFAULT_QUALITY, parseQualityReply, qualityChoices, qualityQuestion, recommendedQuality, type QualityChoice, type QualityMode } from "./quality";
 import { applyHtmlEdits, HTML_EDITS_SYSTEM } from "./html-edits";
 import { applyFileEdits, editFileContext, FILE_EDITS_SYSTEM, parseReadFiles } from "./file-edits";
 import { imageContext } from "./image-context";
@@ -45,6 +46,8 @@ export interface RunOptions {
   signal?: AbortSignal;
   /** Model time budget for the whole run (default GENERATION_TIMEOUT_MS); tests shorten it. */
   budgetMs?: number;
+  /** Interactive chat asks for the project's quality mode before the first build; automated callers pass false. */
+  askQuality?: boolean;
 }
 
 /**
@@ -80,7 +83,7 @@ export type RunEvent =
   | { type: "reading"; files: string[] }
   | { type: "done"; mode: "rewrite" | "report"; versionNumber?: number; html?: string; files?: { path: string; content: string }[]; report?: string; creditsUsed: number; note?: string }
   | { type: "error"; message: string; code?: "INSUFFICIENT_CREDITS"; needed?: number; have?: number }
-  | { type: "clarification"; request: string; message: string };
+  | { type: "clarification"; request: string; message: string; kind?: "stack" | "quality" | "question"; choices?: QualityChoice[] };
 
 const ORDER: ModelTier[] = ["fast", "standard", "advanced", "premium", "frontier"];
 
@@ -115,6 +118,25 @@ async function runAgentLocked(opts: RunOptions, assertActive: () => Promise<void
   if (!hasContent && pendingBrief && isStackOnlyReply(opts.request)) {
     opts = { ...opts, request: `${pendingBrief}\n\nSTACK CHOICE: ${opts.request.replace(/^STACK CHOICE:\s*/i, "")}` };
   }
+  // Quality mode: chosen once per project (after the technology), remembered, changeable in chat at no cost.
+  const qualityReply = agent.mode === "rewrite" ? parseQualityReply(opts.request) : null;
+  if (qualityReply) {
+    memory = { ...memory, quality: qualityReply, pendingQuality: undefined };
+    if (!hasContent && pendingBrief) {
+      await db.project.update({ where: { id: project.id }, data: { memory: JSON.stringify(memory) } });
+      opts = { ...opts, request: pendingBrief };
+    } else {
+      const message = `Quality mode set to ${qualityReply === "xhigh" ? "Best quality" : "Balanced"} for this project. It applies to the next build, restyle or new section.`;
+      await db.$transaction([
+        db.project.update({ where: { id: project.id }, data: { memory: JSON.stringify(memory) } }),
+        db.message.create({ data: { projectId: project.id, role: "user", content: opts.request, agentId: agent.id } }),
+        db.message.create({ data: { projectId: project.id, role: "assistant", content: message, agentId: agent.id } }),
+      ]);
+      opts.onEvent?.({ type: "clarification", request: "", message, kind: "question" });
+      return { mode: "clarification" as const, message };
+    }
+  }
+  const quality: QualityMode = memory.quality === "xhigh" ? "xhigh" : DEFAULT_QUALITY;
   const assets = imageContext(opts.images);
   const sourceHtml = assets.compact(project.html);
   const sourceFiles = project.files.map(f => ({path:f.path,content:f.content.startsWith(BINARY_PREFIX)?f.content:assets.compact(f.content)}));
@@ -135,7 +157,7 @@ async function runAgentLocked(opts: RunOptions, assertActive: () => Promise<void
       db.message.create({ data: { projectId: project.id, role: "user", content: opts.request, agentId: agent.id } }),
       db.message.create({ data: { projectId: project.id, role: "assistant", content: message, agentId: agent.id } }),
     ]);
-    opts.onEvent?.({ type: "clarification", request: opts.request, message });
+    opts.onEvent?.({ type: "clarification", request: opts.request, message, kind: "stack" });
     return { mode: "clarification" as const, message };
   }
   const preserveStack = hasContent && !requestsProjectReplacement(opts.request);
@@ -151,9 +173,24 @@ async function runAgentLocked(opts: RunOptions, assertActive: () => Promise<void
   const fileContext = targetedFiles ? editFileContext(sourceFiles,opts.request) : null;
   const readableFiles = new Set(fileContext?.selected.map(f=>f.path));
   // Pending prompts are durable until a result is saved successfully.
-  const savedMemory = { ...memory, stack, pendingBuildRequest: undefined, ...(!preserveStack && isProductBrief(opts.request) ? { brief: opts.request } : {}) };
+  const savedMemory = { ...memory, stack, quality, pendingBuildRequest: undefined, pendingQuality: undefined, ...(!preserveStack && isProductBrief(opts.request) ? { brief: opts.request } : {}) };
 
   const taskClass: TaskClass = agent.mode === "report" ? "small" : classifyTask(opts.request, hasContent);
+  if (agent.mode === "rewrite" && !hasContent && memory.quality === undefined && opts.askQuality !== false) {
+    // Ask once, with this project's real numbers, before the first paid build.
+    const buildTier = tierForTask(taskClass, opts.plan, opts.requestedTier);
+    const buildModel = await resolveModel(buildTier, opts.preferProvider ?? preferredProviderForTask(opts.request, agent.id, isApp), Boolean(opts.preferProvider));
+    const estimate = async (mode: QualityMode) => (await estimateCreditsDetailed({ taskClass, agentMultiplier: agent.multiplier * (isApp ? 1.5 : 1), tier: buildTier, model: buildModel.config.model, docTokens: 0, mode: "rewrite", quality: mode })).credits;
+    const choices = qualityChoices({ high: await estimate("high"), xhigh: await estimate("xhigh") }, recommendedQuality(taskClass, project.kind));
+    const message = qualityQuestion(stack, choices);
+    await db.$transaction([
+      db.project.update({ where: { id: project.id }, data: { memory: JSON.stringify({ ...memory, stack, pendingBuildRequest: opts.request, pendingQuality: choices }) } }),
+      ...(pendingBrief === opts.request ? [] : [db.message.create({ data: { projectId: project.id, role: "user", content: opts.request, agentId: agent.id } })]),
+      db.message.create({ data: { projectId: project.id, role: "assistant", content: message, agentId: agent.id } }),
+    ]);
+    opts.onEvent?.({ type: "clarification", request: "", message, kind: "quality", choices });
+    return { mode: "clarification" as const, message };
+  }
   const debuggingTask = agent.mode === "rewrite" && agent.id === "debugger";
   // Whole pages, sections and restyles get the frontier model; a small visual edit of an existing site gets the
   // advanced tier at high effort, which does a navbar or button change just as well at a fraction of the tokens.
@@ -181,7 +218,7 @@ async function runAgentLocked(opts: RunOptions, assertActive: () => Promise<void
     opts.onEvent?.({ type: "clarification", request: "", message });
     return { mode: "clarification" as const, message };
   }
-  const est = await estimateCreditsDetailed({ taskClass, agentMultiplier: agent.multiplier * visionBump * (isApp ? 1.5 : 1), tier, model: resolved.config.model, docTokens, mode: agent.mode });
+  const est = await estimateCreditsDetailed({ taskClass, agentMultiplier: agent.multiplier * visionBump * (isApp ? 1.5 : 1), tier, model: resolved.config.model, docTokens, mode: agent.mode, quality });
   const credits = est.credits;
   // Why this run costs what it costs: shown to the user in their credit log.
   const docKb = Math.round((docTokens * 4) / 1024);
@@ -203,9 +240,11 @@ async function runAgentLocked(opts: RunOptions, assertActive: () => Promise<void
   // A whole-document restyle streams the entire site back; thinking time comes out of the same budget.
   // Quality first within the server limit: Claude restyles at high effort (measured 238 s end to end on an 11k-token
   // site, so the largest sites drop to medium, ~195 s); GPT-6 Astra reasons ~100 s before its first token at high.
-  // Quality per token: high effort. Measured on a new site, xhigh spent 54k output tokens (about 40k of them thinking)
-  // for a result that high delivers with ~25k; the 780 s budget still leaves room for the whole document.
-  const capEffort = overhaul || heavy || visualDesignTask || debuggingTask || taskClass === "section" || targetedEdit ? "high" : "medium";
+  // The project's quality mode decides how deeply whole builds, sections and restyles reason (measured on a new
+  // site: xhigh ≈ 54k output tokens, high ≈ 25k); small edits run at high either way. GPT-6 Astra's deepest
+  // measured level inside the budget is high.
+  const deep = quality === "xhigh" && resolved.provider.id !== "openai" ? "xhigh" : "high";
+  const capEffort = overhaul || heavy || visualDesignTask || debuggingTask || taskClass === "section" ? deep : targetedEdit ? "high" : "medium";
   const effort = resolved.config.effort && EFFORT_RANK[resolved.config.effort] > EFFORT_RANK[capEffort] ? capEffort : resolved.config.effort;
 
   let run: { id: string } | undefined;

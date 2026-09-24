@@ -303,8 +303,8 @@ test("concurrent AI runs keep prompts, output, versions and credits isolated and
     return { text: `<!DOCTYPE html><html><body><nav>${name}</nav></body></html>`, provider: 'openai', model, inputTokens: 100, outputTokens: 100, stopReason: 'stop' };
   };
   const runs = [
-    runAgent({ userId: a.id, projectId: pa.id, plan: 'MAX', request: 'Build a HTML navbar ALPHA_ONLY [COMPONENT:glass-switch]', preferProvider: 'openai' }),
-    runAgent({ userId: b.id, projectId: pb.id, plan: 'MAX', request: 'Build a HTML navbar BETA_ONLY', preferProvider: 'openai' }),
+    runAgent({ userId: a.id, projectId: pa.id, plan: 'MAX', request: 'Build a HTML navbar ALPHA_ONLY [COMPONENT:glass-switch]', preferProvider: 'openai', askQuality: false }),
+    runAgent({ userId: b.id, projectId: pb.id, plan: 'MAX', request: 'Build a HTML navbar BETA_ONLY', preferProvider: 'openai', askQuality: false }),
   ];
   try {
     await Promise.race([started, Promise.all(runs).then(() => { throw new Error('Runs unexpectedly completed before gate'); })]);
@@ -328,14 +328,14 @@ test("concurrent AI runs keep prompts, output, versions and credits isolated and
 test("generation setup failure refunds the hold and frees its project lease", async () => {
   const { PROVIDERS } = await import('../src/lib/ai/provider');
   const { runAgent } = await import('../src/lib/ai/generate');
-  const { acquireProjectLease, LEASE_MS } = await import('../src/lib/project-lock');
+  const { acquireProjectLease } = await import('../src/lib/project-lock');
   const owner = await user({ plan: 'MAX', credits: 100000 });
   const project = await db.project.create({ data: { userId: owner.id, name: 'Failure fixture', slug: uid() } });
   const available = PROVIDERS.openai.available; const create = db.agentRun.create;
   PROVIDERS.openai.available = () => true;
   db.agentRun.create = (async () => { throw new Error('simulated run persistence failure'); }) as unknown as typeof db.agentRun.create;
   try {
-    await assert.rejects(runAgent({ userId: owner.id, projectId: project.id, plan: 'MAX', request: 'Build a HTML website', preferProvider: 'openai' }), /simulated/);
+    await assert.rejects(runAgent({ userId: owner.id, projectId: project.id, plan: 'MAX', request: 'Build a HTML website', preferProvider: 'openai', askQuality: false }), /simulated/);
     assert.equal((await db.user.findUniqueOrThrow({ where: { id: owner.id } })).credits, 100000);
     const ledger = await db.creditLedger.findFirstOrThrow({ where: { userId: owner.id } });
     assert.equal(ledger.delta, 0); assert.equal(JSON.parse(ledger.meta!).settlement, 'refunded');
@@ -395,7 +395,8 @@ test('project questions persist answers and history without creating versions or
     assert.equal((await run('Explain step 2')).mode, 'report');
     let saved = await db.project.findUniqueOrThrow({ where: { id: project.id }, include: { versions: true } });
     assert.equal(saved.html, ''); assert.equal(saved.versions.length, 0); assert.equal(saved.memory, '{}');
-    assert.equal((await run('Build a HTML website')).mode, 'rewrite');
+    assert.equal((await run('Build a HTML website')).mode, 'clarification'); // quality mode is asked once before the first build
+    assert.equal((await run('QUALITY CHOICE: high')).mode, 'rewrite');
     assert.equal((await run('Navigation details')).mode, 'report');
     saved = await db.project.findUniqueOrThrow({ where: { id: project.id }, include: { versions: true } });
     assert.equal(saved.versions.length, 1); assert.match(saved.html, /Built website/);

@@ -29,11 +29,24 @@ test("the product brief survives clarification, reload and a bare technology rep
     assert.equal(JSON.parse(pending.memory!).pendingBuildRequest, brief);
     assert.ok(pending.messages.some(m => m.content === brief));
     // A new call has no browser state, exactly like a refresh or another device.
-    await runAgent({ ...options, request: "HTML + CSS + JavaScript" });
+    // After the technology the project asks once for its quality mode, with real credit numbers.
+    const quality = await runAgent({ ...options, request: "HTML + CSS + JavaScript", onEvent: e => { if (e.type === "clarification") { assert.equal(e.kind, "quality"); assert.equal(e.choices!.length, 2); assert.ok(e.choices!.find(c => c.id === "xhigh")!.credits > e.choices!.find(c => c.id === "high")!.credits); assert.ok(e.choices!.some(c => c.recommended)); } } });
+    assert.equal(quality.mode, "clarification"); assert.equal(inputs.length, 0);
+    const asked = JSON.parse((await db.project.findUniqueOrThrow({ where: { id: project.id } })).memory!);
+    assert.ok(asked.pendingBuildRequest.includes("STACK CHOICE: HTML + CSS + JavaScript")); assert.equal(asked.pendingQuality.length, 2);
+    assert.equal(await db.creditLedger.count({ where: { userId: owner.id } }), 0);
+    await runAgent({ ...options, request: "QUALITY CHOICE: xhigh" });
     assert.ok(inputs[0].messages.at(-1)!.content.includes(brief));
     assert.ok(inputs[0].messages.at(-1)!.content.includes("STACK CHOICE: HTML + CSS + JavaScript"));
+    assert.equal(inputs[0].effort, "high"); // GPT-6 Astra stays at high even in best-quality mode
     const saved = await db.project.findUniqueOrThrow({ where: { id: project.id } });
     assert.equal(JSON.parse(saved.memory!).pendingBuildRequest, undefined);
+    assert.equal(JSON.parse(saved.memory!).pendingQuality, undefined);
+    assert.equal(JSON.parse(saved.memory!).quality, "xhigh");
+    // Changing the mode later is free and needs no build.
+    assert.equal((await runAgent({ ...options, request: "balanced quality" })).mode, "clarification");
+    assert.equal(JSON.parse((await db.project.findUniqueOrThrow({ where: { id: project.id } })).memory!).quality, "high");
+    assert.equal(inputs.length, 1);
   });
 });
 test("a stack alone cannot spend credits inventing an unrelated product", async () => {

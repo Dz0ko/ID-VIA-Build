@@ -20,6 +20,7 @@ import { runtimeCommand } from "@/lib/runtime-command";
 import { RuntimeDetails } from "./RuntimeDetails";
 import { ComposerSelect } from "./ComposerSelect";
 import { StackSuggestions } from "./StackSuggestions";
+import { QualitySuggestions } from "./QualitySuggestions";
 import { WorkspaceMenuButton } from "./Shell";
 import type { AgentDef } from "@/lib/agents";
 import type { PlanId, ModelTier } from "@/lib/plans";
@@ -41,6 +42,7 @@ type Comment = { id: string; authorName: string; body: string; kind: string; res
 type CustomAgent = { id: string; name: string; description: string; tier: string; mode: string };
 type RefImage = { name: string; mediaType: "image/png" | "image/jpeg" | "image/webp" | "image/gif"; data: string };
 type AgentActivity = { id: string; label: string; detail: string; status: "running" | "done" };
+type QualityChoice = { id: "high" | "xhigh"; label: string; credits: number; minutes: string; detail: string; recommended: boolean };
 type DiffLine = { kind: "context" | "add" | "remove"; text: string };
 type DiffFile = { path: string; lines: DiffLine[]; added: number; removed: number };
 
@@ -147,7 +149,11 @@ export function Workspace(p: WorkspaceProps) {
   const [elapsed, setElapsed] = useState(0);
   const [diffs, setDiffs] = useState<DiffFile[]>([]);
   const [pendingStackRequest, setPendingStackRequest] = useState<string | null>(() => {
-    try { const pending = JSON.parse(p.project.memory || "{}").pendingBuildRequest; return typeof pending === "string" ? pending : null; } catch { return null; }
+    try { const memory = JSON.parse(p.project.memory || "{}"); return typeof memory.pendingBuildRequest === "string" && !memory.pendingQuality ? memory.pendingBuildRequest : null; } catch { return null; }
+  });
+  // The quality-mode question (asked once per project after the technology) survives a reload via project memory.
+  const [qualityChoices, setQualityChoices] = useState<QualityChoice[] | null>(() => {
+    try { const pending = JSON.parse(p.project.memory || "{}").pendingQuality; return Array.isArray(pending) ? pending : null; } catch { return null; }
   });
   const [logs, setLogs] = useState<LogLine[]>([{ t: now(), text: "Workspace ready.", kind: "info" }]);
   const [runtimePreview, setRuntimePreview] = useState<{ url: string; source: string; kind?: "build" | "shell" } | null>(null);
@@ -260,7 +266,18 @@ export function Workspace(p: WorkspaceProps) {
           if (!line) continue;
           const ev = JSON.parse(line.slice(6));
           if (ev.type === "picked") { const a = allAgents.find((x) => x.id === ev.agent); log(`Router → handing this to ${a?.name ?? ev.agent}${a?.profession ? ` (${a.profession})` : ""}`); setBusy(ev.agent); busyRef.current = ev.agent; setActivity((items) => [...items.map((item) => ({ ...item, status: "done" as const })), { id: `activity-${Date.now()}`, label: "Route request", detail: `Handing this to ${a?.name ?? ev.agent}`, status: "running" }]); }
-          else if (ev.type === "clarification") { clarified = true; setPendingStackRequest(ev.request || null); const stackQuestion = Boolean(ev.request); setMessages((m) => [...m, { id: `q-${Date.now()}`, role: "assistant", content: ev.message, agentId: busyRef.current ?? agentToRun, creditsUsed: 0, model: null, createdAt: new Date().toISOString() }]); setActivity((items) => [...items.map((item) => ({ ...item, status: "done" as const })), { id: `activity-${Date.now()}`, label: stackQuestion ? "Choose project stack" : "Question for you", detail: stackQuestion ? "Waiting for your language or framework choice" : "Waiting for your answer; no credits were charged", status: "done" }]); log(stackQuestion ? "Waiting for project language/framework choice" : "Waiting for your answer (no credits charged)"); }
+          else if (ev.type === "clarification") {
+            clarified = true;
+            const qualityQuestion = ev.kind === "quality" && Array.isArray(ev.choices);
+            const stackQuestion = !qualityQuestion && Boolean(ev.request);
+            setPendingStackRequest(stackQuestion ? ev.request : null);
+            setQualityChoices(qualityQuestion ? ev.choices : null);
+            setMessages((m) => [...m, { id: `q-${Date.now()}`, role: "assistant", content: ev.message, agentId: busyRef.current ?? agentToRun, creditsUsed: 0, model: null, createdAt: new Date().toISOString() }]);
+            const label = qualityQuestion ? "Choose quality mode" : stackQuestion ? "Choose project stack" : "Question for you";
+            const detail = qualityQuestion ? "Waiting for your quality choice; no credits were charged" : stackQuestion ? "Waiting for your language or framework choice" : "Waiting for your answer; no credits were charged";
+            setActivity((items) => [...items.map((item) => ({ ...item, status: "done" as const })), { id: `activity-${Date.now()}`, label, detail, status: "done" }]);
+            log(detail);
+          }
           else if (ev.type === "agent") { setMessages((m) => [...m, { id: `i-${Date.now()}`, role: "assistant", content: ev.text, agentId: ev.agent, creditsUsed: 0, model: null, createdAt: new Date().toISOString() }]); log(`${ev.name} (${ev.profession}) started`); setActivity((items) => [...items.map((item) => ({ ...item, status: "done" as const })), { id: `activity-${Date.now()}`, label: ev.name, detail: `${ev.profession} started`, status: "running" }]); }
           else if (ev.type === "meta") {
             setResponseMode(ev.mode ?? "rewrite");
@@ -343,6 +360,7 @@ export function Workspace(p: WorkspaceProps) {
     if (composed.length > 8000) { setError("The message is too long with these components. Shorten your instructions and try again."); setInput(request); return; }
     const effectiveRequest = pendingStackRequest ? `${pendingStackRequest}\n\nSTACK CHOICE: ${composed}` : composed;
     if (pendingStackRequest) setPendingStackRequest(null);
+    setQualityChoices(null);
     const imgs = importImages ?? images; setImages([]);
     for (const [i, id] of [agentToRun, ...chain].entries()) {
       const ok = await runOne(effectiveRequest, id, i === 0 ? imgs : []);
@@ -672,6 +690,7 @@ export function Workspace(p: WorkspaceProps) {
                     </div>
                   ))}
                   {pendingStackRequest && <StackSuggestions request={pendingStackRequest} kind={p.project.kind} disabled={!!busy} onChoose={choice => { void run(choice); }} onCustom={() => promptInput.current?.focus()} />}
+                  {qualityChoices && !busy && <QualitySuggestions choices={qualityChoices} disabled={!!busy} onChoose={id => { void run(`QUALITY CHOICE: ${id}`); }} />}
                   {busy && activity.length > 0 && <div className="rounded-2xl border border-graphite p-4 text-fog">
                     <div role="status" className="mb-3 flex items-center gap-2 text-sm text-signal-soft"><span className={`w-2 h-2 rounded-full ${busy ? "bg-signal pulse-dot" : "bg-signal-soft"}`} />{busy ? `${allAgents.find((x) => x.id === busy)?.name ?? busy} is working` : "Agent activity"}{busy && <span className="ml-auto font-mono text-xs text-ash" aria-label="Elapsed time">{`${Math.floor(elapsed / 60)}:${String(elapsed % 60).padStart(2, "0")}`}</span>}</div>
                     <div className="divide-y divide-graphite/60">
