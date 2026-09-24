@@ -258,6 +258,9 @@ export function Workspace(p: WorkspaceProps) {
             usedCredits = ev.credits; setCredits((c) => c - ev.credits);
             log(`Routed → ${ev.tier} tier · ${ev.provider}/${ev.model} · task=${ev.taskClass} · ${ev.credits} credits${ev.fallback ? " · template engine" : ""}`);
             setActivity((items) => [...items.map((item) => ({ ...item, status: "done" as const })), { id: `activity-${Date.now()}`, label: "Plan work", detail: `${ev.tier} model · ${ev.taskClass} task`, status: "running" }]);
+          } else if (ev.type === "retry") {
+            acc = ""; setStream(""); log(ev.message);
+            setActivity((items) => [...items.map((item) => ({ ...item, status: "done" as const })), { id: `activity-${Date.now()}`, label: "Automatic retry", detail: ev.message, status: "running" }]);
           } else if (ev.type === "delta") {
             acc += ev.text;
             setStream(acc);

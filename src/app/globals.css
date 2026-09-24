@@ -836,15 +836,18 @@ html.landing-html body { overflow-x: clip; }
 }
 
 /* The support launcher stays small until a customer opens a conversation. */
-.support-widget { position: fixed; bottom: 24px; right: 24px; z-index: 45; color: var(--paper); }
+.support-widget { position: fixed; bottom: 24px; right: 0; width: 12px; height: 56px; z-index: 45; color: var(--paper); }
 .support-widget[hidden], .support-widget-panel[hidden] { display: none; }
 .support-widget[data-project="true"] { bottom: 88px; }
-.support-launcher { position: relative; width: 56px; height: 56px; display: grid; place-items: center; margin-left: auto; border-radius: 20px; border: 1px solid #b3a4ff70; background: linear-gradient(145deg, #8b76ef, #5840b9); color: #fff; box-shadow: inset 0 1px 0 #ffffff55, 0 6px 16px #0008, 0 0 28px #8260ff20; cursor: pointer; transition: transform .18s, box-shadow .18s; }
-.support-launcher:hover { transform: translateY(-2px); box-shadow: inset 0 1px 0 #ffffff55, 0 8px 24px #0009, 0 0 32px #8260ff40; }
+.support-launcher-dock { position: absolute; inset: 0; }
+.support-launcher { position: absolute; right: -44px; width: 56px; height: 56px; display: grid; place-items: center; border-radius: 20px; border: 1px solid #b3a4ff70; background: linear-gradient(145deg, #8b76ef, #5840b9); color: #fff; box-shadow: inset 0 1px 0 #ffffff55, 0 6px 16px #0008, 0 0 28px #8260ff20; cursor: pointer; transition: right .2s ease, box-shadow .18s; }
+.support-launcher-dock:hover, .support-launcher-dock:focus-within, .support-widget[data-open="true"] .support-launcher-dock { width: 72px; left: auto; }
+.support-launcher-dock:hover .support-launcher, .support-launcher-dock:focus-within .support-launcher, .support-widget[data-open="true"] .support-launcher { right: 12px; }
+.support-launcher:hover { box-shadow: inset 0 1px 0 #ffffff55, 0 8px 24px #0009, 0 0 32px #8260ff40; }
 .support-launcher-dot { position: absolute; top: -2px; right: -2px; width: 11px; height: 11px; background: #ddd6ff; border: 3px solid #0b0b0d; border-radius: 50%; }
 .support-launcher-label { position: absolute; right: 68px; white-space: nowrap; font-size: 12px; padding: 8px 12px; background: #1c1a22; border: 1px solid #35303f; border-radius: 9px; opacity: 0; pointer-events: none; transition: opacity .15s; }
 .support-launcher:hover .support-launcher-label, .support-launcher:focus-visible .support-launcher-label { opacity: 1; }
-.support-widget-panel { width: min(410px, calc(100vw - 48px)); height: min(620px, calc(100dvh - 116px)); display: flex; flex-direction: column; margin-bottom: 14px; border: 1px solid #39343f; border-radius: 20px; overflow: hidden; background: #111113; box-shadow: 0 24px 100px #000b, 0 0 0 1px #000; }
+.support-widget-panel { position: absolute; right: 12px; bottom: 70px; width: min(410px, calc(100vw - 24px)); height: min(620px, calc(100dvh - 116px)); display: flex; flex-direction: column; border: 1px solid #39343f; border-radius: 20px; overflow: hidden; background: #111113; box-shadow: 0 24px 100px #000b, 0 0 0 1px #000; }
 .support-widget[data-project="true"] .support-widget-panel { height: min(620px, calc(100dvh - 180px)); }
 .support-widget-toolbar { display: flex; align-items: center; justify-content: space-between; padding: 10px 14px; background: linear-gradient(110deg, #262030, #151318); border-bottom: 1px solid #302a38; }
 .support-widget-brand { display: flex; align-items: center; gap: 9px; font-size: 23px; font-weight: 600; }
@@ -868,7 +871,11 @@ html.landing-html body { overflow-x: clip; }
 .admin-theme table th { color: #aaa7b4; }
 .admin-theme .bg-graphite { background: #25252c; }
 .admin-theme .bg-void\/40 { background: #0c0c0f; }
-@media (prefers-reduced-motion: reduce) { .support-launcher:hover { transform: none; } }
+@media (prefers-reduced-motion: reduce) { .support-launcher { transition: none; } }
+@media (hover: none), (pointer: coarse) {
+  .support-widget, .support-launcher-dock { width: 44px; }
+  .support-widget .support-launcher-dock .support-launcher { right: 0; width: 44px; border-radius: 16px 0 0 16px; }
+}
 
 .announcement-banner { display: flex; flex-shrink: 0; align-items: center; gap: 12px; padding: 9px 24px; border-bottom: 1px solid #514066; background: linear-gradient(100deg, #2b1f3b, #19141f); color: #e4daf5; font-size: 12px; }
 .announcement-badge { padding: 2px 7px; border-radius: 5px; background: #9073c72e; color: #c8adeb; font-size: 10px; text-transform: uppercase; letter-spacing: .08em; }

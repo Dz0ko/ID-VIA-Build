@@ -24,7 +24,8 @@ import { classifyTask, friendlyAiError, generateWithFallback, preferredProviderF
 import type { InputImage } from "./provider";
 import { estimateUsd } from "./cost";
 import { isReactSandboxStack, isStaticStack, isStackOnlyReply, resolveRequestedStack, stackQuestion } from "../project-stack";
-import { isProductBrief } from "./request-intent";
+import { isComponentImplementation, isProductBrief } from "./request-intent";
+import { applyHtmlEdits, HTML_EDITS_SYSTEM } from "./html-edits";
 
 export interface RunOptions {
   userId: string;
@@ -45,6 +46,7 @@ export type RunEvent =
   | { type: "picked"; agent: string }
   | { type: "agent"; agent: string; name: string; profession: string; text: string }
   | { type: "delta"; text: string }
+  | { type: "retry"; message: string }
   | { type: "done"; mode: "rewrite" | "report"; versionNumber?: number; html?: string; files?: { path: string; content: string }[]; report?: string; creditsUsed: number; note?: string }
   | { type: "error"; message: string; code?: "INSUFFICIENT_CREDITS"; needed?: number; have?: number }
   | { type: "clarification"; request: string; message: string };
@@ -105,6 +107,7 @@ async function runAgentLocked(opts: RunOptions, assertActive: () => Promise<void
   // Persist the mode only with a successful generation, never before a paid run.
   if (!isApp && !isStaticStack(stack)) isApp = true;
   const reactStack = isReactSandboxStack(stack);
+  const targetedHtml = agent.mode === "rewrite" && !isApp && hasContent && isComponentImplementation(opts.request);
   // Pending prompts are durable until a result is saved successfully.
   const savedMemory = { ...memory, stack, pendingBuildRequest: undefined, ...(isProductBrief(opts.request) ? { brief: opts.request } : {}) };
 
@@ -129,7 +132,7 @@ async function runAgentLocked(opts: RunOptions, assertActive: () => Promise<void
   const CLASS_LABEL: Record<TaskClass, string> = { tiny: "small tweak", small: "small edit", section: "new section", page: "full page", feature: "feature build", fullstack: "full-stack feature" };
   const reasons: string[] = [`${agent.name} · ${agent.mode === "report" ? "report" : CLASS_LABEL[taskClass]}`, TIER_LABELS[tier]];
   if (tier === "frontier" || tier === "premium") reasons.push("deep reasoning model");
-  if (agent.mode !== "report" && docKb > 0) reasons.push(`${docKb} KB document rewritten`);
+  if (agent.mode !== "report" && docKb > 0) reasons.push(`${docKb} KB document ${targetedHtml ? "edited" : "rewritten"}`);
   if (isApp) reasons.push("multi-file application");
   if (opts.images?.length) reasons.push(`${opts.images.length} reference image${opts.images.length > 1 ? "s" : ""}`);
   if (agent.multiplier > 1) reasons.push(`specialist agent ×${agent.multiplier}`);
@@ -139,7 +142,7 @@ async function runAgentLocked(opts: RunOptions, assertActive: () => Promise<void
   const { purchasedSpent, ledgerId } = await reserveCredits(opts.userId, est.hold, `agent:${agent.id}`, project.id, `${noteBase} · running…`);
   // Cost controls: cap the output to what the task can need, and only spend deep thinking on big tasks.
   const heavy = taskClass === "fullstack" || taskClass === "feature" || taskClass === "page";
-  const maxOutput = agent.mode === "report" ? Math.min(resolved.config.maxOutput, 8000) : Math.min(resolved.config.maxOutput, Math.max(isApp ? 32000 : 12000, Math.ceil(docTokens * 1.6) + 6000));
+  const maxOutput = agent.mode === "report" ? Math.min(resolved.config.maxOutput, 8000) : Math.min(resolved.config.maxOutput, Math.max(32000, Math.ceil(docTokens * 1.6) + 12000));
   const EFFORT_RANK = { low: 0, medium: 1, high: 2, xhigh: 3, max: 4 } as const;
   const capEffort = heavy || visualDesignTask || debuggingTask ? "xhigh" : taskClass === "section" ? "high" : "medium";
   const effort = resolved.config.effort && EFFORT_RANK[resolved.config.effort] > EFFORT_RANK[capEffort] ? capEffort : resolved.config.effort;
@@ -181,6 +184,10 @@ async function runAgentLocked(opts: RunOptions, assertActive: () => Promise<void
     if (agent.mode === "rewrite" && isProductBrief(opts.request)) system += "\nPRODUCT BRIEF PRIORITY: The latest request defines the intended product. Implement its domain, audience, sections, palette and interactions. Replace unrelated branding, sample products and workflows from the old project, even when older memory or conversation says otherwise. Do not reduce this whole-product request to a copy edit. Preserve only existing features that remain relevant. Do not invent a different SaaS or brand direction.";
     if (isApp && agent.mode === "rewrite") system += "\n\nPREVIEW RUNTIME: Projects run in isolated Linux VMs with 4 GiB RAM, Node 24, Python 3.11, Java 17, Maven/Gradle, Go, Rust, PHP 8.2/Composer, Ruby 3.1, and .NET 8/10. Choose compatible dependency versions. Use 0.0.0.0 and port 3000 for web servers. The runtime supplies IDAEVIA_PREVIEW_HOST and IDAEVIA_PREVIEW_URL; framework allowed-hosts and trusted-origin settings (especially Django, Rails and Angular) must include that exact host/URL when present, alongside production settings. Never disable host validation globally. For custom entry points or monorepos include .idaevia/runtime.json with string build and start commands, an optional setup command for missing toolchains, and port (3000 for HTTP or null for terminal/native apps). Build must compile/check the actual source and exit nonzero on failure. Start must keep every required service alive, bind 0.0.0.0 and proxy backend routes through the frontend port for mixed stacks. Do not leave required servers as a comment or instructions only. For languages outside the preinstalled toolchain, provide a reproducible noninteractive Linux setup command with a pinned version. For native platform-only SDKs, explain the required external build environment. Include deployment config matching the framework (never assume Vite/dist for Next.js or a backend); for server/container hosting include a production Dockerfile and setup instructions. Never run destructive database resets or migrate a production database automatically. Native Apple/Android interfaces need their platform SDKs; do not promise a browser preview of a native app.";
     system += `\n\n${ANSWER_FALLBACK}`;
+    if (targetedHtml) {
+      system += `\n\n${HTML_EDITS_SYSTEM}`;
+      userPrompt = userPrompt.replace("edit the current document accordingly and return the full updated HTML", "implement the component using the HTML_EDITS format");
+    }
     const history = await db.message.findMany({ where: { projectId: project.id, role: { in: ["user", "assistant"] } }, orderBy: [{ createdAt: "desc" }, { id: "desc" }], take: 12, select: { role: true, content: true } });
     const reference = componentReference(opts.request);
     if (reference && agent.mode === "rewrite") userPrompt += `\n\n${reference}`;
@@ -195,35 +202,57 @@ async function runAgentLocked(opts: RunOptions, assertActive: () => Promise<void
     if (intro) await db.message.create({ data: { projectId: project.id, role: "assistant", content: intro, agentId: agent.id } });
     if (intro) opts.onEvent?.({ type: "agent", agent: agent.id, name: agent.name, profession: persona.profession, text: intro });
 
-    const result = await generateWithFallback(resolved, {
+    const input = {
       system,
-      messages: [...history.reverse().map(m => ({ role: m.role as "user" | "assistant", content: m.content.slice(0, 12000) })), { role: "user", content: userPrompt }],
+      messages: [...history.reverse().map(m => ({ role: m.role as "user" | "assistant", content: m.content.slice(0, 12000) })), { role: "user" as const, content: userPrompt }],
       images: opts.images,
       maxOutput,
       effort,
-      onText: (t) => opts.onEvent?.({ type: "delta", text: t }),
+      onText: (t: string) => opts.onEvent?.({ type: "delta", text: t }),
       signal: opts.signal,
-    });
+    };
+    let costUsd = 0, inputTokens = 0, outputTokens = 0, attempts = 0;
+    const attempt = async (retry: boolean) => {
+      opts.signal?.throwIfAborted();
+      await assertActive();
+      const response = await generateWithFallback(resolved, retry ? { ...input,
+        maxOutput: Math.min(resolved.config.maxOutput, Math.max(maxOutput * 2, maxOutput + 8000)),
+        system: `${system}\nThe previous attempt exhausted its output budget and was discarded. Produce a complete, concise result from the original source. Preserve required functionality; omit no required code. ${targetedHtml ? "Return only targeted HTML_EDITS and a short note." : isApp ? "Use <<<KEEP /path>>> for every unchanged existing file." : "Avoid verbose comments and unnecessary repetition."}`,
+      } : input);
+      attempts++;
+      costUsd += response.provider === "mock" ? 0 : estimateUsd(response.model, response);
+      inputTokens += response.inputTokens;
+      outputTokens += response.outputTokens;
+      await db.agentRun.update({ where: { id: run!.id }, data: { costUsd, model: response.model, inputTokens, outputTokens } });
+      return response;
+    };
+    let result = await attempt(false);
+    // Never save or continue a partial document. One fresh attempt shares the same
+    // lease, timeout and credit reservation; failed-attempt costs stay with us.
+    if (["max_tokens", "length"].includes(result.stopReason ?? "")) {
+      opts.onEvent?.({ type: "retry", message: "The response reached its limit. Retrying automatically; the incomplete attempt will not be charged." });
+      result = await attempt(true);
+    }
     opts.signal?.throwIfAborted();
     await assertActive();
-    const costUsd = resolved.provider.id === "mock" && !result.fellBack ? 0 : estimateUsd(result.model, result);
-    await db.agentRun.update({ where: { id: run.id }, data: { costUsd, model: result.model, inputTokens: result.inputTokens, outputTokens: result.outputTokens } });
-    if (["max_tokens", "length"].includes(result.stopReason ?? "")) throw new Error("Model output was truncated before completion.");
+    if (["max_tokens", "length"].includes(result.stopReason ?? "")) throw new Error(`Model output was truncated before completion after ${attempts} attempts. Configured output ceiling: ${resolved.config.maxOutput} tokens.`);
     const answer = extractAnswer(result.text);
     const responseText = answer ?? result.text;
     if (!responseText.trim()) throw new Error("Model returned an empty response.");
     const generatedFiles = agent.mode === "rewrite" && answer === null && isApp ? parseFileManifest(result.text, project.files) : null;
-    const generatedHtml = agent.mode === "rewrite" && answer === null && !isApp ? protectProjectNavigation(extractHtml(result.text)) : null;
+    if (targetedHtml && answer !== null) throw new Error("Model did not return the requested component edits.");
+    const generatedHtml = agent.mode === "rewrite" && answer === null && !isApp ? protectProjectNavigation(targetedHtml ? applyHtmlEdits(result.text, project.html) : extractHtml(result.text)) : null;
     if (generatedFiles && !generatedFiles.length) throw new Error("Model did not return any project files.");
     if (generatedFiles && reactStack && !generatedFiles.some(f => f.path === "/App.tsx" || f.path === "/package.json")) throw new Error("Model did not return /App.tsx.");
     if (generatedHtml !== null && !/<html[\s>]/i.test(generatedHtml)) throw new Error("Model did not return an HTML document.");
     // Final charge = max(class price, real cost × creditsPerUsd); the rest of the hold is released.
     const outK = Math.round(result.outputTokens / 1000);
-    const creditsCharged = await finalizeCredits({ userId: opts.userId, ledgerId, hold: est.hold, byClassCredits: est.byClass, costUsd, k: est.k, purchasedHeld: purchasedSpent, note: `${noteBase} · ${outK}k tokens generated${result.fellBack ? " · provider fallback" : ""}`, meta: { ...meta, model: result.model, inputTokens: result.inputTokens, outputTokens: result.outputTokens, costUsd: Number(costUsd.toFixed(4)) } });
+    const billableCostUsd = result.provider === "mock" ? 0 : estimateUsd(result.model, result);
+    const creditsCharged = await finalizeCredits({ userId: opts.userId, ledgerId, hold: est.hold, byClassCredits: est.byClass, costUsd: billableCostUsd, k: est.k, purchasedHeld: purchasedSpent, note: `${noteBase} · ${outK}k tokens generated${result.fellBack ? " · provider fallback" : ""}${attempts > 1 ? " · automatic recovery (failed attempt not charged)" : ""}`, meta: { ...meta, model: result.model, inputTokens, outputTokens, attempts, costUsd: Number(billableCostUsd.toFixed(4)), totalProviderCostUsd: Number(costUsd.toFixed(4)) } });
     const usage = {
       model: result.model, // the model that actually answered (may differ after a provider fallback)
-      inputTokens: result.inputTokens,
-      outputTokens: result.outputTokens,
+      inputTokens,
+      outputTokens,
       costUsd,
       creditsUsed: creditsCharged,
     };

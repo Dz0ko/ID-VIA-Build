@@ -45,3 +45,11 @@ test("navbar requests select the visual design path even without a design adject
     assert.equal(preferredProviderForTask(request, 'builder', true), 'anthropic');
   }
 });
+
+test('all library attachment prompts route to Builder despite incidental specialist keywords', async () => {
+  const { SELECTABLE_COMPONENTS, componentImplementationPrompt } = await import('../src/lib/component-selection');
+  for (const component of SELECTABLE_COMPONENTS) {
+    assert.equal(pickAgent(componentImplementationPrompt('add this component to the landing page', [component.id]), true), 'builder', component.id);
+  }
+  assert.equal(pickAgent('Improve keyboard accessibility and screen reader support', true), 'accessibility');
+});

@@ -22,9 +22,11 @@ before(async () => {
   let ready = false;
   for (let i = 0; i < 100; i++) { try { if ((await fetch(`${base}/login`)).ok) { ready = true; break; } } catch {} await new Promise(r => setTimeout(r, 100)); }
   assert.ok(ready, 'Test app must be ready');
-  const targets = await (await fetch(`${process.env.UI_TEST_CDP_URL || process.env.TEMPO_CDP_URL || 'http://127.0.0.1:50316'}/json/list`)).json();
-  const target = targets.find(t => !t.title.startsWith('INTERNAL') && (process.env.UI_TEST_CDP_URL ? t.type === 'page' && t.url === 'about:blank' : t.type === 'webview' && t.url === 'https://glass.samasante.com/'));
-  assert.ok(target, 'Open the requested Liquid Glass reference in a Tempo Browser tab before running this visual test');
+  const endpoint = process.env.UI_TEST_CDP_URL;
+  assert.ok(endpoint, 'A dedicated headless browser is required via UI_TEST_CDP_URL');
+  const targets = await (await fetch(`${endpoint}/json/list`)).json();
+  const target = targets.find(t => t.type === 'page' && t.url === 'about:blank');
+  assert.ok(target, 'The dedicated browser needs an about:blank page');
   originalUrl = target.url;
   ws = new WebSocket(target.webSocketDebuggerUrl); await new Promise(r => ws.addEventListener('open', r, { once: true }));
   ws.addEventListener('message', e => { const msg = JSON.parse(e.data); if (msg.id) { pending.get(msg.id)?.(msg); pending.delete(msg.id); } });
@@ -152,4 +154,48 @@ test('new project accepts the full detailed brief while keeping its description 
   const projectId = await evaluate("location.pathname.split('/').pop()");
   const project = await db.project.findUniqueOrThrow({ where: { id: projectId } });
   assert.equal(project.description.length, 500);
+});
+
+
+test('support launcher peeks from the edge, reveals left and remains accessible', async () => {
+  await rpc('Network.setCookie', { name: 'idaevia_session', value: customerCookie, url: base, httpOnly: true, sameSite: 'Lax' });
+  await rpc('Page.navigate', { url: `${base}/app` });
+  await until("!!document.querySelector('.support-launcher')");
+  await rpc('Input.dispatchMouseEvent', {type:'mouseMoved',x:400,y:300});
+  await until("document.querySelector('.support-launcher').getBoundingClientRect().left>=innerWidth-13");
+  assert.ok(await evaluate('document.documentElement.scrollWidth<=innerWidth'));
+  const y = await evaluate("document.querySelector('.support-launcher').getBoundingClientRect().top+28");
+  assert.equal(await evaluate(`document.elementFromPoint(innerWidth-40,${y})?.closest('.support-widget')===null`),true,'Collapsed widget must not intercept editor clicks');
+  await rpc('Input.dispatchMouseEvent',{type:'mouseMoved',x:1023,y});
+  await until("document.querySelector('.support-launcher').getBoundingClientRect().right<=innerWidth-11");
+  const x = await evaluate("document.querySelector('.support-launcher').getBoundingClientRect().left+28");
+  await rpc('Input.dispatchMouseEvent',{type:'mouseMoved',x,y});
+  await rpc('Input.dispatchMouseEvent',{type:'mousePressed',button:'left',clickCount:1,x,y});
+  await rpc('Input.dispatchMouseEvent',{type:'mouseReleased',button:'left',clickCount:1,x,y});
+  await until("document.querySelector('.support-launcher').getAttribute('aria-expanded')==='true'");
+  assert.ok(await evaluate("document.querySelector('#support-widget-panel').getBoundingClientRect().right<=innerWidth"));
+  await rpc('Page.captureScreenshot',{format:'png'}).then(x=>writeFile('.next/support-docked-open.png',Buffer.from(x.data,'base64')));
+  await rpc('Input.dispatchKeyEvent',{type:'keyDown',key:'Escape',code:'Escape',windowsVirtualKeyCode:27});
+  await until("document.activeElement===document.querySelector('.support-launcher') && document.querySelector('#support-widget-panel').hidden");
+  await rpc('Input.dispatchMouseEvent',{type:'mouseMoved',x:400,y:300});
+  await evaluate('document.activeElement.blur()');
+  await until("document.querySelector('.support-launcher').getBoundingClientRect().left>=innerWidth-13");
+  await rpc('Page.captureScreenshot',{format:'png'}).then(x=>writeFile('.next/support-docked-closed.png',Buffer.from(x.data,'base64')));
+  await rpc('Emulation.setEmulatedMedia',{features:[{name:'prefers-reduced-motion',value:'reduce'}]});
+  await evaluate("document.querySelector('.support-launcher').focus()");
+  assert.ok(await evaluate("document.querySelector('.support-launcher').getBoundingClientRect().right<=innerWidth"));
+  await rpc('Input.dispatchKeyEvent',{type:'keyDown',key:'Enter',code:'Enter',windowsVirtualKeyCode:13,text:'\r',unmodifiedText:'\r'});
+  await rpc('Input.dispatchKeyEvent',{type:'keyUp',key:'Enter',code:'Enter',windowsVirtualKeyCode:13});
+  await until("document.querySelector('.support-launcher').getAttribute('aria-expanded')==='true'");
+  await rpc('Emulation.setDeviceMetricsOverride',{width:1024,height:844,deviceScaleFactor:1,mobile:true});
+  await rpc('Emulation.setTouchEmulationEnabled',{enabled:true,maxTouchPoints:1});
+  await evaluate("document.querySelector('[aria-label=\"Close live support\"]').click();document.activeElement.blur()");
+  await rpc('Input.dispatchMouseEvent',{type:'mouseMoved',x:100,y:100});
+  const touchY=await evaluate("document.querySelector('.support-launcher').getBoundingClientRect().top+28");
+  await rpc('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[{x:1014,y:touchY}]});
+  await rpc('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});
+  await until("document.querySelector('.support-launcher').getAttribute('aria-expanded')==='true'");
+  assert.ok(await evaluate('document.documentElement.scrollWidth<=innerWidth'));
+  assert.ok(await evaluate("document.querySelector('#support-widget-panel').getBoundingClientRect().left>=0"));
+  await rpc('Emulation.setTouchEmulationEnabled',{enabled:false});
 });

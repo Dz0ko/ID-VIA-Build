@@ -49,8 +49,9 @@ for (const [name, text, stopReason] of [["malformed", "No usable files", "stop"]
     const original = "<!doctype html><html><body>Original</body></html>";
     const { owner, project } = await fixture(original);
     await db.user.update({ where: { id: owner.id }, data: { purchasedCredits: 100000 } });
-    await provider(async () => {
+    await provider(async inputs => {
       await assert.rejects(runAgent({ userId: owner.id, projectId: project.id, plan: "MAX", request: "Rebuild the whole website as a makeup marketplace in HTML", preferProvider: "openai" }));
+      assert.equal(inputs.length, stopReason === "length" ? 2 : 1);
       const user = await db.user.findUniqueOrThrow({ where: { id: owner.id } });
       assert.equal(user.credits, 100000); assert.equal(user.purchasedCredits, 100000);
       assert.equal((await db.project.findUniqueOrThrow({ where: { id: project.id } })).html, original);
@@ -82,4 +83,44 @@ test("a save failure after billing restores the debit exactly once", async () =>
       assert.match((await db.project.findUniqueOrThrow({ where: { id: project.id } })).html, /Original/);
     });
   } finally { db.version.create = create; }
+});
+
+test('a truncated generation retries once, saves only the complete result and absorbs the failed attempt cost', async () => {
+  const { owner, project } = await fixture('<!doctype html><html><body>Original</body></html>');
+  const generate = PROVIDERS.openai.generate, available = PROVIDERS.openai.available;
+  const inputs: GenerateInput[] = [];
+  PROVIDERS.openai.available = () => true;
+  PROVIDERS.openai.generate = async (_model, input) => {
+    inputs.push(input);
+    return { text: inputs.length === 1 ? '<!doctype html><html><body>Partial' : '<!doctype html><html><body>Complete</body></html>', stopReason: inputs.length === 1 ? 'length' : 'stop', model: 'gpt-6-astra', provider: 'openai', inputTokens: 2000, outputTokens: inputs.length === 1 ? 32000 : 100 };
+  };
+  try {
+    const events: string[] = [];
+    await runAgent({ userId: owner.id, projectId: project.id, plan: 'MAX', request: 'Rebuild the whole website', preferProvider: 'openai', onEvent: event => events.push(event.type) });
+    assert.equal(events.filter(type => type === 'retry').length, 1);
+    assert.ok(events.indexOf('retry') < events.indexOf('done'));
+    assert.equal(inputs.length, 2);
+    assert.ok(inputs[1].maxOutput! >= inputs[0].maxOutput!);
+    assert.equal(inputs[1].messages.at(-1)!.content, inputs[0].messages.at(-1)!.content);
+    assert.match((await db.project.findUniqueOrThrow({where:{id:project.id}})).html, /Complete/);
+    assert.equal(await db.version.count({where:{projectId:project.id}}),1);
+    const run = await db.agentRun.findFirstOrThrow({where:{projectId:project.id}});
+    assert.equal(run.outputTokens,32100); assert.equal(run.inputTokens,4000);
+    const ledger = await db.creditLedger.findMany({where:{projectId:project.id}});
+    assert.equal(ledger.length,1);
+    const meta = JSON.parse(ledger[0].meta!);
+    assert.equal(meta.attempts,2); assert.ok(meta.totalProviderCostUsd > meta.costUsd);
+    assert.equal(await db.platformIncident.count({where:{projectId:project.id}}),0);
+  } finally { PROVIDERS.openai.generate=generate; PROVIDERS.openai.available=available; }
+});
+
+test('selected component uses targeted edits and preserves the working project', async () => {
+  const { owner, project } = await fixture('<!doctype html><html><head></head><body><main>Original wheel</main><script>window.spin=()=>42;</script></body></html>');
+  const request = 'Implement the selected components in this project: Solar eclipse.\n[COMPONENT:space-eclipse] add this component to the landing page';
+  await provider(async inputs => {
+    await runAgent({userId:owner.id,projectId:project.id,plan:'MAX',request,preferProvider:'openai'});
+    assert.match(inputs[0].system, /OUTPUT FORMAT OVERRIDE/);
+    const saved=await db.project.findUniqueOrThrow({where:{id:project.id}});
+    assert.match(saved.html,/Solar eclipse/); assert.match(saved.html,/Original wheel/); assert.ok(saved.html.includes('window.spin=()=>42;'));
+  },'<<<HTML_EDITS>>>[{"search":"</main>","replace":"<section>Solar eclipse</section></main>"}]<<<END HTML_EDITS>>>');
 });

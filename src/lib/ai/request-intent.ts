@@ -8,3 +8,7 @@ export function isProductBrief(request: string): boolean {
   const matches = sections.filter(section => request.toLowerCase().includes(section)).length;
   return matches >= 4 && /\b(?:website|site|app|marketplace|platform|landing page|saas|design direction|structure)\b/i.test(request);
 }
+/** Library attachment instructions describe a build, even when their defaults mention accessibility/SEO. */
+export function isComponentImplementation(request: string): boolean {
+  return /^Implement the selected components in this project:/i.test(request.trim()) && /\[COMPONENT:[a-z0-9-]+\]/.test(request);
+}
