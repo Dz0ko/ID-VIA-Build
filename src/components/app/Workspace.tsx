@@ -577,11 +577,14 @@ export function Workspace(p: WorkspaceProps) {
       } catch (e) { push(`✗ ${e instanceof Error ? e.message : "terminal error"}`); }
       finally {
         const report = await refreshRuntime().catch(() => null); await refreshReleases().catch(() => {}); setTermBusy(false); terminalRunning.current = false; terminalAbort.current = null;
-        if (cmd === "npm run build" && report?.status === "error" && report.current && repairRounds.current < 2 && !busyRef.current) {
+        if (cmd === "npm run build" && report?.status === "error" && report.origin === "platform") {
+          log("✗ Platform problem (build environment, not your code). It has been reported to the platform team; try again in a minute.", "err");
+        } else if (cmd === "npm run build" && report?.status === "error" && report.current && repairRounds.current < 2 && !busyRef.current) {
           repairRounds.current += 1; autoRebuild.current = true;
           log(`Build failed · the Debugger is fixing it automatically (attempt ${repairRounds.current} of 2)…`);
           setBottom("chat"); setExpandedPanel(true);
-          void run(`Fix the actual compilation/startup failure in this ${runtime.label} project, preserve the requested stack and design.\n${report.log.slice(-16000)}`, "debugger");
+          // The server holds the build log and hands it to the agent; the chat message stays short.
+          void run(`Fix the compilation/startup failure from the last build of this ${runtime.label} project. Preserve the requested stack and design.`, isAllowed("debugger") ? "debugger" : "builder");
         }
       }
       return;
@@ -826,7 +829,7 @@ export function Workspace(p: WorkspaceProps) {
 
             {bottom === "problems" && (
               <div className="flex-1 overflow-y-auto p-3 text-xs">
-                {(runtimeIssue || buildReport?.status === "error") && <div className="border border-error/30 rounded-lg p-3 mb-4 space-y-2"><p className="text-error">{runtimeIssue ?? `Last ${buildReport?.label} build failed${!buildReport?.current ? " (earlier source — rebuild to recheck)" : ""}.`}</p><button className="btn btn-outline btn-sm" disabled={!!busy} onClick={() => run(`Fix the actual compilation/startup failure in this ${runtime.label} project, preserve the requested stack and design.\n${runtimeIssue ?? ""}\n${buildReport?.current ? buildReport.log.slice(-16000) : "Inspect the saved source and run Build again after changes."}`, "debugger")}>Fix runtime error with Debugger</button><button className="btn btn-ghost btn-sm" disabled={termBusy} onClick={() => term("npm run build")}>Rebuild to verify</button><button className="btn btn-ghost btn-sm" onClick={() => setBottom("logs")}>View build log</button></div>}
+                {(runtimeIssue || buildReport?.status === "error") && <div className="border border-error/30 rounded-lg p-3 mb-4 space-y-2"><p className="text-error">{runtimeIssue ?? `Last ${buildReport?.label} build failed${buildReport?.origin === "platform" ? " because of the platform build environment, not your code (reported to the platform team)" : buildReport?.origin === "project" ? " in the project's code or configuration" : ""}${!buildReport?.current ? " (earlier source — rebuild to recheck)" : ""}.`}</p><button className="btn btn-outline btn-sm" disabled={!!busy} onClick={() => { repairRounds.current = 0; autoRebuild.current = true; void run(`Fix the compilation/startup failure from the last build of this ${runtime.label} project. Preserve the requested stack and design.${buildReport?.current ? "" : " The saved build output is from earlier source; read the project and rebuild after your changes."}`, isAllowed("debugger") ? "debugger" : "builder"); }}>Fix runtime error with Debugger</button><button className="btn btn-ghost btn-sm" disabled={termBusy} onClick={() => term("npm run build")}>Rebuild to verify</button><button className="btn btn-ghost btn-sm" onClick={() => setBottom("logs")}>View build log</button></div>}
                 {!audit ? <div className="text-ash">Run source checks and Build to inspect this project’s code and runtime. <button onClick={runAudit} className="text-signal-soft underline">Run now</button></div> : (
                   <>
                     {audit.scope !== "source" && <div className="grid grid-cols-7 gap-2 mb-3">{([["Overall", audit.overall], ["Performance", audit.performance], ["SEO", audit.seo], ["A11y", audit.accessibility], ["Security", audit.security], ["Code", audit.codeQuality], ["Mobile", audit.mobile]] as const).map(([l, v]) => <div key={l} className="card p-2"><div className="text-[10px] text-ash">{l}</div><div className={`text-lg font-semibold ${v >= 90 ? "text-success" : v >= 70 ? "text-warning" : "text-error"}`}>{v}</div></div>)}</div>}

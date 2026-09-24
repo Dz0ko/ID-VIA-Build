@@ -216,7 +216,8 @@ async function runAgentLocked(opts: RunOptions, assertActive: () => Promise<void
     opts.onEvent?.({ type: "clarification", request: "", message, kind: "quality", choices });
     return { mode: "clarification" as const, message };
   }
-  const debuggingTask = agent.mode === "rewrite" && agent.id === "debugger";
+  // The Debugger, or any agent asked to fix the last build, works from the stored build output and the source checks.
+  const debuggingTask = agent.mode === "rewrite" && hasContent && (agent.id === "debugger" || /\bfix\b[^.\n]{0,80}\b(?:build|compilation|startup)\b/i.test(opts.request));
   // Whole pages, sections and restyles get the frontier model; a small visual edit of an existing site gets the
   // advanced tier at high effort, which does a navbar or button change just as well at a fraction of the tokens.
   const substantial = overhaul || ["page", "feature", "fullstack", "section"].includes(taskClass);
