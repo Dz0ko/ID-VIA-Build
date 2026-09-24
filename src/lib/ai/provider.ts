@@ -74,15 +74,29 @@ export function anthropicToolMessages(turns: ToolTurn[]): Anthropic.MessageParam
   });
 }
 
-/** OpenAI replay of a neutral transcript: assistant tool calls carry JSON arguments, results are tool messages. */
-export function openaiToolMessages(system: string, turns: ToolTurn[]): OpenAI.ChatCompletionMessageParam[] {
-  const messages: OpenAI.ChatCompletionMessageParam[] = [{ role: "system", content: system }];
-  for (const turn of turns) {
-    if (turn.role === "user") messages.push({ role: "user", content: turn.content });
-    else if (turn.role === "tool") for (const r of turn.results) messages.push({ role: "tool", tool_call_id: r.id, content: r.output });
-    else messages.push({ role: "assistant", content: turn.content || null, ...(turn.toolCalls.length ? { tool_calls: turn.toolCalls.map((c) => ({ id: c.id, type: "function" as const, function: { name: c.name, arguments: JSON.stringify(c.input ?? {}) } })) } : {}) });
+/**
+ * OpenAI Responses replay of a neutral transcript. When the last assistant turn is an OpenAI response and only tool
+ * results follow it, the response is continued by id and just those outputs are sent (its reasoning stays server
+ * side); otherwise the whole transcript becomes input items (messages, function calls and their outputs).
+ */
+export function openaiResponsesInput(turns: ToolTurn[]): { input: OpenAI.Responses.ResponseInputItem[]; previous?: string } {
+  let last = -1;
+  for (let i = turns.length - 1; i >= 0; i--) if (turns[i].role === "assistant") { last = i; break; }
+  const lastTurn = last >= 0 ? turns[last] : null;
+  const previous = lastTurn?.role === "assistant" && lastTurn.raw?.provider === "openai" ? (lastTurn.raw.content as { responseId?: string }).responseId : undefined;
+  if (previous && turns.slice(last + 1).every((t) => t.role === "tool")) {
+    return { previous, input: turns.slice(last + 1).flatMap((t) => (t.role === "tool" ? t.results.map((r) => ({ type: "function_call_output" as const, call_id: r.id, output: r.output })) : [])) };
   }
-  return messages;
+  const input: OpenAI.Responses.ResponseInputItem[] = [];
+  for (const turn of turns) {
+    if (turn.role === "user") input.push({ role: "user", content: turn.content });
+    else if (turn.role === "tool") for (const r of turn.results) input.push({ type: "function_call_output", call_id: r.id, output: r.output });
+    else {
+      if (turn.content.trim()) input.push({ role: "assistant", content: turn.content });
+      for (const c of turn.toolCalls) input.push({ type: "function_call", call_id: c.id, name: c.name, arguments: JSON.stringify(c.input ?? {}) });
+    }
+  }
+  return { input };
 }
 
 /* ---------------- Anthropic ---------------- */
@@ -256,33 +270,36 @@ export const openaiProvider: AIProvider = {
   async generateWithTools(model, input) {
     const client = openai();
     const reasoning = /^(gpt-5|gpt-6|o\d)/.test(model);
-    const request = {
+    // Function tools with reasoning are a Responses API feature on GPT-5.6/6 (Chat Completions rejects the pair).
+    // The previous OpenAI response is continued by id so its reasoning stays in context; after a provider switch the
+    // neutral transcript is replayed in full.
+    const { input: items, previous } = openaiResponsesInput(input.turns);
+    const response = await client.responses.create({
       model,
-      messages: openaiToolMessages(input.system, input.turns),
-      tools: input.tools.map((t) => ({ type: "function" as const, function: { name: t.name, description: t.description, parameters: t.parameters } })),
-      max_completion_tokens: outputTokenLimit(model, input.maxOutput ?? 16000, input.effort, reasoning),
-    };
-    // Reasoning with function tools differs per model on Chat Completions: GPT-6 Astra takes a level, GPT-5.6 Terra
-    // wants 'none', older models reject the field. A 400 about reasoning_effort moves to the next variant once.
-    const variants: (Record<string, unknown>)[] = reasoning ? [...(input.effort ? [{ reasoning_effort: input.effort }] : []), { reasoning_effort: "none" }, {}] : [{}];
-    let completion!: OpenAI.ChatCompletion;
-    for (let i = 0; i < variants.length; i++) {
-      try { completion = await client.chat.completions.create({ ...request, ...variants[i] } as OpenAI.ChatCompletionCreateParamsNonStreaming, { signal: input.signal }); break; }
-      catch (e) {
-        const err = e as { status?: number; message?: string };
-        if (err?.status === 400 && /reasoning_effort/i.test(err.message ?? "") && i < variants.length - 1) continue;
-        throw e;
-      }
-    }
-    const choice = completion.choices[0];
-    const message = choice?.message;
-    const toolCalls = (message?.tool_calls ?? []).flatMap((call) => {
-      if (call.type !== "function") return [];
+      instructions: input.system,
+      input: items,
+      ...(previous ? { previous_response_id: previous } : {}),
+      tools: input.tools.map((t) => ({ type: "function" as const, name: t.name, description: t.description, parameters: t.parameters, strict: false })),
+      max_output_tokens: outputTokenLimit(model, input.maxOutput ?? 16000, input.effort, reasoning),
+      ...(reasoning && input.effort ? { reasoning: { effort: input.effort } } : {}),
+    }, { signal: input.signal });
+    const toolCalls = response.output.flatMap((item) => {
+      if (item.type !== "function_call") return [];
       let parsed: unknown;
-      try { parsed = JSON.parse(call.function.arguments || "{}"); } catch { parsed = { __invalid_json: call.function.arguments }; }
-      return [{ id: call.id, name: call.function.name, input: parsed }];
+      try { parsed = JSON.parse(item.arguments || "{}"); } catch { parsed = { __invalid_json: item.arguments }; }
+      return [{ id: item.call_id, name: item.name, input: parsed }];
     });
-    return { text: message?.content ?? "", toolCalls, model: completion.model || model, provider: "openai", inputTokens: completion.usage?.prompt_tokens ?? 0, outputTokens: completion.usage?.completion_tokens ?? 0, stopReason: choice?.finish_reason ?? null };
+    return {
+      text: response.output_text ?? "",
+      toolCalls,
+      raw: { provider: "openai", content: { responseId: response.id } },
+      model: response.model || model,
+      provider: "openai",
+      inputTokens: response.usage?.input_tokens ?? 0,
+      outputTokens: response.usage?.output_tokens ?? 0,
+      cacheReadTokens: response.usage?.input_tokens_details?.cached_tokens ?? 0,
+      stopReason: response.status === "incomplete" ? (response.incomplete_details?.reason === "max_output_tokens" ? "max_tokens" : "incomplete") : "stop",
+    };
   },
 };
 

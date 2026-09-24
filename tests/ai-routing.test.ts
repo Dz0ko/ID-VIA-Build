@@ -87,3 +87,18 @@ test('all library attachment prompts route to Builder despite incidental special
   }
   assert.equal(pickAgent('Improve keyboard accessibility and screen reader support', true), 'accessibility');
 });
+
+test("OpenAI tool turns continue the previous response by id and replay the transcript after a provider switch", async () => {
+  const { openaiResponsesInput } = await import("../src/lib/ai/provider");
+  const turns = [
+    { role: "user" as const, content: "rename it" },
+    { role: "assistant" as const, content: "", toolCalls: [{ id: "call_1", name: "search", input: { query: "Willow" } }], raw: { provider: "openai", content: { responseId: "resp_1" } } },
+    { role: "tool" as const, results: [{ id: "call_1", name: "search", output: "2 matches" }] },
+  ];
+  const chained = openaiResponsesInput(turns);
+  assert.equal(chained.previous, "resp_1");
+  assert.deepEqual(chained.input, [{ type: "function_call_output", call_id: "call_1", output: "2 matches" }]);
+  const switched = openaiResponsesInput([{ ...turns[0] }, { ...turns[1], raw: { provider: "anthropic", content: [] } }, turns[2]]);
+  assert.equal(switched.previous, undefined);
+  assert.deepEqual(switched.input.map(i => ("type" in i ? i.type : i.role)), ["user", "function_call", "function_call_output"]);
+});
