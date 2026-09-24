@@ -1,5 +1,5 @@
 "use client";
-import { notifyCreditShortfall } from "@/lib/credit-notice";
+import { LimitNotice, notifyLimit } from "@/lib/credit-notice";
 
 import { Markdown } from "@/components/Markdown";
 
@@ -44,7 +44,7 @@ export function AssistantChat({ offline, name }: { offline: boolean; name: strin
     setMessages((m) => [...m, { id: `u-${Date.now()}`, role: "user", content: text }]);
     try {
       const res = await fetch("/api/assistant", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ message: text }) });
-      if (!res.ok || !res.body) { const d = await res.json().catch(() => ({})); if (d.code === "INSUFFICIENT_CREDITS") notifyCreditShortfall(d); throw new Error(d.error ?? "Request failed"); }
+      if (!res.ok || !res.body) { const d = await res.json().catch(() => ({})); if (notifyLimit(d)) throw new LimitNotice(d.error); throw new Error(d.error ?? "Request failed"); }
       const reader = res.body.getReader();
       const dec = new TextDecoder();
       let buf = ""; let acc = "";
@@ -59,11 +59,11 @@ export function AssistantChat({ offline, name }: { offline: boolean; name: strin
           const ev = JSON.parse(line.slice(6));
           if (ev.type === "delta") { acc += ev.text; setStream(acc); }
           else if (ev.type === "done") { setMessages((m) => [...m, { id: ev.id, role: "assistant", content: ev.content }]); setStream(""); }
-          else if (ev.type === "error") { if (ev.code === "INSUFFICIENT_CREDITS") notifyCreditShortfall(ev); throw new Error(ev.message); }
+          else if (ev.type === "error") { if (notifyLimit(ev)) throw new LimitNotice(ev.message); throw new Error(ev.message); }
         }
       }
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed");
+      if (!(e instanceof LimitNotice)) setError(e instanceof Error ? e.message : "Failed");
       setStream("");
     } finally {
       setBusy(false);
@@ -76,7 +76,7 @@ export function AssistantChat({ offline, name }: { offline: boolean; name: strin
     const res = await fetch("/api/projects", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: a.name, kind: a.kind, description: a.prompt }) });
     const d = await res.json();
     setCreating(null);
-    if (!res.ok) return setError(d.error);
+    if (!res.ok) { if (!notifyLimit(d)) setError(d.error); return; }
     router.push(`/app/projects/${d.project.id}?prompt=${encodeURIComponent(a.prompt)}&auto=1`);
   }
   async function clear() {

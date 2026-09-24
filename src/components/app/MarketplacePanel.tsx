@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { notifyLimit } from "@/lib/credit-notice";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Download, Upload, Trash2, ShoppingBag, Eye, Lock, X, Wallet, Search } from "@/components/icons";
 import type { PlanId } from "@/lib/plans";
@@ -69,7 +70,7 @@ export function MarketplacePanel({ plan, feePct }: { plan: PlanId; feePct: numbe
     const res = await fetch("/api/marketplace", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...form, price: Math.round(Number(form.price) * 100), projectId: form.projectId || undefined, prompt: form.prompt || undefined, customAgentId: form.customAgentId || undefined }) });
     const d = await res.json();
     setBusy(null);
-    if (!res.ok) return flash(false, d.error);
+    if (!res.ok) { if (!notifyLimit(d)) flash(false, d.error); return; }
     setPublishing(false); flash(true, d.item.price ? `Published at ${usd(d.item.price)}. You earn ${usd(d.item.sellerCents)} per sale.` : "Published as a free item."); load(); loadMe();
   }
   async function install(item: Item) {
@@ -77,7 +78,7 @@ export function MarketplacePanel({ plan, feePct }: { plan: PlanId; feePct: numbe
     const res = await fetch(`/api/marketplace/${item.id}/install`, { method: "POST" });
     const d = await res.json();
     setBusy(null);
-    if (!res.ok) return flash(false, d.error);
+    if (!res.ok) { if (!notifyLimit(d)) flash(false, d.error); return; }
     if (d.kind === "project") router.push(`/app/projects/${d.projectId}`);
     else if (d.kind === "agent") router.push("/app/agents");
     else router.push(`/app?prompt=${encodeURIComponent(d.prompt)}`);
@@ -87,7 +88,7 @@ export function MarketplacePanel({ plan, feePct }: { plan: PlanId; feePct: numbe
     const res = await fetch(`/api/marketplace/${item.id}/buy`, { method: "POST" });
     const d = await res.json();
     setBusy(null);
-    if (!res.ok) return flash(false, d.error);
+    if (!res.ok) { if (!notifyLimit(d)) flash(false, d.error); return; }
     if (d.alreadyOwned) { flash(true, "You already own this item."); load(); return; }
     window.location.href = d.url;
   }

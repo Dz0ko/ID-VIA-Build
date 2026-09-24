@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { notifyLimit } from "@/lib/credit-notice";
 import Link from "next/link";
 import { Users, Lock, Trash2, Palette, FolderPlus } from "@/components/icons";
 
@@ -33,14 +34,14 @@ export function TeamsPanel({ allowed, myEmail }: { allowed: boolean; myEmail: st
   async function create() {
     const res = await fetch("/api/teams", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name }) });
     const d = await res.json();
-    if (!res.ok) return setMsg(d.error);
+    if (!res.ok) { if (!notifyLimit(d)) setMsg(d.error); return; }
     setName(""); load(); open(d.team.id);
   }
   async function patch(body: Record<string, unknown>) {
     if (!active) return;
     const res = await fetch(`/api/teams/${active.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
     const d = await res.json();
-    if (!res.ok) return setMsg(d.error);
+    if (!res.ok) { if (!notifyLimit(d)) setMsg(d.error); return; }
     setMsg("Saved"); setTimeout(() => setMsg(null), 1500); open(active.id); load();
   }
   async function remove() {

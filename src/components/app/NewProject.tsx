@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { notifyLimit } from "@/lib/credit-notice";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Sparkles, FilePlus2 } from "@/components/icons";
 
@@ -35,7 +36,7 @@ export function NewProject({ templates }: { templates: Template[] }) {
     });
     const data = await res.json();
     setLoading(false);
-    if (!res.ok) return setError(data.error);
+    if (!res.ok) { if (!notifyLimit(data)) setError(data.error); return; }
     const q = prompt ? `?prompt=${encodeURIComponent(prompt)}&auto=1` : "";
     router.push(`/app/projects/${data.project.id}${q}`);
   }

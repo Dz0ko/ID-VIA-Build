@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { notifyLimit } from "@/lib/credit-notice";
 import Link from "next/link";
 import { Lock, Plus, Trash2, Pencil } from "@/components/icons";
 import { MODEL_TIERS } from "@/lib/plans";
@@ -22,7 +23,7 @@ export function CustomAgents({ allowed, userId }: { allowed: boolean; userId: st
     const isNew = !editing.id;
     const res = await fetch(isNew ? "/api/custom-agents" : `/api/custom-agents/${editing.id}`, { method: isNew ? "POST" : "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...editing, multiplier: Number(editing.multiplier) }) });
     const d = await res.json();
-    if (!res.ok) return setError(d.error);
+    if (!res.ok) { if (!notifyLimit(d)) setError(d.error); return; }
     setEditing(null); load();
   }
   async function remove(id: string) {

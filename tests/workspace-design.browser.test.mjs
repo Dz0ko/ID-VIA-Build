@@ -149,4 +149,8 @@ test('admin previews and publishes a promotion; users can read/dismiss it and re
   await rpc('Page.navigate', {url:base+'/app'}); await until("document.querySelector('.credit-dialog[open]')!==null");
   assert.equal(await evaluate("document.querySelectorAll('.credit-dialog a[href^=\"/api/billing/pack\"]').length"), 0);
   assert.ok(await evaluate("document.querySelector('.credit-dialog').innerText.includes('Choose a plan')"));
+  // A plan limit (locked agent, feature, project count) opens the same dialog with plan wording instead of an error line.
+  await evaluate("document.querySelector('.credit-dialog').close(); window.dispatchEvent(new CustomEvent('idaevia:plan-required', { detail: { code: 'AGENT_LOCKED', minPlan: 'AGENCY', minPlanName: 'Agency', message: 'Custom agents are available on the Agency plan.' } })); true");
+  await until("document.querySelector('.credit-dialog[open]')!==null && document.querySelector('.credit-dialog').innerText.includes('needs the Agency plan')");
+  assert.ok(await evaluate("document.querySelector('.credit-dialog').innerText.includes('Upgrade to Agency')"));
 });
