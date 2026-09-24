@@ -347,6 +347,9 @@ export function Workspace(p: WorkspaceProps) {
               setMessages((m) => [...m, { id: `a-${Date.now()}`, role: "assistant", content: ev.note ?? `Updated the ${isApp ? "app" : "project"}.`, agentId: busyRef.current ?? agentToRun, creditsUsed: ev.creditsUsed, model: null, createdAt: new Date().toISOString() }]);
               setView("preview");
               setSavedBrief(null);
+              // An app change the server could not verify (or that still fails) is built and, if needed, repaired right away, so the
+              // user is never handed a project that does not compile. A verified change needs no extra build.
+              if (isApp && ev.files && !ev.continuation && ev.verified !== true && !autoRebuild.current) { repairRounds.current = 0; lastFailure.current = ""; autoRebuild.current = true; log(ev.verified === false ? "The build still fails · building again with automatic repair…" : "Change saved · building the project to verify it…"); }
               if (ev.continuation) { continuationRef.current = ev.continuation; setBuildContinuation(ev.continuation); log(`✓ Part saved (${ev.creditsUsed} credits) · ${ev.continuation.filesDone} files so far · continuing with part ${ev.continuation.round}`, "ok"); }
               else { setBuildContinuation(null); log(`✓ Change saved (${ev.creditsUsed} credits)`, "ok"); }
             } else {

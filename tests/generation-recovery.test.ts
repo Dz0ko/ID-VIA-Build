@@ -478,3 +478,48 @@ test("an agent that runs out of time keeps the edits it made and says what is le
   assert.equal(saved.html, "<html><body><h1>New</h1><p>Second</p></body></html>");
   assert.ok(saved.messages.some(m => m.role === "assistant" && /ran out of time/.test(m.content)));
 });
+
+test("a multi-file change is built before it is handed over, and a failing build is fixed in place", async () => {
+  const { owner, project } = await fixture();
+  await db.project.update({ where: { id: project.id }, data: { kind: "app", memory: JSON.stringify({ stack: "Node.js + TypeScript", quality: "high" }) } });
+  for (const f of [{ path: "/package.json", content: '{"name":"demo","scripts":{"build":"tsc"}}' }, { path: "/src/server.ts", content: 'export const port = 3000;\nexport function greet() { return "Hello"; }' }]) await db.projectFile.create({ data: { projectId: project.id, ...f } });
+  const builds: string[][] = [];
+  let closed = 0;
+  const verifier = async () => ({
+    async build(files: { path: string; content: string }[]) {
+      builds.push(files.map(f => f.path).sort());
+      const server = files.find(f => f.path === "/src/server.ts")!.content;
+      // The first build sees the edit's typo; the fixed file builds clean.
+      return server.includes("greet(): strng") ? { ok: false, log: "> tsc\nsrc/server.ts(2,26): error TS2552: Cannot find name 'strng'. Did you mean 'string'?\nexit status 2", label: "Node.js", durationMs: 5 } : { ok: true, log: "> tsc\n", label: "Node.js", durationMs: 5 };
+    },
+    async close() { closed++; },
+  });
+  const events: { type: string; detail?: string; verified?: boolean }[] = [];
+  await toolProvider((turns, step) => {
+    // Steps 1-2: the requested edit (with a typo). Steps 3-4: the fix round driven by the build output.
+    if (step === 1) return { toolCalls: [call("edit_file", { path: "/src/server.ts", search: "export function greet() {", replace: "export function greet(): strng {" })] };
+    if (step === 2) return { toolCalls: [call("finish", { note: "I typed the greeting's return type." })] };
+    if (step === 3) {
+      const task = (turns[0] as { content: string }).content;
+      assert.match(task, /does not build/); assert.match(task, /TS2552/); assert.match(task, /src\/server\.ts/);
+      return { toolCalls: [call("edit_file", { path: "/src/server.ts", search: "(): strng {", replace: "(): string {" })] };
+    }
+    return { toolCalls: [call("finish", { note: "Fixed the return type." })] };
+  }, async calls => {
+    const result = await runAgent({ userId: owner.id, projectId: project.id, plan: "MAX", request: "Add an explicit return type to greet", preferProvider: "openai", verifier, onEvent: e => events.push(e) });
+    assert.equal(result.mode, "rewrite"); assert.equal(calls.length, 4);
+    assert.match(calls[2].system, /Fix every error in the build output/);
+  });
+  assert.equal(builds.length, 2); assert.equal(closed, 1);
+  const saved = await db.project.findUniqueOrThrow({ where: { id: project.id }, include: { files: true, messages: true, versions: true } });
+  assert.equal(saved.files.find(f => f.path === "/src/server.ts")!.content, 'export const port = 3000;\nexport function greet(): string { return "Hello"; }');
+  assert.equal(saved.versions.length, 1);
+  const done = events.find(e => e.type === "done"); assert.equal(done?.verified, true);
+  assert.ok(saved.messages.some(m => m.role === "assistant" && /Build verified in an isolated VM after 1 automatic fix round/.test(m.content)));
+  assert.deepEqual(events.filter(e => e.type === "tool" && /Building the project|Build failed · fixing|Build verified/.test(e.detail ?? "")).map(e => e.detail!.split(" ·")[0]), ["Building the project in an isolated VM to verify it compiles…", "Build failed", "Build verified"]);
+  const { readRuntimeReport } = await import("../src/lib/runtime-report-store");
+  const report = await readRuntimeReport({ id: project.id, kind: "app", html: saved.html, files: saved.files });
+  assert.equal(report?.status, "success"); assert.equal(report?.current, true); assert.equal(report?.origin, "project");
+  const ledgers = await db.creditLedger.findMany({ where: { userId: owner.id } });
+  assert.equal(ledgers.length, 1); assert.equal(JSON.parse(ledgers[0].meta!).attempts, 4); // the fix round's turns are part of the same charged operation
+});
