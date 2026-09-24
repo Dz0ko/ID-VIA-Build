@@ -120,8 +120,10 @@ export async function reserveCredits(userId: string, amount: number, reason: str
       const user = await tx.user.findUnique({ where: { id: userId }, select: { credits: true } });
       throw new InsufficientCredits(amount, user?.credits ?? 0);
     }
-    const row = await tx.creditLedger.create({ data: { userId, delta: -amount, reason, projectId, note } });
-    return { purchasedSpent: Math.max(0, Number(rows[0].purchasedBefore) - Number(rows[0].purchasedAfter)), ledgerId: row.id };
+    const purchasedSpent = Math.max(0, Number(rows[0].purchasedBefore) - Number(rows[0].purchasedAfter));
+    // Recorded on the row so a refund after a lost server process still restores purchased credits.
+    const row = await tx.creditLedger.create({ data: { userId, delta: -amount, reason, projectId, note, meta: JSON.stringify({ purchasedUsed: purchasedSpent }) } });
+    return { purchasedSpent, ledgerId: row.id };
   });
 }
 

@@ -5,7 +5,8 @@ export class ProjectBusyError extends Error {
   constructor(message = "This project is already being updated. Wait for it to finish and retry.", public status = 409) { super(message); }
 }
 
-export const GENERATION_TIMEOUT_MS = 240_000;
+/** Model time per run. The route's 300 s server limit must still leave room for settlement and saving. */
+export const GENERATION_TIMEOUT_MS = 270_000;
 const LEASE_MS = GENERATION_TIMEOUT_MS + 60_000;
 function limit(value: string | undefined, fallback: number) {
   const n = Number(value);
@@ -34,7 +35,7 @@ export async function acquireProjectLease(projectId: string, userId: string, gen
       }
     }
     await tx.setting.create({ data: { key, value } });
-  });
+  }, { maxWait: 5_000, timeout: 10_000 });
   return {
     async assertActive() {
       if (!await db.setting.findFirst({ where: { key, value, updatedAt: { gte: new Date(Date.now() - LEASE_MS) } } })) {

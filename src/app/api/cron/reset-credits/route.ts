@@ -1,5 +1,6 @@
 import { db } from "@/lib/db";
 import { renewCreditsIfDue } from "@/lib/credits";
+import { reconcileStaleRuns } from "@/lib/stale-runs";
 
 /**
  * Monthly credit renewal. Runs daily (Vercel Cron, see vercel.json) and renews
@@ -28,5 +29,7 @@ export async function GET(req: Request) {
   for (const u of due) {
     if (await renewCreditsIfDue(u.id, now)) renewed++;
   }
-  return Response.json({ ok: true, renewed, checkedAt: now.toISOString() });
+  // Runs whose process was stopped by the host before settlement: refund and close them.
+  const reconciledRuns = await reconcileStaleRuns();
+  return Response.json({ ok: true, renewed, reconciledRuns, checkedAt: now.toISOString() });
 }

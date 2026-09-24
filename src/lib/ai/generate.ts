@@ -24,7 +24,7 @@ import { classifyTask, friendlyAiError, generateWithFallback, preferredProviderF
 import type { InputImage } from "./provider";
 import { estimateUsd } from "./cost";
 import { isReactSandboxStack, isStaticStack, isStackOnlyReply, resolveRequestedStack, stackQuestion } from "../project-stack";
-import { isProductBrief, requestsProjectReplacement } from "./request-intent";
+import { isProductBrief, requestsProjectReplacement, requestsVisualOverhaul } from "./request-intent";
 import { applyHtmlEdits, HTML_EDITS_SYSTEM } from "./html-edits";
 import { applyFileEdits, editFileContext, FILE_EDITS_SYSTEM, parseReadFiles } from "./file-edits";
 import { imageContext } from "./image-context";
@@ -43,7 +43,17 @@ export interface RunOptions {
   images?: InputImage[];
   onEvent?: (e: RunEvent) => void;
   signal?: AbortSignal;
+  /** Model time budget for the whole run (default GENERATION_TIMEOUT_MS); tests shorten it. */
+  budgetMs?: number;
 }
+
+/**
+ * Above this size one restyle pass cannot re-emit the document within the time budget; the agent asks for a section instead.
+ * Measured: Claude Fable 5.1 at medium effort rewrote an 11k-token site in ~195 s, output streams at ~260 chars/s.
+ */
+export const RESTYLE_MAX_DOC_TOKENS = 12_000;
+/** A repaired attempt needs at least this much of the budget left, and at least as long as the attempt it replaces. */
+const RETRY_MIN_MS = 60_000;
 
 export type RunEvent =
   | { type: "meta"; agent: string; tier: ModelTier; model: string; provider: string; credits: number; taskClass: TaskClass; fallback: boolean; mode?: "rewrite" | "report" }
@@ -64,9 +74,10 @@ const ORDER: ModelTier[] = ["fast", "standard", "advanced", "premium", "frontier
  */
 export async function runAgent(opts: RunOptions) {
   const lease = await acquireProjectLease(opts.projectId, opts.userId, true);
-  const timeout = AbortSignal.timeout(GENERATION_TIMEOUT_MS);
+  const budgetMs = Math.min(opts.budgetMs ?? GENERATION_TIMEOUT_MS, GENERATION_TIMEOUT_MS);
+  const timeout = AbortSignal.timeout(budgetMs);
   const signal = opts.signal ? AbortSignal.any([opts.signal, timeout]) : timeout;
-  try { return await runAgentLocked({ ...opts, signal }, lease.assertActive); }
+  try { return await runAgentLocked({ ...opts, signal, budgetMs }, lease.assertActive); }
   finally { await lease.release(); }
 }
 
@@ -116,7 +127,9 @@ async function runAgentLocked(opts: RunOptions, assertActive: () => Promise<void
   // Persist the mode only with a successful generation, never before a paid run.
   if (!isApp && !isStaticStack(stack) && (!hasContent || requestsProjectReplacement(opts.request))) isApp = true;
   const reactStack = isReactSandboxStack(stack);
-  const targetedEdit = agent.mode === "rewrite" && hasContent && !requestsProjectReplacement(opts.request);
+  // A new overall look for a website re-emits the whole document; everything else is exact edits.
+  const overhaul = agent.mode === "rewrite" && hasContent && !isApp && !requestsProjectReplacement(opts.request) && requestsVisualOverhaul(opts.request);
+  const targetedEdit = agent.mode === "rewrite" && hasContent && !requestsProjectReplacement(opts.request) && !overhaul;
   const targetedHtml = targetedEdit && !isApp;
   const targetedFiles = targetedEdit && isApp;
   const fileContext = targetedFiles ? editFileContext(sourceFiles,opts.request) : null;
@@ -138,12 +151,22 @@ async function runAgentLocked(opts: RunOptions, assertActive: () => Promise<void
     throw new Error("Multi-file project generation requires a configured AI provider. Connect a provider and retry; no credits have been reserved.");
   }
   const docTokens = Math.ceil((fileContext?.text.length ?? (isApp ? sourceFiles.filter(f=>!f.content.startsWith(BINARY_PREFIX)).reduce((n,f)=>n+f.content.length,0) : sourceHtml.length)) / 4);
+  if (overhaul && docTokens > RESTYLE_MAX_DOC_TOKENS) {
+    // Better a free question now than a paid four-minute run that the time limit stops.
+    const message = `This website is about ${Math.round((docTokens * 4) / 1024)} KB, more than one restyle pass can rewrite within the generation time limit. Tell me which part to restyle first, for example “restyle the header and hero” or “restyle the pricing section and footer”, and I will continue section by section. No credits were charged.`;
+    await db.$transaction([
+      db.message.create({ data: { projectId: project.id, role: "user", content: opts.request, agentId: agent.id } }),
+      db.message.create({ data: { projectId: project.id, role: "assistant", content: message, agentId: agent.id } }),
+    ]);
+    opts.onEvent?.({ type: "clarification", request: "", message });
+    return { mode: "clarification" as const, message };
+  }
   const est = await estimateCreditsDetailed({ taskClass, agentMultiplier: agent.multiplier * visionBump * (isApp ? 1.5 : 1), tier, model: resolved.config.model, docTokens, mode: agent.mode });
   const credits = est.credits;
   // Why this run costs what it costs: shown to the user in their credit log.
   const docKb = Math.round((docTokens * 4) / 1024);
   const CLASS_LABEL: Record<TaskClass, string> = { tiny: "small tweak", small: "small edit", section: "new section", page: "full page", feature: "feature build", fullstack: "full-stack feature" };
-  const reasons: string[] = [`${agent.name} · ${agent.mode === "report" ? "report" : CLASS_LABEL[taskClass]}`, TIER_LABELS[tier]];
+  const reasons: string[] = [`${agent.name} · ${agent.mode === "report" ? "report" : overhaul ? "full restyle" : CLASS_LABEL[taskClass]}`, TIER_LABELS[tier]];
   if (tier === "frontier" || tier === "premium") reasons.push("deep reasoning model");
   if (agent.mode !== "report" && docKb > 0) reasons.push(`${docKb} KB document ${targetedEdit ? "edited" : "rewritten"}`);
   if (isApp) reasons.push("multi-file application");
@@ -157,13 +180,15 @@ async function runAgentLocked(opts: RunOptions, assertActive: () => Promise<void
   const heavy = taskClass === "fullstack" || taskClass === "feature" || taskClass === "page";
   const maxOutput = agent.mode === "report" ? Math.min(resolved.config.maxOutput, 8000) : Math.min(resolved.config.maxOutput, Math.max(32000, Math.ceil(docTokens * 1.6) + 12000));
   const EFFORT_RANK = { low: 0, medium: 1, high: 2, xhigh: 3, max: 4 } as const;
-  const capEffort = heavy || visualDesignTask || debuggingTask ? "xhigh" : taskClass === "section" ? "high" : "medium";
+  // A whole-document restyle streams the entire site back; thinking time comes out of the same budget.
+  // GPT-6 Astra reasons for longer before its first token, so it drops to medium on smaller documents.
+  const capEffort = overhaul ? (docTokens > (resolved.provider.id === "openai" ? 4000 : 7000) ? "medium" : "high") : heavy || visualDesignTask || debuggingTask ? "xhigh" : taskClass === "section" ? "high" : "medium";
   const effort = resolved.config.effort && EFFORT_RANK[resolved.config.effort] > EFFORT_RANK[capEffort] ? capEffort : resolved.config.effort;
 
   let run: { id: string } | undefined;
   try {
     run = await db.agentRun.create({
-      data: { userId: opts.userId, projectId: project.id, agentId: agent.id, status: "RUNNING", task: opts.request, model: resolved.config.model, creditsUsed: credits },
+      data: { userId: opts.userId, projectId: project.id, agentId: agent.id, status: "RUNNING", task: opts.request, model: resolved.config.model, creditsUsed: credits, ledgerId },
     });
 
     opts.onEvent?.({ type: "meta", agent: agent.id, tier, model: resolved.config.model, provider: resolved.provider.id, credits, taskClass, fallback: resolved.fallback, mode: agent.mode });
@@ -197,6 +222,7 @@ async function runAgentLocked(opts: RunOptions, assertActive: () => Promise<void
     if (agent.mode === "rewrite" && isProductBrief(opts.request)) system += "\nPRODUCT BRIEF PRIORITY: The latest request defines the intended product. Implement its domain, audience, sections, palette and interactions. Replace unrelated branding, sample products and workflows from the old project, even when older memory or conversation says otherwise. Do not reduce this whole-product request to a copy edit. Preserve only existing features that remain relevant. Do not invent a different SaaS or brand direction.";
     if (isApp && agent.mode === "rewrite") system += "\n\nPREVIEW RUNTIME: Projects run in isolated Linux VMs with 4 GiB RAM, Node 24, Python 3.11, Java 17, Maven/Gradle, Go, Rust, PHP 8.2/Composer, Ruby 3.1, and .NET 8/10. Choose compatible dependency versions. Use 0.0.0.0 and port 3000 for web servers. The runtime supplies IDAEVIA_PREVIEW_HOST and IDAEVIA_PREVIEW_URL; framework allowed-hosts and trusted-origin settings (especially Django, Rails and Angular) must include that exact host/URL when present, alongside production settings. Never disable host validation globally. For custom entry points or monorepos include .idaevia/runtime.json with string build and start commands, an optional setup command for missing toolchains, and port (3000 for HTTP or null for terminal/native apps). Build must compile/check the actual source and exit nonzero on failure. Start must keep every required service alive, bind 0.0.0.0 and proxy backend routes through the frontend port for mixed stacks. Do not leave required servers as a comment or instructions only. For languages outside the preinstalled toolchain, provide a reproducible noninteractive Linux setup command with a pinned version. For native platform-only SDKs, explain the required external build environment. Include deployment config matching the framework (never assume Vite/dist for Next.js or a backend); for server/container hosting include a production Dockerfile and setup instructions. Never run destructive database resets or migrate a production database automatically. Native Apple/Android interfaces need their platform SDKs; do not promise a browser preview of a native app.";
     system += `\n\n${ANSWER_FALLBACK}`;
+    if (overhaul) system += "\nWHOLE-SITE RESTYLE: The latest request asks for a new overall look. Apply one consistent modern, professional visual system to every section: typography scale, palette, spacing rhythm, radius, shadows, buttons, cards, section backgrounds and hover states. Keep every section, all text content, links, images, ids, scripts and working interactions; add or remove no features. Return the complete updated HTML document at about the same length as the current one, without verbose comments.";
     if (targetedEdit) system += "\nSCOPE OVERRIDE: The latest user request is the complete authorization for this change. Broader specialist instructions are expertise, not permission to change other parts. Do not fix unrelated audit findings, rewrite all copy, restyle other sections, replace branding or add features unless requested. Inspect the supplied current source; preserve all unrelated source exactly. Ask a focused clarification when a target/replacement is ambiguous. Never claim build/test success without execution evidence.";
     if (targetedFiles) system += `\n\n${FILE_EDITS_SYSTEM}`;
     if (targetedHtml) {
@@ -226,15 +252,19 @@ async function runAgentLocked(opts: RunOptions, assertActive: () => Promise<void
       onText: (t: string) => opts.onEvent?.({ type: "delta", text: t }),
       signal: opts.signal,
     };
-    let costUsd = 0, inputTokens = 0, outputTokens = 0, attempts = 0, readCostUsd = 0;
+    let costUsd = 0, inputTokens = 0, outputTokens = 0, attempts = 0, readCostUsd = 0, lastAttemptMs = 0;
+    const startedAt = Date.now();
+    const budgetMs = opts.budgetMs ?? GENERATION_TIMEOUT_MS;
     const attempt = async (retryReason?: string) => {
       opts.signal?.throwIfAborted();
       await assertActive();
+      const attemptStarted = Date.now();
       const response = await generateWithFallback(resolved, retryReason ? { ...input,
         maxOutput: Math.min(resolved.config.maxOutput, Math.max(maxOutput * 2, maxOutput + 8000)),
         system: `${system}\nThe previous response was discarded: ${retryReason}. Correct the response using the ORIGINAL supplied source. Produce a complete, concise result. Preserve required functionality; omit no required code. ${targetedHtml ? "Return only targeted HTML_EDITS and a short note, or a focused clarification if needed." : targetedFiles ? "Return only FILE_EDITS for the requested targets, or request missing file contents." : isApp ? "Use <<<KEEP /path>>> for every unchanged existing file." : "Avoid verbose comments and unnecessary repetition."}`,
       } : input);
       attempts++;
+      lastAttemptMs = Date.now() - attemptStarted;
       costUsd += response.provider === "mock" ? 0 : estimateUsd(response.model, response);
       inputTokens += response.inputTokens;
       outputTokens += response.outputTokens;
@@ -284,6 +314,8 @@ async function runAgentLocked(opts: RunOptions, assertActive: () => Promise<void
         break;
       } catch (error) {
         if (recovered || !(error instanceof Error) || !/^(?:Model (?:did not|output|returned|exceeded)|Requested source files)/.test(error.message)) throw error;
+        // A repair that the time limit would stop anyway only delays the refund.
+        if (budgetMs - (Date.now() - startedAt) < Math.max(RETRY_MIN_MS, lastAttemptMs)) throw error;
         recovered = true;
         opts.onEvent?.({ type: "retry", message: "Checking and correcting the response automatically. The unusable attempt will not be charged." });
         result = await attempt(error.message);

@@ -1,6 +1,6 @@
 import type { ModelTier, PlanId } from "../plans";
 import { TIER_ORDER, tierAllowed } from "../plans";
-import { isProductBrief } from "./request-intent";
+import { isProductBrief, requestsVisualOverhaul } from "./request-intent";
 
 export type TaskClass = "tiny" | "small" | "section" | "page" | "feature" | "fullstack";
 
@@ -30,6 +30,8 @@ export function classifyTask(prompt: string, hasExistingHtml: boolean): TaskClas
     if (/\b(saas|dashboard|app|full[- ]?stack|platform|marketplace|crm)\b/.test(p)) return "feature";
     return "page";
   }
+  // A new overall look re-emits the whole document, however short the request is.
+  if (requestsVisualOverhaul(prompt)) return "page";
   if (/\b(database|auth|login|api|payments?|stripe|whop|backend|full[- ]?stack)\b/.test(p)) return "fullstack";
   if (/\b(rebuild|redesign|rewrite everything|new page|entire|whole site|from scratch)\b/.test(p)) return "page";
   if (/\b(add|create|new|build)\b.*\b(section|pricing|faq|testimonial|hero|footer|gallery|form|table|nav)/.test(p))

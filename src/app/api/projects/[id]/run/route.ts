@@ -12,6 +12,7 @@ import { db } from "@/lib/db";
 import { agentAllowed, pickAgent, planAtLeast } from "@/lib/agents";
 import { rateLimit } from "@/lib/security";
 import { resolveRequestedStack, isStaticStack } from "@/lib/project-stack";
+import { reconcileStaleRuns } from "@/lib/stale-runs";
 
 export const maxDuration = 300;
 
@@ -35,6 +36,8 @@ export async function POST(req: Request, ctx: RouteContext<"/api/projects/[id]/r
   if (!body.success) return Response.json({ error: "Invalid input." }, { status: 400 });
   const limited = (await rateLimit(`run:user:${user.id}:min`, 12, 60)) ?? (await rateLimit(`run:user:${user.id}:day`, 400, 86400));
   if (limited) return limited;
+  // A previous run stopped by the host time limit is refunded before the next one starts.
+  await reconcileStaleRuns(user.id).catch(() => undefined);
 
   const proj = await db.project.findFirst({ where: { id, userId: user.id }, select: { html: true, kind: true, _count: { select: { files: true } } } });
   if (!proj) return Response.json({ error: "Not found" }, { status: 404 });

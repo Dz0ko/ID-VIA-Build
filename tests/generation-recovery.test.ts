@@ -114,6 +114,73 @@ test('a truncated generation retries once, saves only the complete result and ab
   } finally { PROVIDERS.openai.generate=generate; PROVIDERS.openai.available=available; }
 });
 
+test('a new overall look rewrites the whole document instead of exact edits and keeps the content', async () => {
+  const original = '<!doctype html><html><head><title>KIKO</title></head><body><main>Original wheel</main><script>window.spin=()=>42;</script></body></html>';
+  const { owner, project } = await fixture(original);
+  await provider(async inputs => {
+    const events: string[] = [];
+    await runAgent({ userId: owner.id, projectId: project.id, plan: 'MAX', request: 'change the design to more moderen and proffesional', agentId: 'designer', preferProvider: 'openai', onEvent: event => events.push(event.type) });
+    assert.match(inputs[0].system, /WHOLE-SITE RESTYLE/); assert.doesNotMatch(inputs[0].system, /OUTPUT FORMAT OVERRIDE/);
+    assert.match(inputs[0].messages.at(-1)!.content, /return the full updated HTML/);
+    assert.equal(inputs[0].effort, 'high');
+    const saved = await db.project.findUniqueOrThrow({ where: { id: project.id } });
+    assert.match(saved.html, /Restyled wheel/); assert.ok(saved.html.includes('window.spin=()=>42;'));
+    const ledger = await db.creditLedger.findFirstOrThrow({ where: { projectId: project.id } });
+    assert.match(ledger.note!, /full restyle/); assert.equal(JSON.parse(ledger.meta!).taskClass, 'page');
+    const run = await db.agentRun.findFirstOrThrow({ where: { projectId: project.id } });
+    assert.equal(run.status, 'DONE'); assert.equal(run.ledgerId, ledger.id);
+  }, '<!doctype html><html><head><title>KIKO</title></head><body class="bg-neutral-950"><main>Restyled wheel</main><script>window.spin=()=>42;</script></body></html>');
+});
+
+test('a restyle of a document too large for one pass asks for a section without charging', async () => {
+  const { owner, project } = await fixture(`<!doctype html><html><body>${'<section>Large section content that repeats</section>'.repeat(1400)}</body></html>`);
+  await provider(async inputs => {
+    const result = await runAgent({ userId: owner.id, projectId: project.id, plan: 'MAX', request: 'make it more modern', agentId: 'designer', preferProvider: 'openai' });
+    assert.equal(result.mode, 'clarification'); assert.equal(inputs.length, 0);
+    assert.equal(await db.creditLedger.count({ where: { userId: owner.id } }), 0);
+    assert.equal(await db.agentRun.count({ where: { projectId: project.id } }), 0);
+    assert.match((await db.message.findFirstOrThrow({ where: { projectId: project.id, role: 'assistant' } })).content, /which part to restyle first/);
+  });
+});
+
+test('a repair attempt is skipped and refunded when the time budget cannot fit it', async () => {
+  const { owner, project } = await fixture('<!doctype html><html><body>Original</body></html>');
+  const generate = PROVIDERS.openai.generate, available = PROVIDERS.openai.available;
+  let calls = 0;
+  PROVIDERS.openai.available = () => true;
+  PROVIDERS.openai.generate = async () => { calls++; await new Promise(r => setTimeout(r, 120)); return { text: '<!doctype html><html><body>Partial', stopReason: 'length', model: 'gpt-6-astra', provider: 'openai', inputTokens: 20, outputTokens: 40 }; };
+  try {
+    const events: string[] = [];
+    // 20 s covers the database setup but is under the minimum a repair attempt requires.
+    await assert.rejects(runAgent({ userId: owner.id, projectId: project.id, plan: 'MAX', request: 'Rebuild the whole website', preferProvider: 'openai', budgetMs: 20_000, onEvent: event => events.push(event.type) }));
+    assert.equal(calls, 1); assert.ok(!events.includes('retry'));
+    assert.equal((await db.user.findUniqueOrThrow({ where: { id: owner.id } })).credits, 100000);
+    assert.equal((await db.agentRun.findFirstOrThrow({ where: { projectId: project.id } })).status, 'FAILED');
+  } finally { PROVIDERS.openai.generate = generate; PROVIDERS.openai.available = available; }
+});
+
+test('a run whose server process was stopped is refunded, closed and reported once', async () => {
+  const { reconcileStaleRuns, STALE_RUN_MS } = await import('../src/lib/stale-runs');
+  const { reserveCredits } = await import('../src/lib/credits');
+  const { owner, project } = await fixture('<html><body>Kept</body></html>');
+  await db.user.update({ where: { id: owner.id }, data: { credits: 1000, purchasedCredits: 300 } });
+  const hold = await reserveCredits(owner.id, 900, 'agent:designer', project.id, 'Designer · full restyle · running…');
+  assert.equal(hold.purchasedSpent, 200);
+  const stale = await db.agentRun.create({ data: { userId: owner.id, projectId: project.id, agentId: 'designer', status: 'RUNNING', task: 'make it more modern', model: 'claude-fable-5-1', creditsUsed: 900, ledgerId: hold.ledgerId, startedAt: new Date(Date.now() - STALE_RUN_MS - 1000) } });
+  const fresh = await db.agentRun.create({ data: { userId: owner.id, projectId: project.id, agentId: 'designer', status: 'RUNNING', task: 'still running', creditsUsed: 1 } });
+  assert.equal(await reconcileStaleRuns(owner.id), 1);
+  assert.equal(await reconcileStaleRuns(owner.id), 0);
+  const user = await db.user.findUniqueOrThrow({ where: { id: owner.id } });
+  assert.equal(user.credits, 1000); assert.equal(user.purchasedCredits, 300);
+  const ledger = await db.creditLedger.findUniqueOrThrow({ where: { id: hold.ledgerId } });
+  assert.equal(ledger.delta, 0); assert.equal(JSON.parse(ledger.meta!).settlement, 'refunded'); assert.match(ledger.note!, /fully refunded/);
+  assert.equal((await db.agentRun.findUniqueOrThrow({ where: { id: stale.id } })).status, 'FAILED');
+  assert.equal((await db.agentRun.findUniqueOrThrow({ where: { id: fresh.id } })).status, 'RUNNING');
+  assert.equal(await db.message.count({ where: { projectId: project.id, role: 'assistant' } }), 1);
+  assert.equal(await db.platformIncident.count({ where: { runId: stale.id } }), 1);
+  assert.equal((await db.project.findUniqueOrThrow({ where: { id: project.id } })).html, '<html><body>Kept</body></html>');
+});
+
 test('selected component uses targeted edits and preserves the working project', async () => {
   const { owner, project } = await fixture('<!doctype html><html><head></head><body><main>Original wheel</main><script>window.spin=()=>42;</script></body></html>');
   const request = 'Implement the selected components in this project: Solar eclipse.\n[COMPONENT:space-eclipse] add this component to the landing page';

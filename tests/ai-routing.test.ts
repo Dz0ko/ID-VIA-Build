@@ -39,6 +39,19 @@ test("automatic routing uses the strongest permitted tier for substantial work",
   assert.equal(tierForTask(classifyTask("build a new SaaS dashboard", false), "FREE"), "standard");
 });
 
+test("a new overall look is a whole-document restyle, a named target stays a targeted edit", async () => {
+  const { requestsVisualOverhaul } = await import("../src/lib/ai/request-intent");
+  for (const request of ["change the design to more moderen and proffesional", "make it more modern", "Make the site look better", "redesign", "the design looks outdated", "improve the overall design", "смени го дизајнот да биде помодерен", "podobar dizajn"]) {
+    assert.equal(requestsVisualOverhaul(request), true, request);
+    assert.equal(classifyTask(request, true), "page", request);
+    assert.equal(pickAgent(request, true), request === "podobar dizajn" || request.startsWith("смени") ? "builder" : "designer", request);
+  }
+  for (const request of ["the navbar is so big make it simple make good design", "redesign the navbar", "change the button color to blue", "make the hero more modern", "change only the logo", "Rebuild the whole website as a modern SaaS", "how do I make the design more modern?"]) {
+    assert.equal(requestsVisualOverhaul(request), false, request);
+  }
+  assert.equal(classifyTask("change the button color to blue", true), "tiny");
+});
+
 test("navbar requests select the visual design path even without a design adjective", () => {
   for (const request of ['add a navbar', 'improve the navigation', 'create a header', 'build a hero']) {
     assert.equal(requiresFrontierDesign(request, 'builder'), true);
