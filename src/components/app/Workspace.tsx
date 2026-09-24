@@ -219,7 +219,8 @@ export function Workspace(p: WorkspaceProps) {
   const previewSrc = useMemo(() => protectProjectNavigation(html || `<!DOCTYPE html><html><body style="margin:0;height:100vh;display:grid;place-items:center;font-family:system-ui;background:#0a0a0b;color:#8a8a93">Describe what to build in the chat below.</body></html>`), [html]);
   const log = useCallback((text: string, kind: LogLine["kind"] = "info") => setLogs((l) => [...l, { t: now(), text, kind }].slice(-600)), []);
 
-  useEffect(() => { const el = chatEnd.current?.parentElement; if (el && followChat.current) el.scrollTop = el.scrollHeight; }, [messages, stream, busy, bottom]);
+  // Follow the conversation while the agent writes, reports steps or finishes; a reader who scrolled up stays put until they return near the bottom.
+  useEffect(() => { const el = chatEnd.current?.parentElement; if (el && followChat.current) el.scrollTop = el.scrollHeight; }, [messages, stream, busy, bottom, activity, qualityChoices, pendingStackRequest, buildContinuation]);
   useEffect(() => {
     if (!busy) return;
     const started = Date.now();
@@ -371,6 +372,8 @@ export function Workspace(p: WorkspaceProps) {
 
   const run = useCallback(async (request: string, agentToRun: string = agentId, chain: string[] = [], importImages?: RefImage[]): Promise<void> => {
     if ((!request.trim() && !componentIds.length) || busyRef.current || terminalRunning.current) return;
+    // Sending a message means the reader wants to see the reply: follow the chat again even after scrolling up.
+    followChat.current = true;
     const command = runtimeCommand(request) ?? shellIntent(request);
     if (command && !chain.length && !componentIds.length) { await terminalAction.current?.(command); return; }
     if (componentIds.length && allAgents.find(a => a.id === agentToRun)?.mode === "report") agentToRun = "builder";

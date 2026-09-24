@@ -256,15 +256,24 @@ export const openaiProvider: AIProvider = {
   async generateWithTools(model, input) {
     const client = openai();
     const reasoning = /^(gpt-5|gpt-6|o\d)/.test(model);
-    const completion = await client.chat.completions.create({
+    const request = {
       model,
       messages: openaiToolMessages(input.system, input.turns),
       tools: input.tools.map((t) => ({ type: "function" as const, function: { name: t.name, description: t.description, parameters: t.parameters } })),
       max_completion_tokens: outputTokenLimit(model, input.maxOutput ?? 16000, input.effort, reasoning),
-      // Chat Completions rejects function tools together with reasoning on GPT-5.6/6 ("set reasoning_effort to
-      // 'none'"); the step-by-step tool loop supplies the deliberation instead. Reasoning with tools needs /v1/responses.
-      ...(reasoning ? { reasoning_effort: "none" } : {}),
-    }, { signal: input.signal });
+    };
+    // Reasoning with function tools differs per model on Chat Completions: GPT-6 Astra takes a level, GPT-5.6 Terra
+    // wants 'none', older models reject the field. A 400 about reasoning_effort moves to the next variant once.
+    const variants: (Record<string, unknown>)[] = reasoning ? [...(input.effort ? [{ reasoning_effort: input.effort }] : []), { reasoning_effort: "none" }, {}] : [{}];
+    let completion!: OpenAI.ChatCompletion;
+    for (let i = 0; i < variants.length; i++) {
+      try { completion = await client.chat.completions.create({ ...request, ...variants[i] } as OpenAI.ChatCompletionCreateParamsNonStreaming, { signal: input.signal }); break; }
+      catch (e) {
+        const err = e as { status?: number; message?: string };
+        if (err?.status === 400 && /reasoning_effort/i.test(err.message ?? "") && i < variants.length - 1) continue;
+        throw e;
+      }
+    }
     const choice = completion.choices[0];
     const message = choice?.message;
     const toolCalls = (message?.tool_calls ?? []).flatMap((call) => {
