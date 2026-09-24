@@ -22,8 +22,10 @@ const PAUSE_MS = 10 * 60 * 1000;
 function isAccountOrCapacityError(e: unknown) {
   const err = e as { status?: number; message?: string };
   const msg = (err?.message ?? "").toLowerCase();
+  // An error raised mid-stream carries no HTTP status (the account ran dry while the model was thinking),
+  // so the message text decides as well.
   return err?.status === 401 || err?.status === 402 || err?.status === 403 || err?.status === 429 || err?.status === 503 || err?.status === 529 ||
-    (err?.status === 400 && /credit balance|billing|quota/.test(msg));
+    /credit balance|billing|insufficient_quota|exceeded your current quota|overloaded_error|rate_limit_error|authentication_error|permission_error/.test(msg);
 }
 
 /**

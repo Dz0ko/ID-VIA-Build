@@ -2,6 +2,7 @@ import { db } from "./db";
 import { recordPlatformError } from "./platform-errors";
 import { redactIncidentText } from "./platform-error-details";
 import { appUrl, enqueueEmail } from "./email";
+import { dispatchEmails } from "./email-dispatch";
 
 export type ProviderId = "anthropic" | "openai";
 export type ProviderOutage = "billing" | "auth" | "capacity";
@@ -53,6 +54,8 @@ export async function reportProviderOutage(provider: ProviderId, kind: ProviderO
     await db.$transaction(async tx => {
       for (const admin of admins) await enqueueEmail(tx, { eventKey: `provider-outage:${provider}:${kind}:${bucket}:${admin.id}`, userId: admin.id, kind: "alert", subject, body, ctaLabel: "Open Platform errors", ctaUrl: appUrl("/admin/errors") });
     });
+    // Send now rather than at the next daily cron: an empty account is an alert, not a newsletter.
+    dispatchEmails();
   } catch (cause) {
     console.error("[provider-health] Could not record provider outage", provider, kind, cause instanceof Error ? cause.message : cause);
   }
