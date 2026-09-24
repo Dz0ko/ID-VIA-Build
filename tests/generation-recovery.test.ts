@@ -35,14 +35,17 @@ test("the product brief survives clarification, reload and a bare technology rep
     const asked = JSON.parse((await db.project.findUniqueOrThrow({ where: { id: project.id } })).memory!);
     assert.ok(asked.pendingBuildRequest.includes("STACK CHOICE: HTML + CSS + JavaScript")); assert.equal(asked.pendingQuality.length, 2);
     assert.equal(await db.creditLedger.count({ where: { userId: owner.id } }), 0);
-    await runAgent({ ...options, request: "QUALITY CHOICE: xhigh" });
+    // An older tab wraps the answer as a technology choice; it is still the quality answer, never the stack.
+    await runAgent({ ...options, request: `${brief}\n\nSTACK CHOICE: QUALITY CHOICE: xhigh` });
     assert.ok(inputs[0].messages.at(-1)!.content.includes(brief));
     assert.ok(inputs[0].messages.at(-1)!.content.includes("STACK CHOICE: HTML + CSS + JavaScript"));
+    assert.ok(!inputs[0].messages.at(-1)!.content.includes("QUALITY CHOICE"));
     assert.equal(inputs[0].effort, "high"); // GPT-6 Astra stays at high even in best-quality mode
     const saved = await db.project.findUniqueOrThrow({ where: { id: project.id } });
     assert.equal(JSON.parse(saved.memory!).pendingBuildRequest, undefined);
     assert.equal(JSON.parse(saved.memory!).pendingQuality, undefined);
     assert.equal(JSON.parse(saved.memory!).quality, "xhigh");
+    assert.equal(JSON.parse(saved.memory!).stack, "HTML + CSS + JavaScript");
     // Changing the mode later is free and needs no build.
     assert.equal((await runAgent({ ...options, request: "balanced quality" })).mode, "clarification");
     assert.equal(JSON.parse((await db.project.findUniqueOrThrow({ where: { id: project.id } })).memory!).quality, "high");

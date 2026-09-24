@@ -333,7 +333,9 @@ export function Workspace(p: WorkspaceProps) {
       if (!completed && !clarified) throw new Error("The connection ended before the agent finished. Please try again.");
       if (rewrote) await runAuditRequest(false);
       setStream("");
-      return completed;
+      // A question from the agent ends this turn cleanly; the server keeps the pending request, so the
+      // stack wrapper must not be restored or the next answer would arrive as a technology choice.
+      return completed ? "done" : clarified ? "clarified" : false;
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Failed";
       setError(msg); log(`✗ ${msg}`, "err"); setStream("");
@@ -363,9 +365,10 @@ export function Workspace(p: WorkspaceProps) {
     setQualityChoices(null);
     const imgs = importImages ?? images; setImages([]);
     for (const [i, id] of [agentToRun, ...chain].entries()) {
-      const ok = await runOne(effectiveRequest, id, i === 0 ? imgs : []);
-      if (ok) { setComponentIds([]); if (params.get("from") === "import") void clearImportHandoff(p.project.id).catch(() => {}); }
-      if (!ok) { if (pendingStackRequest) setPendingStackRequest(pendingStackRequest); setInput((current) => current || request); if (i === 0) setImages(imgs); break; }
+      const outcome = await runOne(effectiveRequest, id, i === 0 ? imgs : []);
+      if (outcome === "done") { setComponentIds([]); if (params.get("from") === "import") void clearImportHandoff(p.project.id).catch(() => {}); }
+      if (outcome === "clarified") { setComponentIds([]); break; }
+      if (!outcome) { if (pendingStackRequest) setPendingStackRequest(pendingStackRequest); setInput((current) => current || request); if (i === 0) setImages(imgs); break; }
     }
   }, [agentId, images, pendingStackRequest, runOne, componentIds, allAgents, params, p.project.id]);
 

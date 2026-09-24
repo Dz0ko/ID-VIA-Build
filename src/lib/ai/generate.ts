@@ -119,7 +119,9 @@ async function runAgentLocked(opts: RunOptions, assertActive: () => Promise<void
     opts = { ...opts, request: `${pendingBrief}\n\nSTACK CHOICE: ${opts.request.replace(/^STACK CHOICE:\s*/i, "")}` };
   }
   // Quality mode: chosen once per project (after the technology), remembered, changeable in chat at no cost.
-  const qualityReply = agent.mode === "rewrite" ? parseQualityReply(opts.request) : null;
+  // A quality answer wrapped as a technology choice by an older client tab is still a quality answer.
+  const wrappedChoice = opts.request.match(/STACK CHOICE:\s*([^\n]+)\s*$/i)?.[1];
+  const qualityReply = agent.mode === "rewrite" ? parseQualityReply(opts.request) ?? (wrappedChoice ? parseQualityReply(wrappedChoice) : null) : null;
   if (qualityReply) {
     memory = { ...memory, quality: qualityReply, pendingQuality: undefined };
     if (!hasContent && pendingBrief) {
