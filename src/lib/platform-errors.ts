@@ -29,8 +29,9 @@ export async function recordPlatformError(error: unknown, context: IncidentConte
     const data = { source: context.source.slice(0, 60), ...diagnosis, steps: JSON.stringify(diagnosis.steps), message: safeMessage, stack: stack || null, userId: context.userId, projectId: context.projectId, runId: context.runId, route, release: process.env.VERCEL_GIT_COMMIT_SHA?.slice(0, 40), lastSeenAt: now };
     const row = await db.$transaction(async tx => {
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`incident:${fingerprint}`}))`;
-      const previous = await tx.platformIncident.findUnique({ where: { fingerprint }, select: { status: true } });
-      return tx.platformIncident.upsert({ where: { fingerprint }, create: { fingerprint, ...data }, update: { ...data, occurrences: { increment: 1 }, revision: { increment: 1 }, ...(previous?.status === "RESOLVED" ? { status: "NEW", resolvedAt: null } : {}) }, select: { id: true } });
+      const previous = await tx.platformIncident.findUnique({ where: { fingerprint }, select: { status: true, lastSeenAt: true } });
+      const lastSeenAt = previous && previous.lastSeenAt > now ? previous.lastSeenAt : now;
+      return tx.platformIncident.upsert({ where: { fingerprint }, create: { fingerprint, ...data, firstSeenAt: now }, update: { ...data, lastSeenAt, occurrences: { increment: 1 }, revision: { increment: 1 }, ...(previous?.status === "RESOLVED" ? { status: "NEW", resolvedAt: null } : {}) }, select: { id: true } });
     }, { maxWait: 1500, timeout: 3000 });
     if (error && typeof error === "object") recorded.add(error);
     return row.id;

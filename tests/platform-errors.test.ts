@@ -33,6 +33,7 @@ test("incidents aggregate concurrent repeats, isolate projects and reopen on rec
   const ids = await Promise.all(Array.from({ length: 3 }, () => recordPlatformError(new Error("JavaScript heap out of memory"), context)));
   assert.ok(ids.every(Boolean)); assert.equal(new Set(ids).size, 1);
   const row = await db.platformIncident.findUniqueOrThrow({ where: { id: ids[0]! } });
+  assert.ok(row.firstSeenAt <= row.lastSeenAt);
   assert.equal(row.occurrences, 3); assert.equal(row.revision, 3); assert.equal(row.code, "RUNTIME_MEMORY");
   assert.notEqual(await recordPlatformError(new Error("JavaScript heap out of memory"), { ...context, projectId: other.id }), row.id);
   await db.platformIncident.update({ where: { id: row.id }, data: { status: "RESOLVED", resolvedAt: new Date() } });
