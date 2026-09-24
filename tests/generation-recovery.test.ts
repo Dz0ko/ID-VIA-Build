@@ -303,3 +303,65 @@ test('file-read requests stay inside the project and preserve a single charged o
   const ledger=await db.creditLedger.findMany({where:{projectId:project.id}});assert.equal(ledger.length,1);assert.equal(JSON.parse(ledger[0].meta!).fileReads,1);
  }finally{PROVIDERS.openai.generate=generate;PROVIDERS.openai.available=available}
 });
+
+test("a multi-file build the limit cuts short keeps its finished files and resumes in the next part", async () => {
+  const { owner, project } = await fixture();
+  await db.project.update({ where: { id: project.id }, data: { memory: JSON.stringify({ stack: "Node.js + TypeScript", quality: "high" }) } });
+  const brief = "Build a complete clinic booking platform with patient accounts, appointment scheduling and an admin dashboard";
+  const options = { userId: owner.id, projectId: project.id, plan: "MAX" as const, preferProvider: "openai" as const };
+  const generate = PROVIDERS.openai.generate, available = PROVIDERS.openai.available;
+  const inputs: GenerateInput[] = [];
+  let call = 0;
+  PROVIDERS.openai.available = () => true;
+  PROVIDERS.openai.generate = async (_model, input) => {
+    inputs.push(input); call++;
+    if (call === 1) {
+      // The output limit stops the model in the middle of the third file.
+      const text = '<<<FILE /package.json>>>\n{"name":"clinic","version":"1.0.0"}\n<<<END>>>\n<<<FILE /src/server.ts>>>\nexport const app = 1;\n<<<END>>>\n<<<FILE /src/routes/appointments.ts>>>\nexport function book(';
+      input.onText?.(text);
+      return { text, stopReason: "length", model: "gpt-6-astra", provider: "openai", inputTokens: 5000, outputTokens: 30000 };
+    }
+    if (call === 2) {
+      // The time budget runs out while part 2 streams; the SDK throws once the signal aborts.
+      input.onText?.('<<<KEEP /package.json>>>\n<<<KEEP /src/server.ts>>>\n<<<FILE /src/routes/appointments.ts>>>\nexport function book() { return true; }\n<<<END>>>\n<<<FILE /src/routes/admin.ts>>>\nexport const admin = ');
+      await new Promise<void>(resolve => input.signal!.addEventListener("abort", () => resolve(), { once: true }));
+      throw Object.assign(new Error("Request was aborted."), { name: "AbortError" });
+    }
+    const text = '<<<KEEP /package.json>>>\n<<<KEEP /src/server.ts>>>\n<<<KEEP /src/routes/appointments.ts>>>\n<<<FILE /src/routes/admin.ts>>>\nexport const admin = true;\n<<<END>>>\n<<<NOTE>>> Finished the admin routes; the project is complete. <<<END NOTE>>>';
+    input.onText?.(text);
+    return { text, stopReason: "stop", model: "gpt-6-astra", provider: "openai", inputTokens: 6000, outputTokens: 4000 };
+  };
+  try {
+    const events: { type: string; continuation?: { round: number; filesDone: number } }[] = [];
+    const first = await runAgent({ ...options, request: brief, askQuality: false, onEvent: e => events.push(e) });
+    assert.equal(first.mode, "rewrite");
+    assert.deepEqual("continuation" in first ? first.continuation : null, { round: 2, filesDone: 2 });
+    assert.deepEqual(events.find(e => e.type === "done")?.continuation, { round: 2, filesDone: 2 });
+    let saved = await db.project.findUniqueOrThrow({ where: { id: project.id }, include: { files: true, versions: true } });
+    assert.equal(saved.kind, "app"); assert.deepEqual(saved.files.map(f => f.path).sort(), ["/package.json", "/src/server.ts"]);
+    let memory = JSON.parse(saved.memory!); assert.equal(memory.pendingContinuation.round, 2); assert.equal(memory.pendingContinuation.brief, brief);
+    assert.equal(saved.versions.length, 1); assert.match(saved.versions[0].message, /part 1/);
+    assert.equal((await db.agentRun.findFirstOrThrow({ where: { projectId: project.id } })).status, "DONE");
+    // Part 2 runs out of time mid-stream; its finished file is still kept and the build continues.
+    const second = await runAgent({ ...options, request: "CONTINUE BUILD", budgetMs: 1500 });
+    assert.equal("continuation" in second ? second.continuation?.round : null, 3);
+    assert.match(inputs[1].system, /BUILD CONTINUATION \(part 2\)/); assert.match(inputs[1].system, /\/src\/server\.ts/);
+    assert.ok(inputs[1].messages.at(-1)!.content.includes("<<<FILE /src/server.ts>>>")); // the saved files are the current source
+    assert.ok(inputs[1].messages.at(-1)!.content.includes(brief)); assert.ok(!inputs[1].messages.at(-1)!.content.includes("pendingContinuation"));
+    const afterSecond = await db.project.findUniqueOrThrow({ where: { id: project.id }, include: { files: true, messages: true } });
+    assert.deepEqual(afterSecond.files.map(f => f.path).sort(), ["/package.json", "/src/routes/appointments.ts", "/src/server.ts"]);
+    assert.ok(afterSecond.messages.some(m => m.role === "user" && /^Continue the build \(part 2/.test(m.content)));
+    // Part 3 completes the project and clears the continuation.
+    const third = await runAgent({ ...options, request: "CONTINUE BUILD" });
+    assert.equal(third.mode, "rewrite"); assert.equal("continuation" in third ? third.continuation : undefined, undefined);
+    saved = await db.project.findUniqueOrThrow({ where: { id: project.id }, include: { files: true, versions: true } });
+    assert.deepEqual(saved.files.map(f => f.path).sort(), ["/package.json", "/src/routes/admin.ts", "/src/routes/appointments.ts", "/src/server.ts"]);
+    memory = JSON.parse(saved.memory!); assert.equal(memory.pendingContinuation, undefined); assert.equal(memory.quality, "high");
+    assert.equal(saved.versions.length, 3);
+    // Every part is settled at cost; nothing stays on hold and nothing is refunded twice.
+    const ledgers = await db.creditLedger.findMany({ where: { userId: owner.id } });
+    assert.equal(ledgers.length, 3); assert.ok(ledgers.every(l => JSON.parse(l.meta!).settlement === "final"));
+    assert.equal((await db.user.findUniqueOrThrow({ where: { id: owner.id } })).credits, 100000 + ledgers.reduce((n, l) => n + l.delta, 0));
+    assert.equal(await db.platformIncident.count({ where: { projectId: project.id } }), 0);
+  } finally { PROVIDERS.openai.generate = generate; PROVIDERS.openai.available = available; }
+});

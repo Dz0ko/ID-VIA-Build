@@ -111,6 +111,31 @@ export function extractHtml(text: string): string {
   return t;
 }
 
+/**
+ * The complete files in a manifest the model did not finish (time limit or output limit): every closed
+ * <<<FILE>>> block and every <<<KEEP>>> of an existing file; the unfinished tail is dropped. Unsafe or
+ * duplicate paths and invalid JSON files are skipped rather than failing the salvage.
+ */
+export function salvageFileManifest(text: string, existing: { path: string; content: string }[] = []) {
+  const files = new Map<string, string>();
+  const re = /<<<FILE\s+([^\s>]+)\s*>>>\n?([\s\S]*?)\n?<<<END>>>/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(text))) {
+    const path = safeProjectPath(m[1]);
+    if (!path || files.has(path)) continue;
+    const content = m[2].replace(/^```[a-z]*\n?/i, "").replace(/\n?```$/, "");
+    if (/\.json$/i.test(path) && !/(?:^|\/)(?:tsconfig|jsconfig)(?:\.[^/]*)?\.json$/i.test(path)) { try { JSON.parse(content); } catch { continue; } }
+    files.set(path, content);
+  }
+  const keepRe = /<<<KEEP\s+([^\s>]+)\s*>>>/g;
+  while ((m = keepRe.exec(text))) {
+    const path = safeProjectPath(m[1]);
+    const prev = path ? existing.find((f) => f.path === path) : null;
+    if (prev && !files.has(prev.path)) files.set(prev.path, prev.content);
+  }
+  return Array.from(files, ([path, content]) => ({ path, content }));
+}
+
 /** Parse the <<<FILE path>>> … <<<END>>> manifest. */
 export function parseFileManifest(text: string, existing: { path: string; content: string }[] = []) {
   const files = new Map<string, string>();

@@ -17,6 +17,7 @@ import {
   extractHtml,
   extractNote,
   parseFileManifest,
+  salvageFileManifest,
 } from "./prompts";
 import { identityPrompt, personaFor } from "../personas";
 import { protectProjectNavigation } from "../project-navigation";
@@ -48,6 +49,19 @@ export interface RunOptions {
   budgetMs?: number;
   /** Interactive chat asks for the project's quality mode before the first build; automated callers pass false. */
   askQuality?: boolean;
+  /** Set by runAgent: fires when the model time budget is spent, as opposed to the client going away. */
+  timeoutSignal?: AbortSignal;
+}
+
+/** The chat sends this to resume a multi-file build that the time limit split into parts. */
+export const CONTINUE_BUILD_REQUEST = "CONTINUE BUILD";
+/** A build is split into at most this many parts; beyond that the brief is too large for one project. */
+export const MAX_BUILD_PARTS = 4;
+type PendingContinuation = { brief: string; done: string[]; round: number };
+type PartialBuild = { mode: "rewrite"; files: { path: string; content: string }[]; versionNumber: number; credits: number; continuation: { round: number; filesDone: number } };
+function pendingContinuationOf(memory: Record<string, unknown>): PendingContinuation | null {
+  const value = memory.pendingContinuation as Partial<PendingContinuation> | undefined;
+  return value && typeof value.brief === "string" && Array.isArray(value.done) && typeof value.round === "number" ? { brief: value.brief, done: value.done.filter((p): p is string => typeof p === "string"), round: value.round } : null;
 }
 
 /**
@@ -81,7 +95,7 @@ export type RunEvent =
   | { type: "progress"; phase: "thinking" | "writing" | "checking" | "saving"; elapsedMs: number; chars: number; message: string }
   | { type: "retry"; message: string }
   | { type: "reading"; files: string[] }
-  | { type: "done"; mode: "rewrite" | "report"; versionNumber?: number; html?: string; files?: { path: string; content: string }[]; report?: string; creditsUsed: number; note?: string }
+  | { type: "done"; mode: "rewrite" | "report"; versionNumber?: number; html?: string; files?: { path: string; content: string }[]; report?: string; creditsUsed: number; note?: string; continuation?: { round: number; filesDone: number } }
   | { type: "error"; message: string; code?: "INSUFFICIENT_CREDITS"; needed?: number; have?: number }
   | { type: "clarification"; request: string; message: string; kind?: "stack" | "quality" | "question"; choices?: QualityChoice[] };
 
@@ -96,7 +110,7 @@ export async function runAgent(opts: RunOptions) {
   const budgetMs = Math.min(opts.budgetMs ?? GENERATION_TIMEOUT_MS, GENERATION_TIMEOUT_MS);
   const timeout = AbortSignal.timeout(budgetMs);
   const signal = opts.signal ? AbortSignal.any([opts.signal, timeout]) : timeout;
-  try { return await runAgentLocked({ ...opts, signal, budgetMs }, lease.assertActive); }
+  try { return await runAgentLocked({ ...opts, signal, budgetMs, timeoutSignal: timeout }, lease.assertActive); }
   finally { await lease.release(); }
 }
 
@@ -115,6 +129,10 @@ async function runAgentLocked(opts: RunOptions, assertActive: () => Promise<void
   let memory: Record<string, unknown> = {};
   try { memory = JSON.parse(project.memory || "{}"); } catch { /* ignore malformed project memory */ }
   const pendingBrief = typeof memory.pendingBuildRequest === "string" ? memory.pendingBuildRequest : null;
+  // A build the time limit split into parts resumes from the saved files with the original brief.
+  const continuation = agent.mode === "rewrite" && isApp && hasContent && new RegExp(`^${CONTINUE_BUILD_REQUEST}$`, "i").test(opts.request.trim()) ? pendingContinuationOf(memory) : null;
+  const displayRequest = continuation ? `Continue the build (part ${continuation.round} of the project)` : opts.request;
+  if (continuation) opts = { ...opts, request: continuation.brief };
   if (!hasContent && pendingBrief && isStackOnlyReply(opts.request)) {
     opts = { ...opts, request: `${pendingBrief}\n\nSTACK CHOICE: ${opts.request.replace(/^STACK CHOICE:\s*/i, "")}` };
   }
@@ -169,13 +187,15 @@ async function runAgentLocked(opts: RunOptions, assertActive: () => Promise<void
   const reactStack = isReactSandboxStack(stack);
   // A new overall look for a website re-emits the whole document; everything else is exact edits.
   const overhaul = agent.mode === "rewrite" && hasContent && !isApp && !requestsProjectReplacement(opts.request) && requestsVisualOverhaul(opts.request);
-  const targetedEdit = agent.mode === "rewrite" && hasContent && !requestsProjectReplacement(opts.request) && !overhaul;
+  const targetedEdit = agent.mode === "rewrite" && hasContent && !requestsProjectReplacement(opts.request) && !overhaul && !continuation;
   const targetedHtml = targetedEdit && !isApp;
   const targetedFiles = targetedEdit && isApp;
   const fileContext = targetedFiles ? editFileContext(sourceFiles,opts.request) : null;
   const readableFiles = new Set(fileContext?.selected.map(f=>f.path));
   // Pending prompts are durable until a result is saved successfully.
-  const savedMemory = { ...memory, stack, quality, pendingBuildRequest: undefined, pendingQuality: undefined, ...(!preserveStack && isProductBrief(opts.request) ? { brief: opts.request } : {}) };
+  const savedMemory = { ...memory, stack, quality, pendingBuildRequest: undefined, pendingQuality: undefined, pendingContinuation: undefined, ...(!preserveStack && isProductBrief(opts.request) ? { brief: opts.request } : {}) };
+  // Bookkeeping never reaches the model's memory block.
+  const promptMemory = { ...memory, pendingBuildRequest: undefined, pendingQuality: undefined, pendingContinuation: undefined };
 
   const taskClass: TaskClass = agent.mode === "report" ? "small" : classifyTask(opts.request, hasContent);
   if (agent.mode === "rewrite" && !hasContent && memory.quality === undefined && opts.askQuality !== false) {
@@ -250,9 +270,12 @@ async function runAgentLocked(opts: RunOptions, assertActive: () => Promise<void
   const effort = resolved.config.effort && EFFORT_RANK[resolved.config.effort] > EFFORT_RANK[capEffort] ? capEffort : resolved.config.effort;
 
   let run: { id: string } | undefined;
+  // What the model has streamed so far: the finished files in it are kept when the time limit stops a build.
+  let streamedText = "", promptChars = 0;
+  let salvagePartialBuild: (() => Promise<PartialBuild | null>) | null = null;
   try {
     run = await db.agentRun.create({
-      data: { userId: opts.userId, projectId: project.id, agentId: agent.id, status: "RUNNING", task: opts.request, model: resolved.config.model, creditsUsed: credits, ledgerId },
+      data: { userId: opts.userId, projectId: project.id, agentId: agent.id, status: "RUNNING", task: displayRequest, model: resolved.config.model, creditsUsed: credits, ledgerId },
     });
 
     opts.onEvent?.({ type: "meta", agent: agent.id, tier, model: resolved.config.model, provider: resolved.provider.id, credits, taskClass, fallback: resolved.fallback, mode: agent.mode });
@@ -271,10 +294,10 @@ async function runAgentLocked(opts: RunOptions, assertActive: () => Promise<void
         ? ""
         : `\n\nSELECTED STACK: ${stack}\nThis is a real multi-file ${stack} project, not a React mock. Follow the selected language/framework. Return every required source, configuration, dependency, environment example, migration and test file needed for the requested feature in the <<<FILE ...>>> format. Do not force /App.tsx or React files when the selected stack does not use them.`;
       system = `${identity}\n\n${agent.id === "builder" ? APP_BUILDER_SYSTEM : `${APP_BUILDER_SYSTEM}\n\nSPECIALIST ROLE:\n${agent.systemPrompt}`}${stackRules}`;
-      userPrompt = `${fileContext?.text ?? buildAppUserPrompt({ request: opts.request, files: sourceFiles.length ? sourceFiles : sourceHtml.trim() ? [{ path: "/index.html", content: sourceHtml }] : [], memory })}\n\nTARGET STACK: ${stack}`;
+      userPrompt = `${fileContext?.text ?? buildAppUserPrompt({ request: opts.request, files: sourceFiles.length ? sourceFiles : sourceHtml.trim() ? [{ path: "/index.html", content: sourceHtml }] : [], memory: promptMemory })}\n\nTARGET STACK: ${stack}`;
     } else {
       system = `${identity}\n\n${agent.id === "builder" ? BUILDER_SYSTEM : agent.systemPrompt}`;
-      userPrompt = buildUserPrompt({ request: opts.request, html: sourceHtml, memory });
+      userPrompt = buildUserPrompt({ request: opts.request, html: sourceHtml, memory: promptMemory });
     }
     if (debuggingTask) {
       const findings = auditProject(project);
@@ -285,6 +308,11 @@ async function runAgentLocked(opts: RunOptions, assertActive: () => Promise<void
     }
     if (agent.mode === "rewrite" && isProductBrief(opts.request)) system += "\nPRODUCT BRIEF PRIORITY: The latest request defines the intended product. Implement its domain, audience, sections, palette and interactions. Replace unrelated branding, sample products and workflows from the old project, even when older memory or conversation says otherwise. Do not reduce this whole-product request to a copy edit. Preserve only existing features that remain relevant. Do not invent a different SaaS or brand direction.";
     if (isApp && agent.mode === "rewrite") system += "\n\nPREVIEW RUNTIME: Projects run in isolated Linux VMs with 4 GiB RAM, Node 24, Python 3.11, Java 17, Maven/Gradle, Go, Rust, PHP 8.2/Composer, Ruby 3.1, and .NET 8/10. Choose compatible dependency versions. Use 0.0.0.0 and port 3000 for web servers. The runtime supplies IDAEVIA_PREVIEW_HOST and IDAEVIA_PREVIEW_URL; framework allowed-hosts and trusted-origin settings (especially Django, Rails and Angular) must include that exact host/URL when present, alongside production settings. Never disable host validation globally. For custom entry points or monorepos include .idaevia/runtime.json with string build and start commands, an optional setup command for missing toolchains, and port (3000 for HTTP or null for terminal/native apps). Build must compile/check the actual source and exit nonzero on failure. Start must keep every required service alive, bind 0.0.0.0 and proxy backend routes through the frontend port for mixed stacks. Do not leave required servers as a comment or instructions only. For languages outside the preinstalled toolchain, provide a reproducible noninteractive Linux setup command with a pinned version. For native platform-only SDKs, explain the required external build environment. Include deployment config matching the framework (never assume Vite/dist for Next.js or a backend); for server/container hosting include a production Dockerfile and setup instructions. Never run destructive database resets or migrate a production database automatically. Native Apple/Android interfaces need their platform SDKs; do not promise a browser preview of a native app.";
+    if (isApp && agent.mode === "rewrite" && !targetedFiles) {
+      // A long build may be split by the time limit: finished files are kept and the rest is written in the next part.
+      system += "\n\nWRITE ORDER: Write files in dependency order (package/config first, then shared code, then features, then tests), each file complete before the next begins, without placeholder files. If the output is long, the platform saves every finished file and continues with the remaining ones in another pass.";
+      if (continuation) system += `\n\nBUILD CONTINUATION (part ${continuation.round}): The previous part of this build ran out of time after writing these complete files: ${continuation.done.join(", ")}. Return <<<KEEP /path>>> for each of them (rewrite one only if it must change for the project to work) and write ONLY the remaining files the brief still needs, so the whole project is complete and runs. Do not repeat kept files. Finish with the NOTE line.`;
+    }
     system += `\n\n${ANSWER_FALLBACK}`;
     if (overhaul) system += "\nWHOLE-SITE RESTYLE: The latest request asks for a new overall look. Apply one consistent modern, professional visual system to every section: typography scale, palette, spacing rhythm, radius, shadows, buttons, cards, section backgrounds and hover states. Keep every section, all text content, links, images, ids, scripts and working interactions; add or remove no features. Return the complete updated HTML document at about the same length as the current one, without verbose comments.";
     if (targetedEdit) system += "\nSCOPE OVERRIDE: The latest user request is the complete authorization for this change. Broader specialist instructions are expertise, not permission to change other parts. Do not fix unrelated audit findings, rewrite all copy, restyle other sections, replace branding or add features unless requested. Inspect the supplied current source; preserve all unrelated source exactly. Ask a focused clarification when a target/replacement is ambiguous. Never claim build/test success without execution evidence.";
@@ -301,11 +329,11 @@ async function runAgentLocked(opts: RunOptions, assertActive: () => Promise<void
     userPrompt += `\n\n${assets.instructions}`;
 
     await db.message.create({
-      data: { projectId: project.id, role: "user", content: opts.images?.length ? `${opts.request}\n[${opts.images.length} image(s) attached]` : opts.request, agentId: agent.id },
+      data: { projectId: project.id, role: "user", content: opts.images?.length ? `${displayRequest}\n[${opts.images.length} image(s) attached]` : displayRequest, agentId: agent.id },
     });
     // The specialist introduces itself and says what it is about to do.
     const persona = personaFor(agent.id);
-    const intro = conversation ? "" : targetedEdit ? `${agent.name} here. I’ll locate the requested change in your current project and preserve unrelated content, design and functionality.` : persona.intro(opts.request);
+    const intro = conversation ? "" : continuation ? `${agent.name} here. Continuing part ${continuation.round} of the build: ${continuation.done.length} files are done and kept; I’m writing the remaining files now.` : targetedEdit ? `${agent.name} here. I’ll locate the requested change in your current project and preserve unrelated content, design and functionality.` : persona.intro(opts.request);
     if (intro) await db.message.create({ data: { projectId: project.id, role: "assistant", content: intro, agentId: agent.id } });
     if (intro) opts.onEvent?.({ type: "agent", agent: agent.id, name: agent.name, profession: persona.profession, text: intro });
 
@@ -315,10 +343,12 @@ async function runAgentLocked(opts: RunOptions, assertActive: () => Promise<void
       images: opts.images,
       maxOutput,
       effort,
-      onText: (t: string) => { streamedChars += t.length; opts.onEvent?.({ type: "delta", text: t }); },
+      onText: (t: string) => { streamedChars += t.length; streamedText += t; opts.onEvent?.({ type: "delta", text: t }); },
       signal: opts.signal,
     };
     let costUsd = 0, inputTokens = 0, outputTokens = 0, attempts = 0, readCostUsd = 0, lastAttemptMs = 0, streamedChars = 0;
+    streamedText = "";
+    promptChars = system.length + userPrompt.length + history.reduce((n, m) => n + Math.min(m.content.length, 2500), 0);
     const startedAt = Date.now();
     const budgetMs = opts.budgetMs ?? GENERATION_TIMEOUT_MS;
     const progress = (phase: "thinking" | "writing" | "checking" | "saving") => {
@@ -329,7 +359,7 @@ async function runAgentLocked(opts: RunOptions, assertActive: () => Promise<void
       opts.signal?.throwIfAborted();
       await assertActive();
       const attemptStarted = Date.now();
-      streamedChars = 0;
+      streamedChars = 0; streamedText = "";
       progress("thinking");
       const heartbeat = setInterval(() => progress(streamedChars ? "writing" : "thinking"), PROGRESS_INTERVAL_MS);
       let response;
@@ -346,6 +376,40 @@ async function runAgentLocked(opts: RunOptions, assertActive: () => Promise<void
       outputTokens += response.outputTokens;
       await db.agentRun.update({ where: { id: run!.id }, data: { costUsd, model: response.model, inputTokens, outputTokens } });
       return response;
+    };
+    /**
+     * A multi-file build the time or output limit stopped is not thrown away: every finished file is saved as
+     * a numbered part, charged at cost, and the chat resumes the build from those files with the original brief.
+     */
+    salvagePartialBuild = async () => {
+      if (!(isApp && agent.mode === "rewrite" && !targetedFiles && !debuggingTask) || !run) return null;
+      const round = continuation?.round ?? 1;
+      const salvaged = salvageFileManifest(streamedText, sourceFiles).map(f => ({ ...f, content: f.content.startsWith(BINARY_PREFIX) ? f.content : assets.restore(f.content) }));
+      const originals = new Map(project.files.map(f => [f.path, f.content]));
+      const fresh = salvaged.filter(f => originals.get(f.path) !== f.content);
+      // Nothing finished, or too many parts already: the ordinary failure path refunds this run.
+      if (!fresh.length || round >= MAX_BUILD_PARTS) return null;
+      const files = [...project.files.filter(f => !salvaged.some(s => s.path === f.path)).map(f => ({ path: f.path, content: f.content })), ...salvaged];
+      const usedInput = inputTokens || Math.ceil(promptChars / 4), usedOutput = outputTokens || Math.ceil(streamedText.length / 4);
+      const partCostUsd = readCostUsd + (resolved.provider.id === "mock" ? 0 : estimateUsd(resolved.config.model, { inputTokens: usedInput, outputTokens: usedOutput }));
+      progress("saving");
+      const creditsCharged = await finalizeCredits({ userId: opts.userId, ledgerId, hold: est.hold, byClassCredits: 0, costUsd: partCostUsd, k: est.k, purchasedHeld: purchasedSpent, note: `${noteBase} · part ${round} of the build · ${Math.round(usedOutput / 1000)}k tokens generated`, meta: { ...meta, model: resolved.config.model, inputTokens: usedInput, outputTokens: usedOutput, attempts, part: round, costUsd: Number(partCostUsd.toFixed(4)) } });
+      const last = await db.version.findFirst({ where: { projectId: project.id }, orderBy: { number: "desc" }, select: { number: true } });
+      const number = (last?.number ?? 0) + 1;
+      const checked = auditProject({ kind: "app", html: "", files });
+      const note = `Part ${round} saved: ${files.length} file${files.length === 1 ? "" : "s"} so far (${fresh.slice(0, 6).map(f => f.path).join(", ")}${fresh.length > 6 ? ", …" : ""}). The generation time limit stopped this part; the remaining files follow in part ${round + 1}.`;
+      const pendingContinuation: PendingContinuation = { brief: opts.request, done: files.map(f => f.path), round: round + 1 };
+      await db.$transaction([
+        db.projectFile.deleteMany({ where: { projectId: project.id, path: { notIn: files.map(f => f.path) } } }),
+        ...fresh.map(f => db.projectFile.upsert({ where: { projectId_path: { projectId: project.id, path: f.path } }, create: { projectId: project.id, path: f.path, content: f.content }, update: { content: f.content } })),
+        db.project.update({ where: { id: project.id }, data: { kind: "app", health: JSON.stringify(checked), memory: JSON.stringify({ ...savedMemory, pendingContinuation }) } }),
+        db.version.create({ data: { projectId: project.id, number, html: JSON.stringify(files), message: `${agent.name}: part ${round} · ${displayRequest.slice(0, 100)}` } }),
+        db.message.create({ data: { projectId: project.id, role: "assistant", content: note, agentId: agent.id, model: resolved.config.model, creditsUsed: creditsCharged } }),
+        db.agentRun.update({ where: { id: run.id }, data: { status: "DONE", finishedAt: new Date(), output: `v${number} (part ${round})`, model: resolved.config.model, inputTokens: usedInput, outputTokens: usedOutput, costUsd: partCostUsd, creditsUsed: creditsCharged } }),
+      ]);
+      const outcome = { round: round + 1, filesDone: files.length };
+      opts.onEvent?.({ type: "done", mode: "rewrite", versionNumber: number, files, creditsUsed: creditsCharged, note, continuation: outcome });
+      return { mode: "rewrite" as const, files, versionNumber: number, credits: creditsCharged, continuation: outcome };
     };
     let result = await attempt();
     progress("checking");
@@ -391,7 +455,10 @@ async function runAgentLocked(opts: RunOptions, assertActive: () => Promise<void
         if ((generatedHtml?.length ?? 0) + (generatedFiles?.reduce((n,f)=>n+f.content.length,0) ?? 0) > 32_000_000) throw new Error("Model did not return a project within the source and image storage limit.");
         break;
       } catch (error) {
-        if (recovered || !(error instanceof Error) || !/^(?:Model (?:did not|output|returned|exceeded)|Requested source files)/.test(error.message)) throw error;
+        if (!(error instanceof Error)) throw error;
+        // A build cut short by the output or time limit keeps its finished files instead of starting over.
+        if (/truncated before completion|complete file manifest/.test(error.message)) { const partial = await salvagePartialBuild?.(); if (partial) return partial; }
+        if (recovered || !/^(?:Model (?:did not|output|returned|exceeded)|Requested source files)/.test(error.message)) throw error;
         // A repair that the time limit would stop anyway only delays the refund.
         if (budgetMs - (Date.now() - startedAt) < Math.max(RETRY_MIN_MS, lastAttemptMs)) throw error;
         recovered = true;
@@ -428,7 +495,7 @@ async function runAgentLocked(opts: RunOptions, assertActive: () => Promise<void
         db.projectFile.deleteMany({ where: { projectId: project.id, path: { notIn: files.map(f=>f.path) } } }),
         ...files.filter(f=>project.files.find(p=>p.path===f.path)?.content!==f.content).map((f) => db.projectFile.upsert({ where: { projectId_path: {projectId:project.id,path:f.path} }, create: { projectId: project.id, path: f.path, content: f.content }, update:{content:f.content} })),
         db.project.update({ where: { id: project.id }, data: { kind: "app", health: JSON.stringify(checked), memory: JSON.stringify(savedMemory) } }),
-        db.version.create({ data: { projectId: project.id, number, html: JSON.stringify(files), message: `${agent.name}: ${opts.request.slice(0, 120)}` } }),
+        db.version.create({ data: { projectId: project.id, number, html: JSON.stringify(files), message: `${agent.name}: ${displayRequest.slice(0, 120)}` } }),
         db.message.create({ data: { projectId: project.id, role: "assistant", content: noteApp, agentId: agent.id, model: result.model, creditsUsed: creditsCharged } }),
         db.agentRun.update({ where: { id: run.id }, data: { status: "DONE", finishedAt: new Date(), output: `v${number}`, ...usage } }),
       ]);
@@ -444,7 +511,7 @@ async function runAgentLocked(opts: RunOptions, assertActive: () => Promise<void
       const noteHtml = debuggingTask ? `Changes saved. ${auditSummary(checked)}` : extractNote(result.text) ?? persona.done(number);
       await db.$transaction([
         db.project.update({ where: { id: project.id }, data: { html, health: JSON.stringify(checked), memory: JSON.stringify(savedMemory) } }),
-        db.version.create({ data: { projectId: project.id, number, html, message: `${agent.name}: ${opts.request.slice(0, 120)}` } }),
+        db.version.create({ data: { projectId: project.id, number, html, message: `${agent.name}: ${displayRequest.slice(0, 120)}` } }),
         db.message.create({ data: { projectId: project.id, role: "assistant", content: noteHtml, agentId: agent.id, model: result.model, creditsUsed: creditsCharged } }),
         db.agentRun.update({ where: { id: run.id }, data: { status: "DONE", finishedAt: new Date(), output: `v${number}`, ...usage } }),
       ]);
@@ -459,6 +526,11 @@ async function runAgentLocked(opts: RunOptions, assertActive: () => Promise<void
     opts.onEvent?.({ type: "done", mode: "report", report: responseText, creditsUsed: creditsCharged });
     return { mode: "report" as const, report: responseText, credits: creditsCharged };
   } catch (err) {
+    // The model budget ran out mid-stream (not the user leaving): keep the finished files of a multi-file build.
+    if (opts.timeoutSignal?.aborted && salvagePartialBuild) {
+      try { const partial = await salvagePartialBuild(); if (partial) return partial; }
+      catch (cause) { console.error("[generate] Could not save the finished part of the build", cause instanceof Error ? cause.message : cause); }
+    }
     const message = friendlyAiError(err);
     await recordPlatformError(err, { source: "generation", userId: opts.userId, projectId: opts.projectId, runId: run?.id, details: `Provider: ${resolved.provider.id} · Model: ${resolved.config.model} · Agent: ${agent.id}` });
     // A failed or unusable generation delivers no result: return the entire current debit.

@@ -149,12 +149,21 @@ export function Workspace(p: WorkspaceProps) {
   const [elapsed, setElapsed] = useState(0);
   const [diffs, setDiffs] = useState<DiffFile[]>([]);
   const [pendingStackRequest, setPendingStackRequest] = useState<string | null>(() => {
-    try { const memory = JSON.parse(p.project.memory || "{}"); return typeof memory.pendingBuildRequest === "string" && !memory.pendingQuality ? memory.pendingBuildRequest : null; } catch { return null; }
+    try { const memory = JSON.parse(p.project.memory || "{}"); return typeof memory.pendingBuildRequest === "string" && !memory.pendingQuality && !(memory.stack && memory.quality) ? memory.pendingBuildRequest : null; } catch { return null; }
+  });
+  // Both questions are answered but the first build never finished: the brief is offered again as one click.
+  const [savedBrief, setSavedBrief] = useState<string | null>(() => {
+    try { const memory = JSON.parse(p.project.memory || "{}"); return typeof memory.pendingBuildRequest === "string" && !memory.pendingQuality && memory.stack && memory.quality ? memory.pendingBuildRequest : null; } catch { return null; }
   });
   // The quality-mode question (asked once per project after the technology) survives a reload via project memory.
   const [qualityChoices, setQualityChoices] = useState<QualityChoice[] | null>(() => {
     try { const pending = JSON.parse(p.project.memory || "{}").pendingQuality; return Array.isArray(pending) ? pending : null; } catch { return null; }
   });
+  // A multi-file build the time limit split into parts: the saved part count survives a reload via project memory.
+  const [buildContinuation, setBuildContinuation] = useState<{ round: number; filesDone: number } | null>(() => {
+    try { const pending = JSON.parse(p.project.memory || "{}").pendingContinuation; return pending && typeof pending.round === "number" && Array.isArray(pending.done) ? { round: pending.round, filesDone: pending.done.length } : null; } catch { return null; }
+  });
+  const continuationRef = useRef<{ round: number; filesDone: number } | null>(null);
   const [logs, setLogs] = useState<LogLine[]>([{ t: now(), text: "Workspace ready.", kind: "info" }]);
   const [runtimePreview, setRuntimePreview] = useState<{ url: string; source: string; kind?: "build" | "shell" } | null>(null);
   const runtimeSource = isApp ? JSON.stringify(files) : html;
@@ -321,7 +330,9 @@ export function Workspace(p: WorkspaceProps) {
               setVersions((v) => [{ id: `v${ev.versionNumber}`, number: ev.versionNumber, message: `${agentToRun}: ${request.slice(0, 120)}`, createdAt: new Date().toISOString() }, ...v]);
               setMessages((m) => [...m, { id: `a-${Date.now()}`, role: "assistant", content: ev.note ?? `Updated the ${isApp ? "app" : "project"}.`, agentId: busyRef.current ?? agentToRun, creditsUsed: ev.creditsUsed, model: null, createdAt: new Date().toISOString() }]);
               setView("preview");
-              log(`✓ Change saved (${ev.creditsUsed} credits)`, "ok");
+              setSavedBrief(null);
+              if (ev.continuation) { continuationRef.current = ev.continuation; setBuildContinuation(ev.continuation); log(`✓ Part saved (${ev.creditsUsed} credits) · ${ev.continuation.filesDone} files so far · continuing with part ${ev.continuation.round}`, "ok"); }
+              else { setBuildContinuation(null); log(`✓ Change saved (${ev.creditsUsed} credits)`, "ok"); }
             } else {
               setMessages((m) => [...m, { id: `a-${Date.now()}`, role: "assistant", content: ev.report, agentId: busyRef.current ?? agentToRun, creditsUsed: ev.creditsUsed, model: null, createdAt: new Date().toISOString() }]);
               log(`✓ ${agentToRun} report ready (${ev.creditsUsed} credits)`, "ok");
@@ -353,7 +364,7 @@ export function Workspace(p: WorkspaceProps) {
 
   useEffect(() => { terminalAction.current = term; });
 
-  const run = useCallback(async (request: string, agentToRun: string = agentId, chain: string[] = [], importImages?: RefImage[]) => {
+  const run = useCallback(async (request: string, agentToRun: string = agentId, chain: string[] = [], importImages?: RefImage[]): Promise<void> => {
     if ((!request.trim() && !componentIds.length) || busyRef.current || terminalRunning.current) return;
     const command = runtimeCommand(request) ?? shellIntent(request);
     if (command && !chain.length && !componentIds.length) { await terminalAction.current?.(command); return; }
@@ -370,6 +381,8 @@ export function Workspace(p: WorkspaceProps) {
       if (outcome === "clarified") { setComponentIds([]); break; }
       if (!outcome) { if (pendingStackRequest) setPendingStackRequest(pendingStackRequest); setInput((current) => current || request); if (i === 0) setImages(imgs); break; }
     }
+    // The time limit split the build: the next part starts by itself from the saved files.
+    if (continuationRef.current) { continuationRef.current = null; await run("CONTINUE BUILD", "builder"); }
   }, [agentId, images, pendingStackRequest, runOne, componentIds, allAgents, params, p.project.id]);
 
   useEffect(() => {
@@ -694,6 +707,14 @@ export function Workspace(p: WorkspaceProps) {
                   ))}
                   {pendingStackRequest && <StackSuggestions request={pendingStackRequest} kind={p.project.kind} disabled={!!busy} onChoose={choice => { void run(choice); }} onCustom={() => promptInput.current?.focus()} />}
                   {qualityChoices && !busy && <QualitySuggestions choices={qualityChoices} disabled={!!busy} onChoose={id => { void run(`QUALITY CHOICE: ${id}`); }} />}
+                  {savedBrief && !busy && !isApp && !html.trim() && <section aria-label="Saved brief" className="rounded-2xl border border-signal/40 bg-signal/10 p-4 text-sm text-fog">
+                    <p>Your brief, technology and quality mode are saved, but the first build did not finish. Start it again with one click; nothing was charged for the unfinished run.</p>
+                    <button type="button" className="btn btn-primary btn-sm mt-3" onClick={() => { void run(savedBrief, "builder"); }}>Build the project now</button>
+                  </section>}
+                  {buildContinuation && !busy && <section aria-label="Build saved in parts" className="rounded-2xl border border-signal/40 bg-signal/10 p-4 text-sm text-fog">
+                    <p>The generation time limit split this build into parts. {buildContinuation.filesDone} file{buildContinuation.filesDone === 1 ? "" : "s"} are saved; the remaining files are written in part {buildContinuation.round}.</p>
+                    <button type="button" className="btn btn-primary btn-sm mt-3" onClick={() => { void run("CONTINUE BUILD", "builder"); }}>Continue the build (part {buildContinuation.round})</button>
+                  </section>}
                   {busy && activity.length > 0 && <div className="rounded-2xl border border-graphite p-4 text-fog">
                     <div role="status" className="mb-3 flex items-center gap-2 text-sm text-signal-soft"><span className={`w-2 h-2 rounded-full ${busy ? "bg-signal pulse-dot" : "bg-signal-soft"}`} />{busy ? `${allAgents.find((x) => x.id === busy)?.name ?? busy} is working` : "Agent activity"}{busy && <span className="ml-auto font-mono text-xs text-ash" aria-label="Elapsed time">{`${Math.floor(elapsed / 60)}:${String(elapsed % 60).padStart(2, "0")}`}</span>}</div>
                     <div className="divide-y divide-graphite/60">
