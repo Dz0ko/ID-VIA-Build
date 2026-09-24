@@ -118,6 +118,10 @@ export function Workspace(p: WorkspaceProps) {
   // A failed build is repaired by the Debugger and rebuilt by itself, at most twice per click, so a preview opens without the user reading compiler output.
   const repairRounds = useRef(0);
   const autoRebuild = useRef(false);
+  // The repair loop continues while each round changes the failure; the same error twice in a row means the agent is stuck.
+  const MAX_REPAIR_ROUNDS = 5;
+  const lastFailure = useRef("");
+  const failureSignature = (log: string) => log.slice(-1200).replace(/\d+/g, "").replace(/\s+/g, " ").trim();
   // The memoized run callback reaches the current terminal function through a ref (term is redefined every render).
   const termRef = useRef<(cmd: string) => Promise<void>>(async () => {});
   termRef.current = term;
@@ -579,9 +583,11 @@ export function Workspace(p: WorkspaceProps) {
         const report = await refreshRuntime().catch(() => null); await refreshReleases().catch(() => {}); setTermBusy(false); terminalRunning.current = false; terminalAbort.current = null;
         if (cmd === "npm run build" && report?.status === "error" && report.origin === "platform") {
           log("✗ Platform problem (build environment, not your code). It has been reported to the platform team; try again in a minute.", "err");
-        } else if (cmd === "npm run build" && report?.status === "error" && report.current && repairRounds.current < 2 && !busyRef.current) {
-          repairRounds.current += 1; autoRebuild.current = true;
-          log(`Build failed · the Debugger is fixing it automatically (attempt ${repairRounds.current} of 2)…`);
+        } else if (cmd === "npm run build" && report?.status === "error" && report.current && !busyRef.current && repairRounds.current > 0 && failureSignature(report.log) === lastFailure.current) {
+          log("✗ The same error came back after the last fix, so automatic repair stopped. Open Problems to see it, or describe the fix in the chat.", "err");
+        } else if (cmd === "npm run build" && report?.status === "error" && report.current && repairRounds.current < MAX_REPAIR_ROUNDS && !busyRef.current) {
+          repairRounds.current += 1; autoRebuild.current = true; lastFailure.current = failureSignature(report.log);
+          log(`Build failed in the project's code · the Debugger is fixing it automatically (round ${repairRounds.current} of up to ${MAX_REPAIR_ROUNDS})…`);
           setBottom("chat"); setExpandedPanel(true);
           // The server holds the build log and hands it to the agent; the chat message stays short.
           void run(`Fix the compilation/startup failure from the last build of this ${runtime.label} project. Preserve the requested stack and design.`, isAllowed("debugger") ? "debugger" : "builder");
@@ -613,10 +619,10 @@ export function Workspace(p: WorkspaceProps) {
         </div>
         <div className="mx-auto flex items-center gap-1 border border-graphite rounded-full p-0.5">
           <button onClick={() => { setBottom("chat"); setExpandedPanel(true); }} className={`btn btn-sm ${expandedPanel && bottom === "chat" ? "btn-primary" : "btn-ghost"}`}><MessageSquare size={13} />Chat</button>
-          <button onClick={() => { if (isApp && !isReactApp && !runtimeUrl) { repairRounds.current = 0; void term("npm run build"); } else { setView("preview"); setExpandedPanel(false); } }} className={`btn btn-sm ${!expandedPanel && view === "preview" ? "btn-primary" : "btn-ghost"}`}><Eye size={13} />Preview</button>
+          <button onClick={() => { if (isApp && !isReactApp && !runtimeUrl) { repairRounds.current = 0; lastFailure.current = ""; void term("npm run build"); } else { setView("preview"); setExpandedPanel(false); } }} className={`btn btn-sm ${!expandedPanel && view === "preview" ? "btn-primary" : "btn-ghost"}`}><Eye size={13} />Preview</button>
           <button onClick={() => { setView("code"); setExpandedPanel(false); setShowFiles(true); }} className={`btn btn-sm ${!expandedPanel && view === "code" ? "btn-primary" : "btn-ghost"}`}><Code2 size={13} />Code</button>
         </div>
-        <button disabled={!!busy || termBusy} onClick={() => { repairRounds.current = 0; void term("npm run build"); }} className="btn btn-outline btn-sm"><Play size={13} />{termBusy ? "Running…" : runtime.previewPort === null ? "Build / check" : "Build & preview"}</button>
+        <button disabled={!!busy || termBusy} onClick={() => { repairRounds.current = 0; lastFailure.current = ""; void term("npm run build"); }} className="btn btn-outline btn-sm"><Play size={13} />{termBusy ? "Running…" : runtime.previewPort === null ? "Build / check" : "Build & preview"}</button>
         {!isApp && <div className="hidden lg:flex items-center gap-0.5 border border-graphite rounded-full p-0.5">
           {([["desktop", Monitor], ["tablet", Tablet], ["mobile", Smartphone]] as const).map(([d, I]) => (
             <button key={d} onClick={() => setDevice(d)} className={`btn btn-sm ${device === d ? "bg-graphite" : "btn-ghost"}`} title={d}><I size={13} /></button>
