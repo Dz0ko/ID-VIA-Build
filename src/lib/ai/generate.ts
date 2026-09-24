@@ -49,9 +49,9 @@ export interface RunOptions {
 
 /**
  * Above this size one restyle pass cannot re-emit the document within the time budget; the agent asks for a section instead.
- * Measured: Claude Fable 5.1 at medium effort rewrote an 11k-token site in ~195 s, output streams at ~260 chars/s.
+ * Measured: output streams at ~260 chars/s, so a 780 s budget re-emits roughly 30k tokens after a few minutes of thinking.
  */
-export const RESTYLE_MAX_DOC_TOKENS = 12_000;
+export const RESTYLE_MAX_DOC_TOKENS = 30_000;
 /** A repaired attempt needs at least this much of the budget left, and at least as long as the attempt it replaces. */
 const RETRY_MIN_MS = 60_000;
 /** Heartbeat interval for progress events; also keeps the SSE connection alive through proxies. */
@@ -199,12 +199,11 @@ async function runAgentLocked(opts: RunOptions, assertActive: () => Promise<void
   // A whole-document restyle streams the entire site back; thinking time comes out of the same budget.
   // Quality first within the server limit: Claude restyles at high effort (measured 238 s end to end on an 11k-token
   // site, so the largest sites drop to medium, ~195 s); GPT-6 Astra reasons ~100 s before its first token at high.
-  // Measured ceilings inside the 280 s budget: Claude Fable 5.1 at xhigh thought for 2.5 minutes before writing a
-  // new site and was stopped, and a navbar edit at xhigh met the same end; at high a full site or restyle takes
-  // ~240 s and an edit ~80 s. GPT-6 Astra reasons ~100 s before its first token at high, so it stays at medium.
-  const ceiling = resolved.provider.id === "openai" ? "medium" : "high";
-  const capEffort = overhaul ? (docTokens > (resolved.provider.id === "openai" ? 4000 : 10_000) ? "medium" : ceiling)
-    : targetedEdit || heavy || visualDesignTask || debuggingTask || taskClass === "section" ? ceiling : "medium";
+  // Quality first inside the 780 s budget (Vercel Pro): a new site, restyle, section or feature runs Claude at xhigh
+  // (measured: ~2.5 min of thinking plus ~4 min of writing) and GPT-6 Astra at high (~5 min for a restyle);
+  // a small edit of an existing site runs at high, which finishes in about 80 s with the same care.
+  const deep = resolved.provider.id === "openai" ? "high" : "xhigh";
+  const capEffort = overhaul || heavy || visualDesignTask || debuggingTask || taskClass === "section" ? deep : targetedEdit ? "high" : "medium";
   const effort = resolved.config.effort && EFFORT_RANK[resolved.config.effort] > EFFORT_RANK[capEffort] ? capEffort : resolved.config.effort;
 
   let run: { id: string } | undefined;

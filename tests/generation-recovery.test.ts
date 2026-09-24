@@ -122,7 +122,7 @@ test('a new overall look rewrites the whole document instead of exact edits and 
     await runAgent({ userId: owner.id, projectId: project.id, plan: 'MAX', request: 'change the design to more moderen and proffesional', agentId: 'designer', preferProvider: 'openai', onEvent: event => events.push(event.type) });
     assert.match(inputs[0].system, /WHOLE-SITE RESTYLE/); assert.doesNotMatch(inputs[0].system, /OUTPUT FORMAT OVERRIDE/);
     assert.match(inputs[0].messages.at(-1)!.content, /return the full updated HTML/);
-    assert.equal(inputs[0].effort, 'medium'); // GPT-6 Astra ceiling; Claude runs restyles at high
+    assert.equal(inputs[0].effort, 'high'); // GPT-6 Astra deep level; Claude runs restyles at xhigh
     const saved = await db.project.findUniqueOrThrow({ where: { id: project.id } });
     assert.match(saved.html, /Restyled wheel/); assert.ok(saved.html.includes('window.spin=()=>42;'));
     const ledger = await db.creditLedger.findFirstOrThrow({ where: { projectId: project.id } });
@@ -133,7 +133,7 @@ test('a new overall look rewrites the whole document instead of exact edits and 
 });
 
 test('a restyle of a document too large for one pass asks for a section without charging', async () => {
-  const { owner, project } = await fixture(`<!doctype html><html><body>${'<section>Large section content that repeats</section>'.repeat(1400)}</body></html>`);
+  const { owner, project } = await fixture(`<!doctype html><html><body>${'<section>Large section content that repeats</section>'.repeat(3200)}</body></html>`);
   await provider(async inputs => {
     const result = await runAgent({ userId: owner.id, projectId: project.id, plan: 'MAX', request: 'make it more modern', agentId: 'designer', preferProvider: 'openai' });
     assert.equal(result.mode, 'clarification'); assert.equal(inputs.length, 0);
@@ -210,7 +210,7 @@ test('selected component uses targeted edits and preserves the working project',
   await provider(async inputs => {
     await runAgent({userId:owner.id,projectId:project.id,plan:'MAX',request,preferProvider:'openai'});
     assert.match(inputs[0].system, /OUTPUT FORMAT OVERRIDE/);
-    assert.equal(inputs[0].effort, 'medium'); // edits of an existing site never run at xhigh
+    assert.equal(inputs[0].effort, 'high'); // small edits of an existing site run at high, not xhigh
     const saved=await db.project.findUniqueOrThrow({where:{id:project.id}});
     assert.match(saved.html,/Solar eclipse/); assert.match(saved.html,/Original wheel/); assert.ok(saved.html.includes('window.spin=()=>42;'));
   },'<<<HTML_EDITS>>>[{"search":"</main>","replace":"<section>Solar eclipse</section></main>"}]<<<END HTML_EDITS>>>');

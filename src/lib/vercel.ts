@@ -31,6 +31,8 @@ export async function deployToVercel(opts: { token: string; teamId?: string; nam
     const created = await fetch(`${API}/v11/projects${q(teamId)}`, { method: "POST", headers, body: JSON.stringify({ name, framework: profile.framework }), signal: AbortSignal.timeout(20000) });
     if (!created.ok) throw new Error(`Could not create the Vercel project (${created.status}).`);
   }
+  // Vercel stops building Node.js 20 projects on 1 October 2026; keep every project we deploy on a supported runtime.
+  await fetch(`${API}/v9/projects/${encodeURIComponent(name)}${q(teamId)}`, { method: "PATCH", headers, body: JSON.stringify({ nodeVersion: "24.x" }), signal: AbortSignal.timeout(20000) }).catch(() => undefined);
   const envEntries = Object.entries(opts.env);
   if (envEntries.length) {
     const r = await fetch(`${API}/v10/projects/${encodeURIComponent(name)}/env${q(teamId)}${teamId ? "&" : "?"}upsert=true`, {

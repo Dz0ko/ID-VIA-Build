@@ -5,9 +5,9 @@ export class ProjectBusyError extends Error {
   constructor(message = "This project is already being updated. Wait for it to finish and retry.", public status = 409) { super(message); }
 }
 
-/** Model time per run: as much of the route's 300 s server limit as still leaves room for settlement and saving. */
-export const GENERATION_TIMEOUT_MS = 280_000;
-const LEASE_MS = GENERATION_TIMEOUT_MS + 60_000;
+/** Model time per run: as much of the route's 800 s server limit (Vercel Pro, Fluid compute) as leaves room for settlement and saving. */
+export const GENERATION_TIMEOUT_MS = 780_000;
+export const LEASE_MS = GENERATION_TIMEOUT_MS + 60_000;
 function limit(value: string | undefined, fallback: number) {
   const n = Number(value);
   return Number.isSafeInteger(n) && n > 0 && n <= 1000 ? n : fallback;

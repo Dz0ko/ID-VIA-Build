@@ -14,7 +14,8 @@ import { rateLimit } from "@/lib/security";
 import { resolveRequestedStack, isStaticStack } from "@/lib/project-stack";
 import { reconcileStaleRuns } from "@/lib/stale-runs";
 
-export const maxDuration = 300;
+/** Vercel Pro with Fluid compute allows 800 s; the model budget below leaves room for settlement. */
+export const maxDuration = 800;
 
 const schema = z.object({
   request: z.string().min(1).max(8000),

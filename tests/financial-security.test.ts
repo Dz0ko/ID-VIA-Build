@@ -199,7 +199,7 @@ test("profile sections and admin finance render with server-owned account data",
 });
 
 test("generation admission isolates owners, serializes one project and allows independent projects", async () => {
-  const { acquireProjectLease } = await import('../src/lib/project-lock');
+  const { acquireProjectLease, LEASE_MS } = await import('../src/lib/project-lock');
   const a = await user(); const b = await user();
   const create = (userId: string) => db.project.create({ data: { userId, name: 'Concurrent fixture', slug: uid() } });
   const p = await create(a.id); const q = await create(b.id);
@@ -218,7 +218,7 @@ test("generation admission isolates owners, serializes one project and allows in
 });
 
 test("generation capacity is bounded per user and globally, stale release cannot remove a newer lease", async () => {
-  const { acquireProjectLease } = await import('../src/lib/project-lock');
+  const { acquireProjectLease, LEASE_MS } = await import('../src/lib/project-lock');
   const a = await user(); const b = await user();
   const projects = await Promise.all([a.id, a.id, a.id, b.id].map((userId) => db.project.create({ data: { userId, name: 'Capacity', slug: uid() } })));
   const one = await acquireProjectLease(projects[0].id, a.id, true);
@@ -228,7 +228,7 @@ test("generation capacity is bounded per user and globally, stale release cannot
   const previous = process.env.AI_MAX_CONCURRENT; process.env.AI_MAX_CONCURRENT = '1';
   try { await assert.rejects(acquireProjectLease(projects[3].id, b.id, true), /capacity/); }
   finally { if (previous === undefined) delete process.env.AI_MAX_CONCURRENT; else process.env.AI_MAX_CONCURRENT = previous; }
-  await db.setting.update({ where: { key: `project-write:${projects[0].id}` }, data: { updatedAt: new Date(Date.now() - 360_000) } });
+  await db.setting.update({ where: { key: `project-write:${projects[0].id}` }, data: { updatedAt: new Date(Date.now() - LEASE_MS - 1000) } });
   const replacement = await acquireProjectLease(projects[0].id, a.id, true);
   await one.release();
   await replacement.assertActive();
@@ -296,7 +296,7 @@ test("concurrent AI runs keep prompts, output, versions and credits isolated and
   PROVIDERS.openai.generate = async (model, input) => {
     const prompt = input.messages[0].content;
     assert.equal(prompt.includes('COMPONENT REFERENCE: Glass switch'), prompt.includes('ALPHA_ONLY'));
-    assert.equal(input.effort, 'xhigh');
+    assert.equal(input.effort, 'high'); // GPT-6 Astra deep level (Claude runs xhigh)
     if (++count === 2) ready();
     await gate;
     const name = prompt.includes('ALPHA_ONLY') ? 'ALPHA_ONLY' : 'BETA_ONLY';
@@ -328,7 +328,7 @@ test("concurrent AI runs keep prompts, output, versions and credits isolated and
 test("generation setup failure refunds the hold and frees its project lease", async () => {
   const { PROVIDERS } = await import('../src/lib/ai/provider');
   const { runAgent } = await import('../src/lib/ai/generate');
-  const { acquireProjectLease } = await import('../src/lib/project-lock');
+  const { acquireProjectLease, LEASE_MS } = await import('../src/lib/project-lock');
   const owner = await user({ plan: 'MAX', credits: 100000 });
   const project = await db.project.create({ data: { userId: owner.id, name: 'Failure fixture', slug: uid() } });
   const available = PROVIDERS.openai.available; const create = db.agentRun.create;
