@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { classifyTask, preferredProviderForTask, requiresFrontierDesign, tierForTask } from "../src/lib/ai/task-routing";
 import { pickAgent } from "../src/lib/agents";
+import type { ToolTurn } from "../src/lib/ai/provider";
 
 test("whole marketplace briefs outrank incidental copy, image and animation keywords", () => {
   const brief = "Makeup Marketplace: Design Direction\nStructure\nNavbar: categories, search, cart\nHero: headline and search bar\nCategory grid with hover zoom images\nBest sellers carousel\nTestimonials with photos\nNewsletter and footer";
@@ -90,15 +91,14 @@ test('all library attachment prompts route to Builder despite incidental special
 
 test("OpenAI tool turns continue the previous response by id and replay the transcript after a provider switch", async () => {
   const { openaiResponsesInput } = await import("../src/lib/ai/provider");
-  const turns = [
-    { role: "user" as const, content: "rename it" },
-    { role: "assistant" as const, content: "", toolCalls: [{ id: "call_1", name: "search", input: { query: "Willow" } }], raw: { provider: "openai", content: { responseId: "resp_1" } } },
-    { role: "tool" as const, results: [{ id: "call_1", name: "search", output: "2 matches" }] },
-  ];
-  const chained = openaiResponsesInput(turns);
+  const user: ToolTurn = { role: "user", content: "rename it" };
+  const assistant: ToolTurn = { role: "assistant", content: "", toolCalls: [{ id: "call_1", name: "search", input: { query: "Willow" } }], raw: { provider: "openai", content: { responseId: "resp_1" } } };
+  const results: ToolTurn = { role: "tool", results: [{ id: "call_1", name: "search", output: "2 matches" }] };
+  const chained = openaiResponsesInput([user, assistant, results]);
   assert.equal(chained.previous, "resp_1");
   assert.deepEqual(chained.input, [{ type: "function_call_output", call_id: "call_1", output: "2 matches" }]);
-  const switched = openaiResponsesInput([{ ...turns[0] }, { ...turns[1], raw: { provider: "anthropic", content: [] } }, turns[2]]);
+  const fromClaude: ToolTurn = { role: "assistant", content: "", toolCalls: assistant.role === "assistant" ? assistant.toolCalls : [], raw: { provider: "anthropic", content: [] } };
+  const switched = openaiResponsesInput([user, fromClaude, results]);
   assert.equal(switched.previous, undefined);
-  assert.deepEqual(switched.input.map(i => ("type" in i ? i.type : i.role)), ["user", "function_call", "function_call_output"]);
+  assert.deepEqual(switched.input.map(i => ("type" in i && i.type ? i.type : "role" in i ? i.role : "?")), ["user", "function_call", "function_call_output"]);
 });
