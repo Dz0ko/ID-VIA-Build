@@ -36,6 +36,8 @@ export async function runProjectBuild(project: Project & { files: ProjectFile[] 
   let sandbox: Sandbox | undefined;
   let ready = false;
   let secrets: string[] = [];
+  // Until the project's own build command runs, a failure is the platform's (capacity, sandbox, upload); from then on it is the project's.
+  let phase: "setup" | "build" = "setup";
   const report: RuntimeReport = { status: "running", label: "Project", log: "", startedAt: new Date().toISOString(), fingerprint: sourceFingerprint(project) };
   const output = (line: string) => { const safe = redactRuntimeLog(line, secrets); report.log = (report.log + safe + "\n").slice(-48000); emit(safe); };
   const cancel = () => { void sandbox?.kill().catch(() => {}); };
@@ -71,6 +73,7 @@ export async function runProjectBuild(project: Project & { files: ProjectFile[] 
       await sandbox.files.write(`${ROOT}/.preview.cjs`, SERVER);
     }
     const activeSandbox = sandbox;
+    phase = "build";
     await executeLanguageBuild({
       command: async (command, timeoutMs) => {
         try { await activeSandbox.commands.run(command, { cwd: ROOT, envs, timeoutMs, onStdout: output, onStderr: output }); }
@@ -98,7 +101,9 @@ export async function runProjectBuild(project: Project & { files: ProjectFile[] 
     return { url, expiresAt };
   } catch (error) {
     report.status = "error";
-    output(error instanceof Error ? error.message : "Build failed");
+    const message = error instanceof Error ? error.message : "Build failed";
+    report.origin = phase === "build" || /^(?:Invalid \.idaevia\/runtime\.json|There is no website to build|No automatic runtime detected|Required runtime tool is unavailable|No build script|No dev\/start\/preview script)/.test(message) ? "project" : "platform";
+    output(message);
     await recordPlatformError(error, { source: "build", userId: project.userId, projectId: project.id, details: diagnosticExcerpt(report.log), secrets });
     throw error;
   } finally {
