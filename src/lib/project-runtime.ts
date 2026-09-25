@@ -1,4 +1,4 @@
-import { recordPlatformError } from "./platform-errors";
+import { recordPlatformError, resolveProjectIncidents } from "./platform-errors";
 import { diagnosticExcerpt } from "./platform-error-details";
 import { previewResponseReady } from "./preview-readiness";
 import { runtimeResources } from "./runtime-resources";
@@ -56,15 +56,29 @@ export async function runProjectBuild(project: Project & { files: ProjectFile[] 
     report.label = profile.label;
     if (profile.issue) throw new Error(profile.issue);
     await saveRuntimeReport(project.id, report);
-    await stopProjectRuntime(project.id);
-    emit("Creating an isolated build environment…");
     releaseCapacity = await reserveRuntimeCapacity(project.userId, key);
-    sandbox = await Sandbox.create(resources.template, { timeoutMs: LIFETIME, metadata: { projectId: project.id }, network: { allowPublicTraffic: true } });
-    const info = await sandbox.getInfo();
-    if (info.memoryMB < resources.memoryMB) throw new Error(`The configured build template needs at least ${resources.memoryMB} MiB RAM.`);
+    // A VM that is still alive from the previous build or preview keeps its installed dependencies and caches, so the
+    // next build takes seconds instead of a fresh install; anything else starts clean.
+    const reused = await reuseProjectRuntime(project.id);
+    if (reused) {
+      sandbox = reused;
+      emit("Reusing the running environment (dependencies already installed)…");
+      await sandbox.commands.run("fuser -k 3000/tcp >/dev/null 2>&1; pkill -f 'next|vite|node ' >/dev/null 2>&1; true", { cwd: ROOT, timeoutMs: 20_000 }).catch(() => {});
+    } else {
+      await stopProjectRuntime(project.id);
+      emit("Creating an isolated build environment…");
+      sandbox = await Sandbox.create(resources.template, { timeoutMs: LIFETIME, metadata: { projectId: project.id }, network: { allowPublicTraffic: true } });
+      const info = await sandbox.getInfo();
+      if (info.memoryMB < resources.memoryMB) throw new Error(`The configured build template needs at least ${resources.memoryMB} MiB RAM.`);
+    }
     signal.throwIfAborted();
     emit(`Uploading ${files.length} project files…`);
     await sandbox.files.write(files.map((f) => ({ path: runtimePath(f.path), data: new Uint8Array(fileBytes(f.content)).buffer })));
+    if (reused) {
+      // Files deleted in the editor must not linger in the reused VM.
+      await sandbox.files.write("/tmp/idaevia-keep.txt", files.map((f) => f.path).join("\n") + "\n");
+      await sandbox.commands.run(`cd ${ROOT} && find . -type f -not -path './node_modules/*' -not -path './.next/*' -not -path './dist/*' -not -path './build/*' -not -path './.git/*' -not -path './.venv/*' -not -path './vendor/*' -not -name '.idaevia-*' -not -name '.preview.cjs' | sed 's#^\./##' | grep -vxFf /tmp/idaevia-keep.txt | xargs -r rm -f`, { timeoutMs: 30_000 }).catch(() => {});
+    }
     // Only this project's settings enter its VM. The platform environment never does.
     const envs = await preparePreviewEnvironment(sandbox, files, settings, resources.memoryMB);
     secrets.push(...Object.values(envs).filter(v => v.length > 20));
@@ -98,6 +112,7 @@ export async function runProjectBuild(project: Project & { files: ProjectFile[] 
     ready = Boolean(url);
     report.status = "success";
     output(url ? "Build succeeded. Temporary preview expires within 15 minutes." : "Build succeeded. Run this project in Terminal to see its output.");
+    await resolveProjectIncidents(project.id, ["build", "shell"], "Resolved automatically: a later build of this project succeeded");
     return { url, expiresAt };
   } catch (error) {
     report.status = "error";
@@ -114,6 +129,19 @@ export async function runProjectBuild(project: Project & { files: ProjectFile[] 
     await releaseCapacity?.();
     await db.setting.deleteMany({ where: { key: leaseKey, value: lease } });
   }
+}
+
+/** The project's live VM when it is still running; null when it expired, was stopped or cannot be reached. */
+async function reuseProjectRuntime(projectId: string): Promise<Sandbox | null> {
+  const row = await db.setting.findUnique({ where: { key: `runtime:${projectId}` } });
+  if (!row) return null;
+  try {
+    const state = JSON.parse(row.value) as { sandboxId?: string; expiresAt?: number };
+    if (!state.sandboxId || !state.expiresAt || state.expiresAt < Date.now() + 60_000) return null;
+    const sandbox = await Sandbox.connect(state.sandboxId);
+    await sandbox.setTimeout(LIFETIME);
+    return sandbox;
+  } catch { return null; }
 }
 
 export async function stopProjectRuntime(projectId: string) {

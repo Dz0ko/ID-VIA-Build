@@ -8,6 +8,7 @@ import { getCurrentUser } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { rateLimit } from "@/lib/security";
 import { frameBlockReason } from "@/lib/preview-embedding";
+import { resolveProjectIncidents } from "@/lib/platform-errors";
 import { shellSourceMatches, connectShell, ensureShell, refreshShellTimeout, ShellError, stopShell, syncSavedShell } from "@/lib/shell-session";
 
 export const maxDuration = 300;
@@ -108,6 +109,7 @@ export async function POST(req: Request, ctx: RouteContext<"/api/projects/[id]/s
           lastStatus = response.status;
           if (previewResponseReady(response.status)) {
             await db.setting.updateMany({ where: { key: `shell:${id}`, value: JSON.stringify(state) }, data: { value: JSON.stringify({ ...state, previewPort: port }) } });
+            await resolveProjectIncidents(id, ["shell"], "Resolved automatically: the preview of this project opened");
             return Response.json({ url, port, blocked: frameBlockReason(response.headers) });
           }
         } catch { /* Try the next candidate port. */ }

@@ -2,6 +2,7 @@ import { recordPlatformError } from "../platform-errors";
 import { readRuntimeReport, saveRuntimeReport, sourceFingerprint } from "../runtime-report-store";
 import { buildErrorExcerpt, buildVerificationAvailable, openBuildVerifier, type BuildVerifier } from "../build-verify";
 import { readProjectEnv } from "../project-files";
+import { stopProjectRuntime } from "../project-runtime";
 import { auditProject, auditSummary } from "../audit";
 import { isConversationRequest, CONVERSATION_SYSTEM, ANSWER_FALLBACK, extractAnswer } from "./conversation";
 import { acquireProjectLease, GENERATION_TIMEOUT_MS } from "../project-lock";
@@ -110,7 +111,7 @@ export type RunEvent =
   | { type: "reading"; files: string[] }
   /** One step of an agentic edit: what the agent is searching, reading, editing or checking right now. */
   | { type: "tool"; name: string; detail: string }
-  | { type: "done"; mode: "rewrite" | "report"; versionNumber?: number; html?: string; files?: { path: string; content: string }[]; report?: string; creditsUsed: number; note?: string; continuation?: { round: number; filesDone: number }; verified?: boolean }
+  | { type: "done"; mode: "rewrite" | "report"; versionNumber?: number; html?: string; files?: { path: string; content: string }[]; report?: string; creditsUsed: number; note?: string; continuation?: { round: number; filesDone: number }; verified?: boolean; previewUrl?: string }
   | { type: "error"; message: string; code?: "INSUFFICIENT_CREDITS"; needed?: number; have?: number }
   | { type: "clarification"; request: string; message: string; kind?: "stack" | "quality" | "question"; choices?: QualityChoice[] };
 
@@ -538,6 +539,8 @@ async function runAgentLocked(opts: RunOptions, assertActive: () => Promise<void
     // round by round, while the budget allows. The VM and its toolchain install are reused across rounds.
     let verified: boolean | undefined;
     let verifyNote = "";
+    let previewUrl: string | undefined;
+    let keepVm = false;
     if (generatedFiles && isApp && agent.mode === "rewrite" && opts.verifyBuild !== false && (opts.verifier || buildVerificationAvailable()) && budgetMs - (Date.now() - startedAt) > VERIFY_MIN_MS) {
       const heartbeat = setInterval(() => progress("checking"), PROGRESS_INTERVAL_MS);
       let verifier: BuildVerifier | null = null;
@@ -574,11 +577,24 @@ async function runAgentLocked(opts: RunOptions, assertActive: () => Promise<void
           ? ` Build verified in an isolated VM${round ? ` after ${round} automatic fix round${round === 1 ? "" : "s"}` : ""}.`
           : ` The build still fails after ${round} automatic fix round${round === 1 ? "" : "s"}; the workspace continues the repair.`;
         opts.onEvent?.({ type: "tool", name: "check_project", detail: outcome.ok ? `Build verified · ${outcome.label}` : `Build still failing · ${outcome.label}` });
+        if (outcome.ok && budgetMs - (Date.now() - startedAt) > 90_000) {
+          // The VM that just built the project becomes its live preview: nothing to install or build again.
+          opts.onEvent?.({ type: "tool", name: "check_project", detail: "Starting the live preview from the verified build…" });
+          const live = await verifier.serve(generatedFiles);
+          if (live) {
+            await stopProjectRuntime(project.id).catch(() => {});
+            const key = `runtime:${project.id}`;
+            const value = JSON.stringify({ sandboxId: live.sandboxId, url: live.url, expiresAt: live.expiresAt, fingerprint: sourceFingerprint({ id: project.id, kind: "app", html: project.html ?? "", files: generatedFiles }) });
+            await db.setting.upsert({ where: { key }, create: { key, value }, update: { value } });
+            keepVm = true; previewUrl = live.url;
+            opts.onEvent?.({ type: "tool", name: "check_project", detail: "Live preview ready" });
+          }
+        }
         await saveRuntimeReport(project.id, { status: outcome.ok ? "success" : "error", label: outcome.label, log: outcome.log, startedAt: new Date(startedAt).toISOString(), finishedAt: new Date().toISOString(), fingerprint: sourceFingerprint({ id: project.id, kind: "app", html: project.html ?? "", files: generatedFiles }), origin: "project" });
       } catch (cause) {
         // Verification is a safety net; a VM problem must not fail a finished generation.
         console.warn("[generate] Build verification unavailable", cause instanceof Error ? cause.message : cause);
-      } finally { clearInterval(heartbeat); await verifier?.close(); }
+      } finally { clearInterval(heartbeat); await verifier?.close(keepVm); }
     }
     // Never save or continue a partial document. One fresh attempt shares the same
     // lease, timeout and credit reservation; failed-attempt costs stay with us.
@@ -613,7 +629,7 @@ async function runAgentLocked(opts: RunOptions, assertActive: () => Promise<void
         db.message.create({ data: { projectId: project.id, role: "assistant", content: noteApp, agentId: agent.id, model: result.model, creditsUsed: creditsCharged } }),
         db.agentRun.update({ where: { id: run.id }, data: { status: "DONE", finishedAt: new Date(), output: `v${number}`, ...usage } }),
       ]);
-      opts.onEvent?.({ type: "done", mode: "rewrite", versionNumber: number, files, creditsUsed: creditsCharged, note: noteApp, verified });
+      opts.onEvent?.({ type: "done", mode: "rewrite", versionNumber: number, files, creditsUsed: creditsCharged, note: noteApp, verified, previewUrl });
       return { mode: "rewrite" as const, files, versionNumber: number, credits: creditsCharged };
     }
 

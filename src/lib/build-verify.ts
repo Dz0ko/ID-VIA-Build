@@ -7,6 +7,7 @@ import { fileBytes } from "./file-content";
 import { runtimePath } from "./runtime-command";
 import { runtimeProfile } from "./runtime-profile";
 import { redactRuntimeLog } from "./runtime-report";
+import { previewResponseReady } from "./preview-readiness";
 
 /**
  * Builds a multi-file project in an isolated VM while the agent is still working, so a compile error is fixed
@@ -18,10 +19,15 @@ const LIFETIME = 12 * 60_000;
 export const VERIFY_BUILD_TIMEOUT_MS = 210_000;
 
 export type VerifyResult = { ok: boolean; log: string; label: string; durationMs: number };
+export type LivePreview = { url: string; sandboxId: string; expiresAt: number };
 export interface BuildVerifier {
   build(files: { path: string; content: string }[]): Promise<VerifyResult>;
-  close(): Promise<void>;
+  /** Start the project's preview server in the same VM (after a successful build) and wait until it answers. */
+  serve(files: { path: string; content: string }[]): Promise<LivePreview | null>;
+  /** Release the capacity slot; the VM is killed unless it was handed over as the live preview. */
+  close(keep?: boolean): Promise<void>;
 }
+const PREVIEW_READY_TIMEOUT_MS = 120_000;
 
 export function buildVerificationAvailable(): boolean {
   // The isolated test schema never starts VMs; tests inject a verifier when they want one.
@@ -68,7 +74,27 @@ export async function openBuildVerifier(opts: { projectId: string; userId: strin
         return { ok: false, log, label: profile.label, durationMs: Date.now() - started };
       }
     },
-    async close() { await sandbox.kill().catch(() => {}); await release().catch(() => {}); },
+    async serve(files) {
+      const plain = files.map((f) => ({ path: f.path.replace(/^\/+/, ""), content: f.content }));
+      const profile = runtimeProfile(plain);
+      if (profile.issue || !profile.previewPort || !envs) return null;
+      const port = profile.previewPort;
+      await sandbox.commands.run(`fuser -k ${port}/tcp >/dev/null 2>&1; true`, { cwd: ROOT, timeoutMs: 15_000 }).catch(() => {});
+      const handle = await sandbox.commands.run(`(\n${profile.preview}\n) > /tmp/idaevia-verify-preview.log 2>&1`, { cwd: ROOT, envs, background: true, timeoutMs: 0 });
+      await handle.disconnect();
+      const url = `https://${sandbox.getHost(port)}`;
+      const deadline = Date.now() + PREVIEW_READY_TIMEOUT_MS;
+      while (Date.now() < deadline) {
+        opts.signal?.throwIfAborted();
+        try {
+          const response = await fetch(url, { redirect: "manual", cache: "no-store", signal: AbortSignal.timeout(4000) });
+          if (previewResponseReady(response.status)) { await sandbox.setTimeout(LIFETIME); return { url, sandboxId: sandbox.sandboxId, expiresAt: Date.now() + LIFETIME }; }
+        } catch { /* not listening yet */ }
+        await new Promise((resolve) => setTimeout(resolve, 2000));
+      }
+      return null;
+    },
+    async close(keep = false) { if (!keep) await sandbox.kill().catch(() => {}); await release().catch(() => {}); },
   };
 }
 

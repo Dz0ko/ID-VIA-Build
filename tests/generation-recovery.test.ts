@@ -492,7 +492,9 @@ test("a multi-file change is built before it is handed over, and a failing build
       // The first build sees the edit's typo; the fixed file builds clean.
       return server.includes("greet(): strng") ? { ok: false, log: "> tsc\nsrc/server.ts(2,26): error TS2552: Cannot find name 'strng'. Did you mean 'string'?\nexit status 2", label: "Node.js", durationMs: 5 } : { ok: true, log: "> tsc\n", label: "Node.js", durationMs: 5 };
     },
-    async close() { closed++; },
+    // After a green build the same VM serves the project; the generation hands its address over as the live preview.
+    async serve() { return { url: "https://3000-verify-test.e2b.app/", sandboxId: "sb_verify_test", expiresAt: Date.now() + 60_000 }; },
+    async close(keep?: boolean) { closed++; assert.equal(keep, true); },
   });
   const events: { type: string; detail?: string; verified?: boolean }[] = [];
   await toolProvider((turns, step) => {
@@ -514,7 +516,10 @@ test("a multi-file change is built before it is handed over, and a failing build
   const saved = await db.project.findUniqueOrThrow({ where: { id: project.id }, include: { files: true, messages: true, versions: true } });
   assert.equal(saved.files.find(f => f.path === "/src/server.ts")!.content, 'export const port = 3000;\nexport function greet(): string { return "Hello"; }');
   assert.equal(saved.versions.length, 1);
-  const done = events.find(e => e.type === "done"); assert.equal(done?.verified, true);
+  const done = events.find(e => e.type === "done") as { verified?: boolean; previewUrl?: string } | undefined; assert.equal(done?.verified, true);
+  assert.equal(done?.previewUrl, "https://3000-verify-test.e2b.app/");
+  const live = JSON.parse((await db.setting.findUniqueOrThrow({ where: { key: `runtime:${project.id}` } })).value);
+  assert.equal(live.sandboxId, "sb_verify_test"); assert.equal(live.url, "https://3000-verify-test.e2b.app/");
   assert.ok(saved.messages.some(m => m.role === "assistant" && /Build verified in an isolated VM after 1 automatic fix round/.test(m.content)));
   assert.deepEqual(events.filter(e => e.type === "tool" && /Building the project|Build failed · fixing|Build verified/.test(e.detail ?? "")).map(e => e.detail!.split(" ·")[0]), ["Building the project in an isolated VM to verify it compiles…", "Build failed", "Build verified"]);
   const { readRuntimeReport } = await import("../src/lib/runtime-report-store");

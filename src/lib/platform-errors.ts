@@ -41,3 +41,20 @@ export async function recordPlatformError(error: unknown, context: IncidentConte
     return null;
   }
 }
+
+/**
+ * A later success closes what an earlier failure opened: once a project builds or previews again, its open
+ * build and preview incidents are resolved with the recovery time. A new failure reopens them by fingerprint.
+ */
+export async function resolveProjectIncidents(projectId: string, sources: string[], note: string): Promise<number> {
+  try {
+    const result = await db.platformIncident.updateMany({
+      where: { projectId, source: { in: sources }, status: { not: "RESOLVED" } },
+      data: { status: "RESOLVED", resolvedAt: new Date(), revision: { increment: 1 }, note: `${note} (${new Date().toUTCString()})` },
+    });
+    return result.count;
+  } catch (cause) {
+    console.error("[platform-monitor] Could not resolve project incidents", cause instanceof Error ? cause.message : cause);
+    return 0;
+  }
+}

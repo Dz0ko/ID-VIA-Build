@@ -354,7 +354,11 @@ export function Workspace(p: WorkspaceProps) {
               setSavedBrief(null);
               // An app change the server could not verify (or that still fails) is built and, if needed, repaired right away, so the
               // user is never handed a project that does not compile. A verified change needs no extra build.
-              if (isApp && ev.files && !ev.continuation && livePreview.current.runtimePreview && livePreview.current.runtimePreview.kind !== "build" && livePreview.current.shellOpened) {
+              if (isApp && ev.files && typeof ev.previewUrl === "string" && /^https:\/\/[^/]+\.e2b\.app\//.test(ev.previewUrl)) {
+                // The generation verified the build and left its VM serving the project: the preview is ready now.
+                setRuntimePreview({ url: ev.previewUrl, source: JSON.stringify(ev.files), kind: "build" }); setView("preview"); setExpandedPanel(false);
+                log("Live preview ready from the verified build");
+              } else if (isApp && ev.files && !ev.continuation && livePreview.current.runtimePreview && livePreview.current.runtimePreview.kind !== "build" && livePreview.current.shellOpened) {
                 // A dev server is showing the project: merge the saved change into it, then refresh the frame (hot reload covers the rest).
                 setShellCommand({ id: Date.now(), text: "", sync: true });
                 setTimeout(() => setPreviewNonce((n) => n + 1), 2500);
