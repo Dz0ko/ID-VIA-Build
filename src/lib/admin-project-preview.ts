@@ -15,6 +15,16 @@ type Source = Project & { files: ProjectFile[] };
 type State = { sandboxId: string; port: number; fingerprint: string; expiresAt: number };
 const keyFor = (adminId: string, projectId: string) => `admin-preview:${adminId}:${projectId}`;
 export class AdminPreviewError extends Error {}
+/** The sandbox proxy answers 502/503 while nothing listens; any other status means the project's server is up (a dev server renders its own error page). */
+const serverAnswers = (status: number) => previewResponseReady(status) || (status >= 400 && status !== 502 && status !== 503);
+async function logTail(sandbox: Sandbox, envs: Record<string, string>, bytes = 2000) {
+  try {
+    const output = await sandbox.commands.run(`tail -c ${bytes} /tmp/idaevia-admin-preview.log 2>/dev/null || true`, { timeoutMs: 5000 });
+    let details = output.stdout.replace(/\u001b\[[0-9;]*m/g, "").replace(/postgres(?:ql)?:\/\/[^\s]+/g, "[preview database]");
+    for (const [name, value] of Object.entries(envs)) if (/secret|token|password/i.test(name) && value) details = details.replaceAll(value, "[redacted]");
+    return details.trim();
+  } catch { return ""; }
+}
 
 /** Inspect saved code in a separate VM without the owner's integration credentials or terminal. */
 export function adminPreviewSource(project: Source): Source {
@@ -35,7 +45,7 @@ export async function adminPreviewStatus(adminId: string, source: Source) {
     const sandbox = await Sandbox.connect(state.sandboxId);
     const url = `https://${sandbox.getHost(state.port)}`;
     const response = await fetch(url, { redirect: "manual", cache: "no-store", signal: AbortSignal.timeout(4000) });
-    if (previewResponseReady(response.status)) return { ready: true as const, url, expiresAt: state.expiresAt };
+    if (serverAnswers(response.status)) return { ready: true as const, url, expiresAt: state.expiresAt, ...(response.status >= 500 ? { warning: `The project server answers with HTTP ${response.status}; its own error page is shown.` } : {}) };
   } catch { /* An expired VM can be recreated from the saved snapshot. */ }
   return { ready: false as const };
 }
@@ -98,25 +108,29 @@ export async function startAdminPreview(adminId: string, source: Source, emit: (
       signal.throwIfAborted();
       try {
         const response = await fetch(url, { redirect: "manual", cache: "no-store", signal: AbortSignal.any([signal, AbortSignal.timeout(5000)]) });
-        if (previewResponseReady(response.status)) {
+        if (serverAnswers(response.status)) {
           await sandbox.setTimeout(SHELL_TTL);
           const state: State = { sandboxId: sandbox.sandboxId, port: profile.previewPort, fingerprint: fingerprint(project), expiresAt: Date.now() + SHELL_TTL };
           await db.setting.upsert({ where: { key }, create: { key, value: JSON.stringify(state) }, update: { value: JSON.stringify(state) } });
           keep = true;
-          return { ready: true as const, url, expiresAt: state.expiresAt };
+          const warning = response.status >= 500 ? `The project server is up but answers with HTTP ${response.status}: a problem in the project's code, shown on its own error page. Last output: ${(await logTail(sandbox, envs, 1200)) || "(none)"}` : undefined;
+          return { ready: true as const, url, expiresAt: state.expiresAt, ...(warning ? { warning } : {}) };
         }
       } catch { signal.throwIfAborted(); }
       const exited = await sandbox.files.exists("/tmp/idaevia-admin-preview.exit");
       if (exited) {
-        const output = await sandbox.commands.run("tail -c 2000 /tmp/idaevia-admin-preview.log", { timeoutMs: 5000 });
-        let details = output.stdout.replace(/\u001b\[[0-9;]*m/g, "").replace(/postgres(?:ql)?:\/\/[^\s]+/g, "[preview database]");
-        for (const [name, value] of Object.entries(envs)) if (/secret|token|password/i.test(name) && value) details = details.replaceAll(value, "[redacted]");
-        throw new AdminPreviewError(`The project server exited before Preview was ready. ${details.trim() || "Check its saved dependencies and startup command."}`);
+        const details = await logTail(sandbox, envs);
+        throw new AdminPreviewError(`The project server exited before Preview was ready (a problem in the project's code or configuration, not the platform). ${details || "Check its saved dependencies and startup command."}`);
       }
-      if (Date.now() - lastNotice > 15_000) { emit("Still preparing the project and waiting for its web server…"); lastNotice = Date.now(); }
+      if (Date.now() - lastNotice > 15_000) {
+        const tail = (await logTail(sandbox, envs, 400)).split("\n").filter(Boolean).slice(-2).join(" · ");
+        emit(`Still preparing the project and waiting for its web server (${Math.round((Date.now() - (deadline - 210_000)) / 1000)} s)…${tail ? ` Last output: ${tail}` : ""}`);
+        lastNotice = Date.now();
+      }
       await new Promise(resolve => setTimeout(resolve, 1500));
     }
-    throw new AdminPreviewError("Preview startup timed out. This project may need additional runtime configuration. You can retry; the saved project is unchanged.");
+    const details = await logTail(sandbox, envs);
+    throw new AdminPreviewError(`Preview startup timed out after 210 s: the project's server never answered on port ${profile.previewPort}. ${details ? `Last output: ${details}` : "It printed nothing; check its start command and port."}`);
   } finally {
     if (!keep) await sandbox?.kill().catch(() => {});
     await releaseCapacity?.();

@@ -2,15 +2,15 @@
 
 import { useEffect, useRef, useState } from "react";
 
-type Preview = { url: string; expiresAt: number };
+type Preview = { url: string; expiresAt: number; warning?: string };
 function previewValue(value: { url?: string; expiresAt?: number }): Preview | null {
   try {
     const url = new URL(value.url ?? "");
     return url.protocol === "https:" && url.hostname.endsWith(".e2b.app") && typeof value.expiresAt === "number"
-      ? { url: url.href, expiresAt: value.expiresAt } : null;
+      ? { url: url.href, expiresAt: value.expiresAt, ...(typeof (value as { warning?: unknown }).warning === "string" ? { warning: (value as { warning: string }).warning } : {}) } : null;
   } catch { return null; }
 }
-export function AdminProjectPreview({ projectId, name, unavailable }: { projectId: string; name: string; unavailable?: string }) {
+export function AdminProjectPreview({ projectId, name, unavailable, lastBuild }: { projectId: string; name: string; unavailable?: string; lastBuild?: string }) {
   const endpoint = `/api/admin/projects/${projectId}/runtime`;
   const [preview, setPreview] = useState<Preview | null>(null);
   const [busy, setBusy] = useState(false);
@@ -70,7 +70,9 @@ export function AdminProjectPreview({ projectId, name, unavailable }: { projectI
           : <button className="btn btn-primary btn-sm" disabled={busy || Boolean(unavailable)} onClick={() => void request("start")}>{busy ? "Starting preview…" : "Start preview"}</button>}
       </div>
     </div>
-    {error && <p role="alert" className="text-sm text-error">{error}</p>}
+    {lastBuild && !preview && <p className="text-xs text-warning whitespace-pre-wrap break-words border border-warning/30 rounded-lg p-3">{lastBuild}</p>}
+    {preview?.warning && <p className="text-xs text-warning whitespace-pre-wrap break-words border border-warning/30 rounded-lg p-3">{preview.warning}</p>}
+    {error && <p role="alert" className="text-sm text-error whitespace-pre-wrap break-words">{error}</p>}
     {preview ? <iframe title={`${name} admin preview`} src={preview.url} sandbox="allow-scripts allow-forms allow-same-origin allow-modals" referrerPolicy="no-referrer" className="w-full h-[680px] bg-white border border-graphite rounded-lg" />
       : <div className="border border-graphite rounded-lg p-8 text-center text-sm text-fog" role="status">{unavailable ?? progress}</div>}
   </section>;
